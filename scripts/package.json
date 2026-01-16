@@ -1,0 +1,16 @@
+# This file tells npm that the scripts folder is a separate package
+{
+    "name": "line-notion-scripts",
+    "type": "commonjs",
+    "private": true,
+    "scripts": {
+        "init": "npx ts-node init-firestore.ts"
+    },
+    "devDependencies": {
+        "ts-node": "^10.9.2",
+        "typescript": "^5.7.2"
+    },
+    "dependencies": {
+        "firebase-admin": "^12.7.0"
+    }
+}

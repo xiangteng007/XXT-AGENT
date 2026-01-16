@@ -1,0 +1,155 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.enabled == true;
+    }
+    
+    function isOwner() {
+      return isAdmin() &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'owner';
+    }
+    
+    function isTeamMember(teamId) {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid));
+    }
+    
+    function isTeamAdmin(teamId) {
+      let member = get(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid));
+      return isTeamMember(teamId) && member.data.role in ['owner', 'admin'];
+    }
+    
+    function isTeamOwner(teamId) {
+      let member = get(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid));
+      return isTeamMember(teamId) && member.data.role == 'owner';
+    }
+    
+    // ========================
+    // Admins collection (Dashboard RBAC)
+    // ========================
+    match /admins/{uid} {
+      // Only owner can write, admins can read their own
+      allow read: if isAdmin() && (request.auth.uid == uid || isOwner());
+      allow write: if isOwner();
+    }
+    
+    // ========================
+    // Tenants collection (Dashboard managed)
+    // ========================
+    match /tenants/{tenantId} {
+      // Dashboard admins can read, but writes go through server API
+      allow read: if isAdmin();
+      allow write: if false; // Server API only via Admin SDK
+      
+      // Rules subcollection
+      match /rules/{ruleId} {
+        allow read: if isAdmin();
+        allow write: if false; // Server API only
+      }
+      
+      // Mappings subcollection
+      match /mappings/{mappingId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+    }
+    
+    // ========================
+    // Teams collection (Original structure)
+    // ========================
+    match /teams/{teamId} {
+      allow read: if isTeamMember(teamId);
+      allow create: if isAuthenticated();
+      allow update: if isTeamAdmin(teamId);
+      allow delete: if isTeamOwner(teamId);
+      
+      // Projects subcollection
+      match /projects/{projectId} {
+        allow read: if isTeamMember(teamId);
+        allow write: if isTeamAdmin(teamId);
+        
+        // Rules subcollection (within projects)
+        match /rules/{ruleId} {
+          allow read: if isTeamMember(teamId);
+          allow write: if isTeamAdmin(teamId);
+        }
+        
+        // Databases subcollection
+        match /databases/{dbId} {
+          allow read: if isTeamMember(teamId);
+          allow write: if isTeamAdmin(teamId);
+        }
+      }
+      
+      // Members subcollection
+      match /members/{userId} {
+        allow read: if isTeamMember(teamId);
+        allow create: if isTeamAdmin(teamId);
+        allow update: if isTeamOwner(teamId) || request.auth.uid == userId;
+        allow delete: if isTeamOwner(teamId);
+      }
+    }
+    
+    // ========================
+    // Integrations collection
+    // ========================
+    match /integrations/{integrationId} {
+      allow read: if isAuthenticated() && 
+        isTeamMember(resource.data.teamId);
+      allow write: if isAuthenticated() && 
+        isTeamAdmin(resource.data.teamId);
+    }
+    
+    // ========================
+    // Jobs collection (Queue tasks)
+    // ========================
+    match /jobs/{jobId} {
+      // Dashboard admins can read, writes via Admin SDK only
+      allow read: if isAdmin();
+      allow write: if false; // Server API only
+    }
+    
+    // ========================
+    // Logs collection
+    // ========================
+    match /logs/{logId} {
+      // Dashboard admins can read
+      allow read: if isAdmin() || (isAuthenticated() && isTeamMember(resource.data.teamId));
+      // Write is handled by Cloud Functions with admin SDK
+      allow write: if false;
+    }
+    
+    // ========================
+    // Metrics collection
+    // ========================
+    match /metrics_daily/{docId} {
+      allow read: if isAdmin();
+      allow write: if false; // Functions only
+    }
+    
+    // ========================
+    // Processed events (deduplication)
+    // ========================
+    match /processedEvents/{eventId} {
+      // Only Cloud Functions can access this
+      allow read, write: if false;
+    }
+    
+    // ========================
+    // System config
+    // ========================
+    match /system/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+  }
+}

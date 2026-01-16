@@ -1,0 +1,18 @@
+{
+  "name": "@ai-me/common",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@google-cloud/pubsub": "^4.8.0",
+    "@google-cloud/secret-manager": "^5.2.0",
+    "@google-cloud/firestore": "^7.11.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

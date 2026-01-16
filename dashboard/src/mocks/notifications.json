@@ -1,0 +1,110 @@
+[
+    {
+        "id": "notif_001",
+        "name": "高嚴重性事件通知",
+        "enabled": true,
+        "keywords": [
+            "台積電",
+            "輝達",
+            "法說會"
+        ],
+        "minSeverity": 80,
+        "channels": [
+            {
+                "type": "telegram",
+                "target": "***7890",
+                "enabled": true
+            },
+            {
+                "type": "line",
+                "target": "enabled",
+                "enabled": true
+            }
+        ],
+        "createdAt": "2026-01-01T00:00:00+08:00"
+    },
+    {
+        "id": "notif_002",
+        "name": "AI半導體動態",
+        "enabled": true,
+        "keywords": [
+            "AI伺服器",
+            "CoWoS",
+            "HBM",
+            "GPU"
+        ],
+        "minSeverity": 60,
+        "channels": [
+            {
+                "type": "telegram",
+                "target": "***7890",
+                "enabled": true
+            }
+        ],
+        "createdAt": "2026-01-05T00:00:00+08:00"
+    },
+    {
+        "id": "notif_003",
+        "name": "總經數據警報",
+        "enabled": true,
+        "keywords": [
+            "CPI",
+            "降息",
+            "Fed",
+            "通膨"
+        ],
+        "minSeverity": 70,
+        "channels": [
+            {
+                "type": "telegram",
+                "target": "***7890",
+                "enabled": true
+            },
+            {
+                "type": "webhook",
+                "target": "https://hooks.example.com/***",
+                "enabled": false
+            }
+        ],
+        "createdAt": "2026-01-08T00:00:00+08:00"
+    },
+    {
+        "id": "notif_004",
+        "name": "航運動態追蹤",
+        "enabled": false,
+        "keywords": [
+            "航運",
+            "運價",
+            "長榮",
+            "陽明"
+        ],
+        "minSeverity": 50,
+        "channels": [
+            {
+                "type": "line",
+                "target": "enabled",
+                "enabled": true
+            }
+        ],
+        "createdAt": "2026-01-10T00:00:00+08:00"
+    },
+    {
+        "id": "notif_005",
+        "name": "加密貨幣異動",
+        "enabled": true,
+        "keywords": [
+            "比特幣",
+            "BTC",
+            "ETF"
+        ],
+        "minSeverity": 65,
+        "channels": [
+            {
+                "type": "telegram",
+                "target": "***7890",
+                "enabled": true
+            }
+        ],
+        "createdAt": "2026-01-12T00:00:00+08:00"
+    }
+]

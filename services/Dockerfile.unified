@@ -1,0 +1,44 @@
+# Multi-stage Dockerfile for services with @ai-me/common dependency
+# Build from: services/ directory
+# Usage: docker build -f Dockerfile.unified --build-arg SERVICE=market-streamer -t <tag> .
+
+ARG SERVICE=market-streamer
+
+# Stage 1: Build and pack common module
+FROM node:18-alpine AS common-builder
+WORKDIR /build
+COPY common ./
+RUN npm install
+RUN npm run build
+RUN npm pack
+
+# Stage 2: Build service
+FROM node:18-alpine AS service-builder
+ARG SERVICE
+WORKDIR /app
+
+# Copy common tarball
+COPY --from=common-builder /build/ai-me-common-0.1.0.tgz ./
+
+# Copy service files and install deps including local common package
+COPY ${SERVICE}/package*.json ./
+# Replace version reference with tarball path
+RUN sed -i 's|"@ai-me/common": "0.1.0"|"@ai-me/common": "file:./ai-me-common-0.1.0.tgz"|g' package.json || true
+RUN sed -i 's|"@ai-me/common": "workspace:\*"|"@ai-me/common": "file:./ai-me-common-0.1.0.tgz"|g' package.json || true
+RUN npm install
+
+# Copy and build service source
+COPY ${SERVICE}/tsconfig.json ./
+COPY ${SERVICE}/src ./src
+RUN npx tsc -p tsconfig.json
+
+# Stage 3: Production image
+FROM node:18-alpine
+WORKDIR /app
+
+# Copy built artifacts
+COPY --from=service-builder /app/dist ./dist
+COPY --from=service-builder /app/node_modules ./node_modules
+
+EXPOSE 8080
+CMD ["node", "dist/index.js"]

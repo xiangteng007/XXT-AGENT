@@ -1,0 +1,13 @@
+{
+  "name": "ai-me-cloud-services",
+  "private": true,
+  "workspaces": [
+    "common",
+    "market-streamer",
+    "news-collector",
+    "social-dispatcher",
+    "social-worker",
+    "event-fuser",
+    "notifier"
+  ]
+}

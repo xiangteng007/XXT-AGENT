@@ -1,0 +1,4 @@
+aiohttp==3.9.5
+orjson==3.10.7
+pydantic==2.8.2
+redis==5.0.7
