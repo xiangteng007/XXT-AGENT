@@ -127,8 +127,8 @@ export function mapLocationToNotionProperties(
         properties[options.fields.location] = {
             rich_text: [{
                 text: {
-                    content: `${location.address || ''}\n${location.googleMapsUrl || ''}`
-                }
+                    content: `${location.address || ''}\n${location.googleMapsUrl || ''}`,
+                },
             }],
         };
     }
@@ -143,7 +143,7 @@ function buildTitle(message: NormalizedMessage, prefix?: string): string {
     const timestamp = message.metadata.timestamp;
     const timeStr = timestamp.toLocaleTimeString('zh-TW', {
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
     });
 
     if (prefix) {

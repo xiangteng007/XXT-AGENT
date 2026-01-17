@@ -6,8 +6,8 @@
  */
 
 import * as admin from 'firebase-admin';
-import { NotificationSetting, NotificationConfig } from '../types/social.types';
-import { FusedEvent } from '../types/social.types';
+import { NotificationSetting, NotificationConfig , FusedEvent } from '../types/social.types';
+
 import { logAudit } from './audit.service';
 import { incrementMetric } from './metrics.service';
 

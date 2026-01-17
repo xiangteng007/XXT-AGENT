@@ -152,7 +152,7 @@ function parseGeminiResponse(response: string): Partial<GeminiEnrichResponse> {
 
     try {
         return JSON.parse(jsonMatch[0]);
-    } catch (err) {
+    } catch (_err) {
         throw new Error('Failed to parse JSON response');
     }
 }

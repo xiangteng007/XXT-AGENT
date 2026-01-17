@@ -31,7 +31,7 @@ module.exports = {
         '@typescript-eslint/indent': 'off',
         'quotes': ['error', 'single', { avoidEscape: true }],
         '@typescript-eslint/no-explicit-any': 'warn',
-        '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+        '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
         'max-len': ['warn', { code: 120, ignoreStrings: true, ignoreTemplateLiterals: true }],
         'comma-dangle': ['error', 'always-multiline'],
         'object-curly-spacing': ['error', 'always'],

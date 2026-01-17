@@ -112,7 +112,7 @@ export async function processCollectJob(job: CollectJob): Promise<{
                 }
 
             } catch (itemErr: any) {
-                console.error(`[Social Collector] Error processing item:`, itemErr);
+                console.error('[Social Collector] Error processing item:', itemErr);
                 result.errors.push(itemErr.message);
             }
         }
@@ -130,11 +130,11 @@ export async function processCollectJob(job: CollectJob): Promise<{
         await incrementMetric(job.tenantId, 'social_posts_fetched', result.fetched);
         await incrementMetric(job.tenantId, 'social_posts_inserted', result.inserted);
 
-        console.log(`[Social Collector] Job complete:`, result);
+        console.log('[Social Collector] Job complete:', result);
         return result;
 
     } catch (err: any) {
-        console.error(`[Social Collector] Job failed:`, err);
+        console.error('[Social Collector] Job failed:', err);
 
         // Update cursor error state
         const cursorId = `${job.tenantId}_${job.sourceId}`;
