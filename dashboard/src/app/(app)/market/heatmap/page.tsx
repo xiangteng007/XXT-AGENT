@@ -2,6 +2,8 @@
 
 import { useMemo } from 'react';
 import { useSectorHeatmap } from '@/lib/hooks/useMarketData';
+import { useSectorStore } from '@/lib/market/sectorStore';
+import { SectorManager } from '@/components/market/SectorManager';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -65,9 +67,46 @@ const mockSectors = [
 ];
 
 export default function MarketHeatmapPage() {
-    const { sectors: apiSectors, isLoading, refresh } = useSectorHeatmap();
+    const { sectors: apiSectors, isLoading: apiLoading, refresh } = useSectorHeatmap();
+    const {
+        sectors: customSectors,
+        isLoading: customLoading,
+        addSector,
+        editSector,
+        removeSector,
+        reset,
+    } = useSectorStore();
 
-    const sectors = apiSectors.length > 0 ? apiSectors : mockSectors;
+    const isLoading = apiLoading || customLoading;
+
+    // 合併 API 資料與自訂版塊結構
+    const displaySectors = customSectors.map(sector => {
+        // 為每個股票取得即時報價 (使用 mock 資料模擬)
+        const stocks = sector.stocks.map(stock => ({
+            symbol: stock.symbol,
+            name: stock.name,
+            sector: sector.id,
+            industry: '',
+            marketCap: 1e11,
+            weight: 1 / sector.stocks.length,
+            changePct: (Math.random() - 0.5) * 6, // 模擬 -3% ~ +3%
+            volume: Math.random() * 1e9,
+            color: '',
+        }));
+
+        const avgChange = stocks.length > 0
+            ? stocks.reduce((sum, s) => sum + s.changePct, 0) / stocks.length
+            : 0;
+
+        return {
+            id: sector.id,
+            name: sector.name,
+            changePct: avgChange,
+            marketCap: 1e12,
+            volume: 1e9,
+            stocks,
+        };
+    });
 
     const handleRefresh = () => {
         refresh();
@@ -85,7 +124,7 @@ export default function MarketHeatmapPage() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center flex-wrap gap-4">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
                         <Grid3X3 className="h-6 w-6" />
@@ -95,10 +134,19 @@ export default function MarketHeatmapPage() {
                         產業與個股漲跌視覺化
                     </p>
                 </div>
-                <Button variant="outline" onClick={handleRefresh}>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    更新
-                </Button>
+                <div className="flex gap-2">
+                    <SectorManager
+                        sectors={customSectors}
+                        onAddSector={addSector}
+                        onEditSector={editSector}
+                        onDeleteSector={removeSector}
+                        onReset={reset}
+                    />
+                    <Button variant="outline" onClick={handleRefresh}>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        更新
+                    </Button>
+                </div>
             </div>
 
             {/* Legend */}
@@ -124,7 +172,7 @@ export default function MarketHeatmapPage() {
 
             {/* Sector Cards */}
             <div className="grid gap-4 md:grid-cols-2">
-                {sectors.map((sector) => (
+                {displaySectors.map((sector) => (
                     <Card key={sector.id}>
                         <CardHeader className="pb-2">
                             <CardTitle className="flex items-center justify-between">
@@ -175,7 +223,7 @@ export default function MarketHeatmapPage() {
                 <Card>
                     <CardContent className="pt-4 text-center">
                         <div className="text-2xl font-bold text-green-600">
-                            {sectors.filter(s => s.changePct > 0).length}
+                            {displaySectors.filter(s => s.changePct > 0).length}
                         </div>
                         <div className="text-sm text-muted-foreground">上漲產業</div>
                     </CardContent>
@@ -183,7 +231,7 @@ export default function MarketHeatmapPage() {
                 <Card>
                     <CardContent className="pt-4 text-center">
                         <div className="text-2xl font-bold text-red-600">
-                            {sectors.filter(s => s.changePct < 0).length}
+                            {displaySectors.filter(s => s.changePct < 0).length}
                         </div>
                         <div className="text-sm text-muted-foreground">下跌產業</div>
                     </CardContent>
@@ -191,7 +239,7 @@ export default function MarketHeatmapPage() {
                 <Card>
                     <CardContent className="pt-4 text-center">
                         <div className="text-2xl font-bold">
-                            {sectors.reduce((sum, s) => sum + s.stocks.length, 0)}
+                            {displaySectors.reduce((sum, s) => sum + s.stocks.length, 0)}
                         </div>
                         <div className="text-sm text-muted-foreground">總標的數</div>
                     </CardContent>
@@ -199,7 +247,7 @@ export default function MarketHeatmapPage() {
                 <Card>
                     <CardContent className="pt-4 text-center">
                         <div className="text-2xl font-bold">
-                            {(sectors.reduce((sum, s) => sum + s.changePct, 0) / sectors.length).toFixed(2)}%
+                            {displaySectors.length > 0 ? (displaySectors.reduce((sum, s) => sum + s.changePct, 0) / displaySectors.length).toFixed(2) : '0.00'}%
                         </div>
                         <div className="text-sm text-muted-foreground">平均漲幅</div>
                     </CardContent>
