@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
 import { useAIChat, useMarketOutlook } from '@/lib/hooks/useAIAnalysis';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,8 @@ import {
     AlertTriangle,
     Lightbulb,
     MessageCircle,
+    Brain,
+    BarChart3,
 } from 'lucide-react';
 
 export default function AIAssistantPage() {
@@ -72,6 +75,40 @@ export default function AIAssistantPage() {
                 </span>
             </div>
 
+            {/* Quick Navigation */}
+            <div className="grid gap-4 md:grid-cols-2">
+                <Link href="/ai/analysis">
+                    <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
+                        <CardContent className="pt-4 flex items-center gap-4">
+                            <div className="p-3 bg-primary/10 rounded-lg">
+                                <Brain className="h-6 w-6 text-primary" />
+                            </div>
+                            <div>
+                                <h3 className="font-medium">歷史資料分析</h3>
+                                <p className="text-sm text-muted-foreground">
+                                    K線圖、技術指標、AI 投資建議
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </Link>
+                <Link href="/market/heatmap">
+                    <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
+                        <CardContent className="pt-4 flex items-center gap-4">
+                            <div className="p-3 bg-green-500/10 rounded-lg">
+                                <BarChart3 className="h-6 w-6 text-green-600" />
+                            </div>
+                            <div>
+                                <h3 className="font-medium">市場熱力圖</h3>
+                                <p className="text-sm text-muted-foreground">
+                                    自訂版塊、產業分析、即時報價
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </Link>
+            </div>
+
             <div className="grid gap-6 lg:grid-cols-3">
                 {/* Chat Area */}
                 <div className="lg:col-span-2">
@@ -112,8 +149,8 @@ export default function AIAssistantPage() {
                                     >
                                         <div
                                             className={`max-w-[80%] rounded-lg px-4 py-2 ${msg.role === 'user'
-                                                    ? 'bg-primary text-primary-foreground'
-                                                    : 'bg-muted'
+                                                ? 'bg-primary text-primary-foreground'
+                                                : 'bg-muted'
                                                 }`}
                                         >
                                             <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
