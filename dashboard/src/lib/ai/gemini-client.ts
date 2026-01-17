@@ -14,11 +14,13 @@ const AI_GATEWAY_URL = process.env.NEXT_PUBLIC_AI_GATEWAY_URL || 'http://localho
 interface AIClientConfig {
     baseUrl?: string;
     timeout?: number;
+    model?: string;
 }
 
 let config: AIClientConfig = {
     baseUrl: AI_GATEWAY_URL,
-    timeout: 30000
+    timeout: 30000,
+    model: 'gemini-1.5-flash'
 };
 
 /**
@@ -26,6 +28,45 @@ let config: AIClientConfig = {
  */
 export function configureAIClient(options: AIClientConfig): void {
     config = { ...config, ...options };
+}
+
+/**
+ * Set the active model
+ */
+export function setActiveModel(modelId: string): void {
+    config.model = modelId;
+}
+
+/**
+ * Get the current model
+ */
+export function getActiveModel(): string {
+    return config.model || 'gemini-1.5-flash';
+}
+
+/**
+ * Model info from backend
+ */
+export interface AIModelInfo {
+    id: string;
+    name: string;
+    description: string;
+    tier: 'latest' | 'premium' | 'standard' | 'economy';
+    isDefault: boolean;
+}
+
+/**
+ * Get available models from backend
+ */
+export async function getAvailableModels(): Promise<AIModelInfo[]> {
+    try {
+        const response = await fetch(`${config.baseUrl}/ai/models`);
+        const data = await response.json();
+        return data.models || [];
+    } catch (error) {
+        console.error('Failed to fetch models:', error);
+        return [];
+    }
 }
 
 /**
@@ -46,7 +87,7 @@ async function aiRequest<T>(
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify(body),
+            body: JSON.stringify({ ...body, model: config.model }),
             signal: controller.signal,
             credentials: 'include'
         });

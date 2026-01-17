@@ -16,10 +16,38 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || 'xxt-agent';
 const SECRET_ID = process.env.GEMINI_SECRET_ID || 'gemini-api-key';
+const DEFAULT_MODEL = 'gemini-1.5-flash';
+
+// Supported Models with descriptions
+const SUPPORTED_MODELS = {
+    'gemini-2.0-flash': {
+        name: 'Gemini 2.0 Flash',
+        description: '最新一代 AI 模型，更強的推理與多模態能力',
+        tier: 'latest',
+    },
+    'gemini-1.5-pro': {
+        name: 'Gemini 1.5 Pro',
+        description: '強大的推理能力，適合複雜分析與長文本',
+        tier: 'premium',
+    },
+    'gemini-1.5-flash': {
+        name: 'Gemini 1.5 Flash',
+        description: '快速回應、低成本，適合日常任務（預設）',
+        tier: 'standard',
+    },
+    'gemini-1.5-flash-8b': {
+        name: 'Gemini 1.5 Flash-8B',
+        description: '超低延遲，適合高頻交互場景',
+        tier: 'economy',
+    },
+} as const;
+
+type ModelId = keyof typeof SUPPORTED_MODELS;
 
 // State
-let geminiModel: GenerativeModel | null = null;
+let genAI: GoogleGenerativeAI | null = null;
 let isInitialized = false;
+const modelCache = new Map<string, GenerativeModel>();
 
 // Middleware
 app.use(cors({
@@ -85,8 +113,7 @@ async function initializeGemini(): Promise<void> {
 
     try {
         const apiKey = await loadGeminiKey();
-        const genAI = new GoogleGenerativeAI(apiKey);
-        geminiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        genAI = new GoogleGenerativeAI(apiKey);
         isInitialized = true;
         console.log(JSON.stringify({
             severity: 'INFO',
@@ -101,14 +128,42 @@ async function initializeGemini(): Promise<void> {
     }
 }
 
+/**
+ * Get or create a model instance
+ */
+function getOrCreateModel(modelId: string = DEFAULT_MODEL): GenerativeModel | null {
+    if (!genAI) return null;
+
+    // Validate model ID
+    const validModelId = modelId in SUPPORTED_MODELS ? modelId : DEFAULT_MODEL;
+
+    if (!modelCache.has(validModelId)) {
+        const model = genAI.getGenerativeModel({ model: validModelId });
+        modelCache.set(validModelId, model);
+    }
+
+    return modelCache.get(validModelId) || null;
+}
+
 // Health check
 app.get('/health', (_req: Request, res: Response) => {
     res.json({
         status: 'healthy',
         service: 'ai-gateway',
         geminiReady: isInitialized,
+        defaultModel: DEFAULT_MODEL,
         timestamp: new Date().toISOString()
     });
+});
+
+// Model info endpoint
+app.get('/ai/models', (_req: Request, res: Response) => {
+    const models = Object.entries(SUPPORTED_MODELS).map(([id, info]) => ({
+        id,
+        ...info,
+        isDefault: id === DEFAULT_MODEL,
+    }));
+    res.json({ models, defaultModel: DEFAULT_MODEL });
 });
 
 // ============ AI Endpoints ============
@@ -119,10 +174,12 @@ app.get('/health', (_req: Request, res: Response) => {
  */
 app.post('/ai/summarize', async (req: Request, res: Response) => {
     try {
-        if (!geminiModel) {
+        if (!genAI) {
             await initializeGemini();
         }
 
+        const { model: modelId } = req.body;
+        const geminiModel = getOrCreateModel(modelId);
         if (!geminiModel) {
             return res.status(503).json({ error: 'AI service unavailable' });
         }
@@ -152,10 +209,12 @@ app.post('/ai/summarize', async (req: Request, res: Response) => {
  */
 app.post('/ai/sentiment', async (req: Request, res: Response) => {
     try {
-        if (!geminiModel) {
+        if (!genAI) {
             await initializeGemini();
         }
 
+        const { model: modelId } = req.body;
+        const geminiModel = getOrCreateModel(modelId);
         if (!geminiModel) {
             return res.status(503).json({ error: 'AI service unavailable' });
         }
@@ -210,10 +269,12 @@ ${context ? `背景：${context}\n` : ''}
  */
 app.post('/ai/impact', async (req: Request, res: Response) => {
     try {
-        if (!geminiModel) {
+        if (!genAI) {
             await initializeGemini();
         }
 
+        const { model: modelId } = req.body;
+        const geminiModel = getOrCreateModel(modelId);
         if (!geminiModel) {
             return res.status(503).json({ error: 'AI service unavailable' });
         }
@@ -270,10 +331,12 @@ ${newsType ? `類型：${newsType}` : ''}
  */
 app.post('/ai/chat', async (req: Request, res: Response) => {
     try {
-        if (!geminiModel) {
+        if (!genAI) {
             await initializeGemini();
         }
 
+        const { model: modelId } = req.body;
+        const geminiModel = getOrCreateModel(modelId);
         if (!geminiModel) {
             return res.status(503).json({ error: 'AI service unavailable' });
         }
@@ -307,10 +370,12 @@ app.post('/ai/chat', async (req: Request, res: Response) => {
  */
 app.post('/ai/batch-sentiment', async (req: Request, res: Response) => {
     try {
-        if (!geminiModel) {
+        if (!genAI) {
             await initializeGemini();
         }
 
+        const { model: modelId } = req.body;
+        const geminiModel = getOrCreateModel(modelId);
         if (!geminiModel) {
             return res.status(503).json({ error: 'AI service unavailable' });
         }

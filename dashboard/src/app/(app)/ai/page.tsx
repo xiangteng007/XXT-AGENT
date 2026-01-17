@@ -3,10 +3,19 @@
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useAIChat, useMarketOutlook } from '@/lib/hooks/useAIAnalysis';
+import { getAvailableModels, setActiveModel, getActiveModel, type AIModelInfo } from '@/lib/ai/gemini-client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { LoadingSkeleton, EmptyState } from '@/components/shared';
 import {
     Bot,
@@ -20,17 +29,42 @@ import {
     MessageCircle,
     Brain,
     BarChart3,
+    Sparkles,
+    Zap,
+    Crown,
+    Timer,
 } from 'lucide-react';
+
+// Tier badge styling
+const tierConfig: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
+    latest: { icon: <Sparkles className="h-3 w-3" />, color: 'bg-purple-500', label: '最新' },
+    premium: { icon: <Crown className="h-3 w-3" />, color: 'bg-amber-500', label: '進階' },
+    standard: { icon: <Zap className="h-3 w-3" />, color: 'bg-blue-500', label: '標準' },
+    economy: { icon: <Timer className="h-3 w-3" />, color: 'bg-green-500', label: '輕量' },
+};
 
 export default function AIAssistantPage() {
     const { messages, isLoading, sendMessage, clearMessages } = useAIChat();
     const [inputValue, setInputValue] = useState('');
+    const [models, setModels] = useState<AIModelInfo[]>([]);
+    const [selectedModel, setSelectedModel] = useState(getActiveModel());
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll to bottom
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    // Load available models
+    useEffect(() => {
+        getAvailableModels().then(setModels);
+    }, []);
+
+    // Handle model change
+    const handleModelChange = (modelId: string) => {
+        setSelectedModel(modelId);
+        setActiveModel(modelId);
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -51,7 +85,7 @@ export default function AIAssistantPage() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center flex-wrap gap-4">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
                         <Bot className="h-6 w-6" />
@@ -59,13 +93,46 @@ export default function AIAssistantPage() {
                     </h1>
                     <p className="text-muted-foreground">Powered by Gemini</p>
                 </div>
-                {messages.length > 0 && (
-                    <Button variant="outline" size="sm" onClick={clearMessages}>
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        清除對話
-                    </Button>
-                )}
+                <div className="flex items-center gap-3">
+                    {/* Model Selector */}
+                    <div className="flex items-center gap-2">
+                        <Label className="text-sm text-muted-foreground whitespace-nowrap">模型</Label>
+                        <Select value={selectedModel} onValueChange={handleModelChange}>
+                            <SelectTrigger className="w-[200px]">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {models.map((model) => {
+                                    const tier = tierConfig[model.tier];
+                                    return (
+                                        <SelectItem key={model.id} value={model.id}>
+                                            <div className="flex items-center gap-2">
+                                                <Badge className={`${tier.color} text-white text-[10px] px-1.5 py-0`}>
+                                                    {tier.icon}
+                                                </Badge>
+                                                <span>{model.name}</span>
+                                            </div>
+                                        </SelectItem>
+                                    );
+                                })}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    {messages.length > 0 && (
+                        <Button variant="outline" size="sm" onClick={clearMessages}>
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            清除對話
+                        </Button>
+                    )}
+                </div>
             </div>
+
+            {/* Model Description */}
+            {selectedModel && models.length > 0 && (
+                <div className="text-sm text-muted-foreground">
+                    {models.find(m => m.id === selectedModel)?.description}
+                </div>
+            )}
 
             {/* Disclaimer */}
             <div className="p-3 bg-muted/50 rounded-lg border text-xs text-muted-foreground flex items-start gap-2">
