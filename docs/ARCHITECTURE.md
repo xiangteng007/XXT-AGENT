@@ -1,6 +1,9 @@
 # XXT-AGENT System Architecture v2.0
 
 > Production-Grade Long-Running Real-Time Monitoring System
+>
+> **GCP Project**: `investment-manager-1007`
+> **Region**: `asia-east1`
 
 ## 系統概覽
 

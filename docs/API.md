@@ -13,8 +13,10 @@ XXT-AGENT provides RESTful APIs for real-time market monitoring, news aggregatio
 | Environment | URL |
 |-------------|-----|
 | Production | `https://api.xxt-agent.com` |
-| AI Gateway | `https://ai-gateway-xxx.run.app` |
+| AI Gateway | `https://ai-gateway-400584093075.asia-east1.run.app` |
 | Dashboard | `https://xxt-frontend.vercel.app` |
+
+> **GCP Project**: `investment-manager-1007`
 
 ---
 

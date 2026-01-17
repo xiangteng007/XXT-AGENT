@@ -1,33 +1,42 @@
-# Senteng LINE-Bot-Notion Platform - Project Configuration
+# XXT-AGENT Platform - Project Configuration
 
-## Firebase Project
+## GCP Project
 
 | 欄位 | 值 |
 |------|-----|
-| **專案名稱** | senteng-linebot-notion |
-| **專案 ID** | senteng-linebot-notion |
-| **專案編號** | 225264789164 |
+| **專案名稱** | Investment Manager |
+| **專案 ID** | investment-manager-1007 |
 | **區域** | asia-east1 (Taiwan) |
+
+## Deployed Services
+
+| Service | URL | Status |
+|---------|-----|--------|
+| **AI Gateway** | <https://ai-gateway-400584093075.asia-east1.run.app> | ✅ Active |
+| **Dashboard** | <https://xxt-frontend.vercel.app> | ✅ Active |
 
 ## URLs
 
-- **Firebase Console**: https://console.firebase.google.com/project/senteng-linebot-notion
-- **GCP Console**: https://console.cloud.google.com/home/dashboard?project=senteng-linebot-notion
-- **Cloud Functions** (部署後): `https://asia-east1-senteng-linebot-notion.cloudfunctions.net/lineWebhook`
+- **GCP Console**: <https://console.cloud.google.com/home/dashboard?project=investment-manager-1007>
+- **Cloud Run**: <https://console.cloud.google.com/run?project=investment-manager-1007>
+- **Secret Manager**: <https://console.cloud.google.com/security/secret-manager?project=investment-manager-1007>
 
 ## Secret Manager Keys
 
 | Secret Name | 用途 |
 |-------------|------|
-| `line-channel-secret-default` | LINE Channel Secret |
-| `line-access-token-default` | LINE Channel Access Token |
-| `notion-token-default` | Notion Integration Token |
+| `gemini-api-key` | Gemini AI API Key (for ai-gateway) |
 
-## Service Account
+## Service Accounts
 
-- **Default**: `senteng-linebot-notion@appspot.gserviceaccount.com`
+- **Default Compute**: `400584093075-compute@developer.gserviceaccount.com`
 
-## 相關資源
+## Repository
 
-- GitHub Repo: `SENTENG-LINEBOT-NOTION`
-- Firestore Database: Native Mode, asia-east1
+- **GitHub**: <https://github.com/xiangteng007/XXT-AGENT>
+- **Frontend (Vercel)**: xxt-frontend
+
+## Architecture Version
+
+- **Current**: v2.0.0 (Production-Grade Upgrade)
+- **Last Updated**: 2026-01-17
