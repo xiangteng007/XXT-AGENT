@@ -11,6 +11,35 @@ locals {
     trade_planner     = "${local.ar_host}/${var.project_id}/${local.ar_repo}/trade-planner-worker:latest"
     telegram_bot      = "${local.ar_host}/${var.project_id}/${local.ar_repo}/telegram-command-bot:latest"
     quote_normalizer  = "${local.ar_host}/${var.project_id}/${local.ar_repo}/quote-normalizer:latest"
+    ai_gateway        = "${local.ar_host}/${var.project_id}/${local.ar_repo}/ai-gateway:latest"
+  }
+}
+
+resource "google_cloud_run_v2_service" "ai_gateway" {
+  name     = "ai-gateway"
+  location = var.region
+
+  template {
+    service_account = google_service_account.runtime_sa.email
+    containers {
+      image = local.img.ai_gateway
+      resources {
+        cpu_idle          = true
+        startup_cpu_boost = true
+      }
+      env {
+        name  = "GCP_PROJECT_ID"
+        value = var.project_id
+      }
+      env {
+        name  = "GEMINI_API_KEY"
+        value = var.gemini_api_key
+      }
+      env {
+        name  = "GEMINI_SECRET_ID"
+        value = "gemini-api-key"
+      }
+    }
   }
 }
 

@@ -40,7 +40,7 @@ jobs:
       - name: Build & Push images
         run: |
           PROJECT_ID=$(gcloud config get-value project)
-          for svc in market-streamer news-collector social-dispatcher social-worker event-fuser notifier; do
+          for svc in market-streamer news-collector social-dispatcher social-worker event-fuser notifier ai-gateway; do
             echo "Building $svc..."
             docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest services/$svc
             docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest
