@@ -1,350 +1,219 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
-import { getSocialPosts, getKeywords, getExcludeWords, getNotifications } from '@/lib/api/client';
-import type { SocialPost, Keyword, ExcludeWord, NotificationRule } from '@/lib/api/types';
-import { DataTable, FilterBar, SeverityBadge, LoadingSkeleton, EmptyState } from '@/components/shared';
-import type { Column } from '@/components/shared/DataTable';
+import { useMemo } from 'react';
+import Link from 'next/link';
+import { useSocialDashboard, useSocialPosts } from '@/lib/hooks/useSocialData';
+import { calculateSentimentSummary } from '@/lib/social/sentiment';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
+import { LoadingSkeleton } from '@/components/shared';
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogFooter,
-} from '@/components/ui/dialog';
-import {
-    Facebook,
-    Instagram,
-    MessageCircle,
-    Send,
-    Download,
-    Trash2,
-    Plus,
+    MessageSquare,
     TrendingUp,
-    BarChart3,
+    TrendingDown,
+    Minus,
+    Heart,
+    Users,
     Hash,
     Bell,
-    X,
-    AlertTriangle,
+    BarChart3,
+    Zap,
+    ArrowRight,
+    Smile,
+    Frown,
+    Meh,
+    Activity,
 } from 'lucide-react';
 
-export default function SocialMonitorPage() {
-    const [posts, setPosts] = useState<SocialPost[]>([]);
-    const [keywords, setKeywords] = useState<Keyword[]>([]);
-    const [excludeWords, setExcludeWords] = useState<ExcludeWord[]>([]);
-    const [notifications, setNotifications] = useState<NotificationRule[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('posts');
-    const [purgeDialogOpen, setPurgeDialogOpen] = useState(false);
+const platformColors: Record<string, string> = {
+    facebook: 'bg-blue-500',
+    instagram: 'bg-gradient-to-r from-purple-500 to-pink-500',
+    threads: 'bg-gray-800',
+    line: 'bg-green-500',
+    twitter: 'bg-sky-400',
+    tiktok: 'bg-gray-900',
+    youtube: 'bg-red-500',
+};
 
-    // Filters
-    const [searchKeyword, setSearchKeyword] = useState('');
-    const [platformFilter, setPlatformFilter] = useState('all');
-    const [timeRange, setTimeRange] = useState('24h');
-    const [minEngagement, setMinEngagement] = useState('0');
+export default function SocialDashboardPage() {
+    const { summary, isLoading } = useSocialDashboard();
+    const { posts } = useSocialPosts();
 
-    // New item inputs
-    const [newKeyword, setNewKeyword] = useState('');
-    const [newExcludeWord, setNewExcludeWord] = useState('');
-
-    useEffect(() => {
-        async function loadData() {
-            try {
-                const [postsData, keywordsData, excludeData, notifyData] = await Promise.all([
-                    getSocialPosts(),
-                    getKeywords(),
-                    getExcludeWords(),
-                    getNotifications(),
-                ]);
-                setPosts(postsData);
-                setKeywords(keywordsData);
-                setExcludeWords(excludeData);
-                setNotifications(notifyData);
-            } catch (error) {
-                console.error('Failed to load data:', error);
-            } finally {
-                setLoading(false);
-            }
-        }
-        loadData();
-    }, []);
-
-    const getPlatformIcon = (platform: string) => {
-        switch (platform) {
-            case 'Facebook': return <Facebook className="h-4 w-4" />;
-            case 'Instagram': return <Instagram className="h-4 w-4" />;
-            case 'Threads': return <MessageCircle className="h-4 w-4" />;
-            case 'LINE': return <Send className="h-4 w-4" />;
-            default: return null;
-        }
-    };
-
-    // Filtered posts
-    const filteredPosts = useMemo(() => {
-        let result = [...posts];
-
-        if (searchKeyword) {
-            const kw = searchKeyword.toLowerCase();
-            result = result.filter(
-                (p) => p.content.toLowerCase().includes(kw) || p.author.toLowerCase().includes(kw)
-            );
-        }
-
-        if (platformFilter !== 'all') {
-            result = result.filter((p) => p.platform === platformFilter);
-        }
-
-        const minEng = parseInt(minEngagement, 10);
-        if (minEng > 0) {
-            result = result.filter((p) => p.engagement >= minEng);
-        }
-
-        return result.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    }, [posts, searchKeyword, platformFilter, minEngagement]);
-
-    // Stats
-    const stats = useMemo(() => {
-        const platformCounts = posts.reduce((acc, p) => {
-            acc[p.platform] = (acc[p.platform] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>);
-        const totalEngagement = posts.reduce((acc, p) => acc + p.engagement, 0);
-        return { platformCounts, totalEngagement, totalPosts: posts.length };
+    const sentimentSummary = useMemo(() => {
+        return calculateSentimentSummary(posts);
     }, [posts]);
 
-    // Top keywords (simulated trends)
-    const topKeywords = useMemo(() => {
-        const kwCounts: Record<string, number> = {};
-        posts.forEach((p) => {
-            p.keywords?.forEach((kw) => {
-                kwCounts[kw] = (kwCounts[kw] || 0) + 1;
-            });
-        });
-        return Object.entries(kwCounts)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 10);
-    }, [posts]);
-
-    const formatTime = (ts: string) => {
-        const date = new Date(ts);
-        return date.toLocaleString('zh-TW', {
-            month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-        });
+    const getSentimentIcon = (label: string) => {
+        switch (label) {
+            case 'positive': return <Smile className="h-5 w-5 text-green-500" />;
+            case 'negative': return <Frown className="h-5 w-5 text-red-500" />;
+            case 'mixed': return <Activity className="h-5 w-5 text-yellow-500" />;
+            default: return <Meh className="h-5 w-5 text-gray-500" />;
+        }
     };
 
-    const postColumns: Column<SocialPost>[] = [
-        {
-            key: 'platform',
-            header: '平台',
-            className: 'w-[100px]',
-            render: (post) => (
-                <div className="flex items-center gap-2">
-                    {getPlatformIcon(post.platform)}
-                    <span className="text-xs">{post.platform}</span>
-                </div>
-            ),
-        },
-        {
-            key: 'author',
-            header: '作者',
-            className: 'w-[150px]',
-            render: (post) => (
-                <div className="text-sm">
-                    <p className="font-medium line-clamp-1">{post.author}</p>
-                    <p className="text-xs text-muted-foreground">{post.authorHandle}</p>
-                </div>
-            ),
-        },
-        {
-            key: 'content',
-            header: '內容',
-            render: (post) => <p className="text-sm line-clamp-2 max-w-md">{post.content}</p>,
-        },
-        {
-            key: 'engagement',
-            header: '互動',
-            className: 'w-[80px]',
-            render: (post) => <Badge variant="secondary">{post.engagement.toLocaleString()}</Badge>,
-        },
-        {
-            key: 'severity',
-            header: '嚴重度',
-            className: 'w-[80px]',
-            render: (post) => post.severity ? <SeverityBadge severity={post.severity} /> : <span className="text-muted-foreground">-</span>,
-        },
-        {
-            key: 'timestamp',
-            header: '時間',
-            className: 'w-[100px]',
-            render: (post) => <span className="text-xs text-muted-foreground">{formatTime(post.timestamp)}</span>,
-        },
-    ];
-
-    const handleExportCSV = () => {
-        const headers = ['platform', 'author', 'content', 'engagement', 'severity', 'timestamp'];
-        const csv = [
-            headers.join(','),
-            ...filteredPosts.map((p) =>
-                [p.platform, p.author, `"${p.content.replace(/"/g, '""')}"`, p.engagement, p.severity || '', p.timestamp].join(',')
-            ),
-        ].join('\n');
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `social_posts_${new Date().toISOString().split('T')[0]}.csv`;
-        a.click();
+    const getTrendIcon = (trend: number) => {
+        if (trend > 5) return <TrendingUp className="h-4 w-4 text-green-500" />;
+        if (trend < -5) return <TrendingDown className="h-4 w-4 text-red-500" />;
+        return <Minus className="h-4 w-4 text-gray-400" />;
     };
 
-    const handleExportJSON = () => {
-        const blob = new Blob([JSON.stringify(filteredPosts, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `social_posts_${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
+    const formatTrend = (trend: number) => {
+        const sign = trend >= 0 ? '+' : '';
+        return `${sign}${trend.toFixed(1)}%`;
     };
 
-    const addKeyword = () => {
-        if (!newKeyword.trim()) return;
-        const kw: Keyword = {
-            id: `kw_${Date.now()}`,
-            keyword: newKeyword.trim(),
-            priority: 'medium',
-            createdAt: new Date().toISOString(),
-        };
-        setKeywords([...keywords, kw]);
-        setNewKeyword('');
-    };
-
-    const removeKeyword = (id: string) => {
-        setKeywords(keywords.filter((k) => k.id !== id));
-    };
-
-    const addExcludeWord = () => {
-        if (!newExcludeWord.trim()) return;
-        const word: ExcludeWord = {
-            id: `ex_${Date.now()}`,
-            word: newExcludeWord.trim(),
-            createdAt: new Date().toISOString(),
-        };
-        setExcludeWords([...excludeWords, word]);
-        setNewExcludeWord('');
-    };
-
-    const removeExcludeWord = (id: string) => {
-        setExcludeWords(excludeWords.filter((w) => w.id !== id));
-    };
-
-    const clearAllFilters = () => {
-        setSearchKeyword('');
-        setPlatformFilter('all');
-        setMinEngagement('0');
-    };
-
-    if (loading) {
+    if (isLoading) {
         return (
             <div className="space-y-6">
                 <div>
                     <h1 className="text-2xl font-bold">社群監控</h1>
-                    <p className="text-muted-foreground">Facebook、Instagram、Threads、LINE 貼文監控</p>
+                    <p className="text-muted-foreground">即時社群動態與情緒分析</p>
                 </div>
-                <LoadingSkeleton type="table" count={6} />
+                <LoadingSkeleton type="card" count={6} />
             </div>
         );
     }
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            {/* Header */}
+            <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold">社群監控</h1>
-                    <p className="text-muted-foreground">Facebook、Instagram、Threads、LINE 貼文監控</p>
+                    <p className="text-muted-foreground">即時社群動態與情緒分析</p>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={handleExportCSV}>
-                        <Download className="h-4 w-4 mr-1" /> CSV
+                    <Button variant="outline" asChild>
+                        <Link href="/social/feed">
+                            <Zap className="h-4 w-4 mr-2" />
+                            即時動態
+                        </Link>
                     </Button>
-                    <Button variant="outline" size="sm" onClick={handleExportJSON}>
-                        <Download className="h-4 w-4 mr-1" /> JSON
-                    </Button>
-                    <Button variant="destructive" size="sm" onClick={() => setPurgeDialogOpen(true)}>
-                        <Trash2 className="h-4 w-4 mr-1" /> Purge
+                    <Button asChild>
+                        <Link href="/social/analytics">
+                            <BarChart3 className="h-4 w-4 mr-2" />
+                            分析報表
+                        </Link>
                     </Button>
                 </div>
             </div>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList>
-                    <TabsTrigger value="posts"><MessageCircle className="h-4 w-4 mr-1" />Posts</TabsTrigger>
-                    <TabsTrigger value="trends"><TrendingUp className="h-4 w-4 mr-1" />Trends</TabsTrigger>
-                    <TabsTrigger value="stats"><BarChart3 className="h-4 w-4 mr-1" />Stats</TabsTrigger>
-                    <TabsTrigger value="keywords"><Hash className="h-4 w-4 mr-1" />Keywords</TabsTrigger>
-                    <TabsTrigger value="exclude"><X className="h-4 w-4 mr-1" />Exclude Words</TabsTrigger>
-                    <TabsTrigger value="notifications"><Bell className="h-4 w-4 mr-1" />Notifications</TabsTrigger>
-                </TabsList>
+            {/* Stats Cards */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium">今日貼文</CardTitle>
+                        <MessageSquare className="h-4 w-4 text-blue-600" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold text-blue-700 dark:text-blue-300">
+                            {summary?.todayPosts ?? 0}
+                        </div>
+                        <div className="flex items-center gap-1 mt-1">
+                            {getTrendIcon(summary?.postsTrend ?? 0)}
+                            <span className="text-xs text-muted-foreground">
+                                {formatTrend(summary?.postsTrend ?? 0)} vs 昨日
+                            </span>
+                        </div>
+                    </CardContent>
+                </Card>
 
-                <TabsContent value="posts" className="space-y-4 mt-4">
-                    <FilterBar
-                        searchValue={searchKeyword}
-                        onSearchChange={setSearchKeyword}
-                        searchPlaceholder="搜尋內容或作者..."
-                        filters={[
-                            {
-                                id: 'platform', label: '平台', value: platformFilter, onChange: setPlatformFilter,
-                                options: [
-                                    { value: 'all', label: '全部' },
-                                    { value: 'Facebook', label: 'Facebook' },
-                                    { value: 'Instagram', label: 'Instagram' },
-                                    { value: 'Threads', label: 'Threads' },
-                                    { value: 'LINE', label: 'LINE' },
-                                ],
-                            },
-                            {
-                                id: 'time', label: '時間', value: timeRange, onChange: setTimeRange,
-                                options: [
-                                    { value: '30m', label: '近30分鐘' },
-                                    { value: '2h', label: '近2小時' },
-                                    { value: '24h', label: '近24小時' },
-                                    { value: '7d', label: '近7天' },
-                                ],
-                            },
-                            {
-                                id: 'engagement', label: '互動', value: minEngagement, onChange: setMinEngagement,
-                                options: [
-                                    { value: '0', label: '全部' },
-                                    { value: '100', label: '≥ 100' },
-                                    { value: '500', label: '≥ 500' },
-                                    { value: '1000', label: '≥ 1000' },
-                                ],
-                            },
-                        ]}
-                        onClearAll={clearAllFilters}
-                    />
-                    <DataTable data={filteredPosts} columns={postColumns} />
-                </TabsContent>
+                <Card className="bg-gradient-to-br from-pink-50 to-pink-100 dark:from-pink-950 dark:to-pink-900 border-pink-200 dark:border-pink-800">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium">總互動數</CardTitle>
+                        <Heart className="h-4 w-4 text-pink-600" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold text-pink-700 dark:text-pink-300">
+                            {(summary?.todayEngagement ?? 0).toLocaleString()}
+                        </div>
+                        <div className="flex items-center gap-1 mt-1">
+                            {getTrendIcon(summary?.engagementTrend ?? 0)}
+                            <span className="text-xs text-muted-foreground">
+                                {formatTrend(summary?.engagementTrend ?? 0)} vs 昨日
+                            </span>
+                        </div>
+                    </CardContent>
+                </Card>
 
-                <TabsContent value="trends" className="mt-4">
+                <Card className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950 dark:to-amber-900 border-amber-200 dark:border-amber-800">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium">今日警報</CardTitle>
+                        <Bell className="h-4 w-4 text-amber-600" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold text-amber-700 dark:text-amber-300">
+                            {summary?.todayAlerts ?? 0}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                            需要關注的事件
+                        </span>
+                    </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950 dark:to-emerald-900 border-emerald-200 dark:border-emerald-800">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium">整體情緒</CardTitle>
+                        {getSentimentIcon(sentimentSummary.overall)}
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold text-emerald-700 dark:text-emerald-300">
+                            {sentimentSummary.overall === 'positive' ? '正面' :
+                                sentimentSummary.overall === 'negative' ? '負面' :
+                                    sentimentSummary.overall === 'mixed' ? '混合' : '中性'}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                            信心度 {(sentimentSummary.confidence * 100).toFixed(0)}%
+                        </span>
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* Main Content Grid */}
+            <div className="grid gap-6 lg:grid-cols-3">
+                {/* Recent Posts */}
+                <div className="lg:col-span-2">
                     <Card>
-                        <CardHeader><CardTitle>熱門關鍵字 Top 10</CardTitle></CardHeader>
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <CardTitle>最新貼文</CardTitle>
+                            <Button variant="ghost" size="sm" asChild>
+                                <Link href="/social/feed">
+                                    查看全部 <ArrowRight className="h-4 w-4 ml-1" />
+                                </Link>
+                            </Button>
+                        </CardHeader>
                         <CardContent>
-                            <div className="space-y-3">
-                                {topKeywords.map(([kw, count], idx) => (
-                                    <div key={kw} className="flex items-center gap-3">
-                                        <span className="w-6 text-center text-muted-foreground font-bold">{idx + 1}</span>
-                                        <div className="flex-1">
-                                            <div className="flex items-center justify-between mb-1">
-                                                <span className="font-medium">{kw}</span>
-                                                <span className="text-sm text-muted-foreground">{count} 則</span>
+                            <div className="space-y-4">
+                                {(summary?.recentPosts || posts.slice(0, 5)).map((post) => (
+                                    <div key={post.id} className="flex gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                                        <div className={`w-1 rounded-full ${platformColors[post.platform] || 'bg-gray-400'}`} />
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="font-medium text-sm truncate">
+                                                    {post.author.displayName}
+                                                </span>
+                                                <Badge variant="outline" className="text-xs">
+                                                    {post.platform}
+                                                </Badge>
+                                                {post.sentiment && (
+                                                    <Badge
+                                                        variant={post.sentiment.label === 'positive' ? 'default' :
+                                                            post.sentiment.label === 'negative' ? 'destructive' : 'secondary'}
+                                                        className="text-xs"
+                                                    >
+                                                        {post.sentiment.label}
+                                                    </Badge>
+                                                )}
                                             </div>
-                                            <div className="h-2 bg-muted rounded-full overflow-hidden">
-                                                <div className="h-full bg-primary" style={{ width: `${(count / topKeywords[0][1]) * 100}%` }} />
+                                            <p className="text-sm text-muted-foreground line-clamp-2">
+                                                {post.content}
+                                            </p>
+                                            <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                                                <span>❤️ {post.engagement.likes.toLocaleString()}</span>
+                                                <span>💬 {post.engagement.comments.toLocaleString()}</span>
+                                                <span>🔄 {post.engagement.shares.toLocaleString()}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -352,113 +221,108 @@ export default function SocialMonitorPage() {
                             </div>
                         </CardContent>
                     </Card>
-                </TabsContent>
+                </div>
 
-                <TabsContent value="stats" className="mt-4">
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                        <Card>
-                            <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">總貼文數</CardTitle></CardHeader>
-                            <CardContent><div className="text-2xl font-bold">{stats.totalPosts}</div></CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">總互動數</CardTitle></CardHeader>
-                            <CardContent><div className="text-2xl font-bold">{stats.totalEngagement.toLocaleString()}</div></CardContent>
-                        </Card>
-                        {Object.entries(stats.platformCounts).map(([platform, count]) => (
-                            <Card key={platform}>
-                                <CardHeader className="pb-2 flex flex-row items-center gap-2">
-                                    {getPlatformIcon(platform)}
-                                    <CardTitle className="text-sm text-muted-foreground">{platform}</CardTitle>
-                                </CardHeader>
-                                <CardContent><div className="text-2xl font-bold">{count}</div></CardContent>
-                            </Card>
-                        ))}
-                    </div>
-                </TabsContent>
-
-                <TabsContent value="keywords" className="mt-4">
+                {/* Quick Stats Sidebar */}
+                <div className="space-y-4">
+                    {/* Monitoring Status */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>監控關鍵字</CardTitle>
+                            <CardTitle className="text-base">監控狀態</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="flex gap-2">
-                                <Input value={newKeyword} onChange={(e) => setNewKeyword(e.target.value)} placeholder="新增關鍵字..." onKeyDown={(e) => e.key === 'Enter' && addKeyword()} />
-                                <Button onClick={addKeyword}><Plus className="h-4 w-4" /></Button>
+                        <CardContent className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Hash className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-sm">監控關鍵字</span>
+                                </div>
+                                <Badge variant="secondary">{summary?.activeKeywords ?? 0}</Badge>
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                                {keywords.map((kw) => (
-                                    <Badge key={kw.id} variant="secondary" className="gap-1">
-                                        {kw.keyword}
-                                        <button onClick={() => removeKeyword(kw.id)} className="ml-1 hover:text-destructive"><X className="h-3 w-3" /></button>
-                                    </Badge>
-                                ))}
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Users className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-sm">追蹤帳號</span>
+                                </div>
+                                <Badge variant="secondary">{summary?.trackedAccounts ?? 0}</Badge>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Bell className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-sm">警報規則</span>
+                                </div>
+                                <Badge variant="secondary">{summary?.activeAlertRules ?? 0}</Badge>
                             </div>
                         </CardContent>
                     </Card>
-                </TabsContent>
 
-                <TabsContent value="exclude" className="mt-4">
+                    {/* Sentiment Distribution */}
                     <Card>
-                        <CardHeader><CardTitle>排除詞彙</CardTitle></CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="flex gap-2">
-                                <Input value={newExcludeWord} onChange={(e) => setNewExcludeWord(e.target.value)} placeholder="新增排除詞..." onKeyDown={(e) => e.key === 'Enter' && addExcludeWord()} />
-                                <Button onClick={addExcludeWord}><Plus className="h-4 w-4" /></Button>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                {excludeWords.map((w) => (
-                                    <Badge key={w.id} variant="outline" className="gap-1 text-muted-foreground">
-                                        {w.word}
-                                        <button onClick={() => removeExcludeWord(w.id)} className="ml-1 hover:text-destructive"><X className="h-3 w-3" /></button>
-                                    </Badge>
-                                ))}
+                        <CardHeader>
+                            <CardTitle className="text-base">情緒分布</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-2">
+                                {(['positive', 'neutral', 'negative', 'mixed'] as const).map((label) => {
+                                    const count = sentimentSummary.distribution[label];
+                                    const total = Object.values(sentimentSummary.distribution).reduce((a, b) => a + b, 0);
+                                    const pct = total > 0 ? (count / total) * 100 : 0;
+
+                                    return (
+                                        <div key={label} className="space-y-1">
+                                            <div className="flex justify-between text-sm">
+                                                <span className="capitalize">{label === 'positive' ? '正面' : label === 'negative' ? '負面' : label === 'mixed' ? '混合' : '中性'}</span>
+                                                <span className="text-muted-foreground">{count} ({pct.toFixed(0)}%)</span>
+                                            </div>
+                                            <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full ${label === 'positive' ? 'bg-green-500' :
+                                                            label === 'negative' ? 'bg-red-500' :
+                                                                label === 'mixed' ? 'bg-yellow-500' : 'bg-gray-400'
+                                                        }`}
+                                                    style={{ width: `${pct}%` }}
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </CardContent>
                     </Card>
-                </TabsContent>
 
-                <TabsContent value="notifications" className="mt-4">
-                    <div className="space-y-4">
-                        {notifications.map((rule) => (
-                            <Card key={rule.id}>
-                                <CardHeader className="flex flex-row items-center justify-between">
-                                    <CardTitle className="text-base">{rule.name}</CardTitle>
-                                    <Switch checked={rule.enabled} />
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="flex flex-wrap gap-2 mb-2">
-                                        {rule.keywords.map((kw) => <Badge key={kw} variant="outline">{kw}</Badge>)}
-                                    </div>
-                                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                                        <span>Min Severity: {rule.minSeverity}</span>
-                                        <span>Channels: {rule.channels.filter((c) => c.enabled).map((c) => c.type).join(', ')}</span>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
-                </TabsContent>
-            </Tabs>
-
-            {/* Purge Confirmation Dialog */}
-            <Dialog open={purgeDialogOpen} onOpenChange={setPurgeDialogOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-destructive">
-                            <AlertTriangle className="h-5 w-5" />
-                            確認清除所有資料？
-                        </DialogTitle>
-                    </DialogHeader>
-                    <p className="text-sm text-muted-foreground">
-                        此操作將刪除所有社群貼文資料，無法復原。請確認您要繼續執行此操作。
-                    </p>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setPurgeDialogOpen(false)}>取消</Button>
-                        <Button variant="destructive" onClick={() => { setPosts([]); setPurgeDialogOpen(false); }}>確認清除</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                    {/* Quick Links */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-base">快速導航</CardTitle>
+                        </CardHeader>
+                        <CardContent className="grid grid-cols-2 gap-2">
+                            <Button variant="outline" size="sm" className="justify-start" asChild>
+                                <Link href="/social/sentiment">
+                                    <Activity className="h-4 w-4 mr-2" />
+                                    情緒分析
+                                </Link>
+                            </Button>
+                            <Button variant="outline" size="sm" className="justify-start" asChild>
+                                <Link href="/social/accounts">
+                                    <Users className="h-4 w-4 mr-2" />
+                                    帳號追蹤
+                                </Link>
+                            </Button>
+                            <Button variant="outline" size="sm" className="justify-start" asChild>
+                                <Link href="/social/settings">
+                                    <Hash className="h-4 w-4 mr-2" />
+                                    關鍵字
+                                </Link>
+                            </Button>
+                            <Button variant="outline" size="sm" className="justify-start" asChild>
+                                <Link href="/social/settings">
+                                    <Bell className="h-4 w-4 mr-2" />
+                                    通知設定
+                                </Link>
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
         </div>
     );
 }

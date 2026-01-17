@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { AuthProvider } from '@/components/auth-context';
+import { Providers } from './providers';
 import '@/styles/globals.css';
 
 export const metadata = {
@@ -11,9 +11,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     return (
         <html lang="zh-TW">
             <body>
-                <AuthProvider>
+                <Providers>
                     {children}
-                </AuthProvider>
+                </Providers>
             </body>
         </html>
     );

@@ -14,7 +14,17 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.RawMarketEvent = void 0;
+// Core exports
 __exportStar(require("./pubsub"), exports);
 __exportStar(require("./secrets"), exports);
-__exportStar(require("./schema"), exports);
 __exportStar(require("./time"), exports);
+// Schema exports (legacy - backward compatibility)
+var schema_1 = require("./schema");
+Object.defineProperty(exports, "RawMarketEvent", { enumerable: true, get: function () { return schema_1.RawMarketEvent; } });
+// Note: FusedEvent from schema.ts is deprecated, use types.ts version
+// Types and schemas (v2.0)
+__exportStar(require("./types"), exports);
+// Production hardening
+__exportStar(require("./idempotency"), exports);
+__exportStar(require("./dlq"), exports);

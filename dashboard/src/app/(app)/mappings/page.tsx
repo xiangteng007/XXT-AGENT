@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/components/auth-context';
+import { useAuth } from '@/lib/AuthContext';
 import styles from './mappings.module.css';
 
 interface Mapping {
@@ -80,7 +80,7 @@ export default function MappingsPage() {
             <div className={styles.header}>
                 <h1>欄位映射</h1>
                 <div className={styles.headerActions}>
-                    <select className="input" value={selectedTenant} onChange={e => setSelectedTenant(e.target.value)} style={{ width: 200 }}>
+                    <select className="input" value={selectedTenant} onChange={e => setSelectedTenant(e.target.value)} aria-label="選擇租戶">
                         {tenants.map(t => <option key={t.id} value={t.id}>{t.id}</option>)}
                     </select>
                     <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>{showForm ? '取消' : '➕ 新增'}</button>
@@ -90,11 +90,11 @@ export default function MappingsPage() {
             {showForm && (
                 <form className={styles.form} onSubmit={handleSubmit}>
                     <div className={styles.formGrid}>
-                        <div><label className="label">Database ID</label><input className="input" value={formData.databaseId} onChange={e => setFormData({ ...formData, databaseId: e.target.value })} required /></div>
-                        <div><label className="label">Title 欄位</label><input className="input" value={formData.titleField} onChange={e => setFormData({ ...formData, titleField: e.target.value })} /></div>
-                        <div><label className="label">Content 欄位</label><input className="input" value={formData.contentField} onChange={e => setFormData({ ...formData, contentField: e.target.value })} /></div>
-                        <div><label className="label">Tags 欄位</label><input className="input" value={formData.tagsField} onChange={e => setFormData({ ...formData, tagsField: e.target.value })} /></div>
-                        <div><label className="label">Date 欄位</label><input className="input" value={formData.dateField} onChange={e => setFormData({ ...formData, dateField: e.target.value })} /></div>
+                        <div><label className="label" htmlFor="databaseId">Database ID</label><input id="databaseId" className="input" value={formData.databaseId} onChange={e => setFormData({ ...formData, databaseId: e.target.value })} required /></div>
+                        <div><label className="label" htmlFor="titleField">Title 欄位</label><input id="titleField" className="input" value={formData.titleField} onChange={e => setFormData({ ...formData, titleField: e.target.value })} /></div>
+                        <div><label className="label" htmlFor="contentField">Content 欄位</label><input id="contentField" className="input" value={formData.contentField} onChange={e => setFormData({ ...formData, contentField: e.target.value })} /></div>
+                        <div><label className="label" htmlFor="tagsField">Tags 欄位</label><input id="tagsField" className="input" value={formData.tagsField} onChange={e => setFormData({ ...formData, tagsField: e.target.value })} /></div>
+                        <div><label className="label" htmlFor="dateField">Date 欄位</label><input id="dateField" className="input" value={formData.dateField} onChange={e => setFormData({ ...formData, dateField: e.target.value })} /></div>
                     </div>
                     <button type="submit" className="btn btn-primary">建立映射</button>
                 </form>
@@ -112,7 +112,7 @@ export default function MappingsPage() {
                             <td><button className="btn btn-danger" onClick={() => handleDelete(m.id)}>刪除</button></td>
                         </tr>
                     ))}
-                    {mappings.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center' }}>尚無映射</td></tr>}
+                    {mappings.length === 0 && <tr><td colSpan={5} className="text-center">尚無映射</td></tr>}
                 </tbody>
             </table>
         </div>

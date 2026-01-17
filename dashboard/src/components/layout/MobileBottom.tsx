@@ -53,7 +53,7 @@ interface MobileNavItem {
 
 const mobileNav: MobileNavItem[] = [
     { href: '/', label: '首頁', icon: <HomeIcon /> },
-    { href: '/social-monitor/posts', label: '社群', icon: <GlobeIcon />, matchPrefix: '/social-monitor' },
+    { href: '/social', label: '社群', icon: <GlobeIcon />, matchPrefix: '/social' },
     { href: '/market/watchlist', label: '行情', icon: <MarketIcon />, matchPrefix: '/market' },
     { href: '/jobs', label: '任務', icon: <ListIcon /> },
     { href: '/settings', label: '設定', icon: <SettingsIcon /> },

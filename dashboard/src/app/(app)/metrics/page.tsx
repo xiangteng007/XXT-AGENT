@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/components/auth-context';
+import { useAuth } from '@/lib/AuthContext';
 import styles from './metrics.module.css';
 
 interface Metrics {

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { getFusedEvents, getSystemMetrics } from '@/lib/api/client';
 import type { FusedEvent, SystemMetrics } from '@/lib/api/types';
 import { MetricCard, SeverityBadge, LoadingSkeleton } from '@/components/shared';
+import { formatTime } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -54,13 +55,7 @@ export default function OverviewPage() {
         { critical: 0, high: 0, medium: 0, low: 0 }
     );
 
-    const formatTime = (ts: string) => {
-        const date = new Date(ts);
-        return date.toLocaleTimeString('zh-TW', {
-            hour: '2-digit',
-            minute: '2-digit',
-        });
-    };
+    // formatTime is now imported from @/lib/utils
 
     const getDomainIcon = (domain: string) => {
         switch (domain) {

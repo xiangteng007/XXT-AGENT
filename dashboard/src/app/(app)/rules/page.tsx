@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/components/auth-context';
+import { useAuth } from '@/lib/AuthContext';
 import styles from './rules.module.css';
 
 interface Rule {
@@ -117,7 +117,7 @@ export default function RulesPage() {
             <div className={styles.header}>
                 <h1>規則管理</h1>
                 <div className={styles.headerActions}>
-                    <select className="input" value={selectedTenant} onChange={(e) => setSelectedTenant(e.target.value)} style={{ width: 200 }}>
+                    <select className="input" value={selectedTenant} onChange={(e) => setSelectedTenant(e.target.value)} aria-label="選擇租戶">
                         {tenants.map(t => <option key={t.id} value={t.id}>{t.id}</option>)}
                     </select>
                     <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
@@ -129,16 +129,16 @@ export default function RulesPage() {
             {showForm && (
                 <form className={styles.form} onSubmit={handleSubmit}>
                     <div className={styles.formGrid}>
-                        <div><label className="label">名稱</label><input className="input" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} required /></div>
-                        <div><label className="label">優先序</label><input className="input" type="number" value={formData.priority} onChange={e => setFormData({ ...formData, priority: parseInt(e.target.value) })} /></div>
-                        <div><label className="label">匹配類型</label>
-                            <select className="input" value={formData.matchType} onChange={e => setFormData({ ...formData, matchType: e.target.value })}>
+                        <div><label className="label" htmlFor="ruleName">名稱</label><input id="ruleName" className="input" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} required /></div>
+                        <div><label className="label" htmlFor="rulePriority">優先序</label><input id="rulePriority" className="input" type="number" value={formData.priority} onChange={e => setFormData({ ...formData, priority: parseInt(e.target.value) })} /></div>
+                        <div><label className="label" htmlFor="matchType">匹配類型</label>
+                            <select id="matchType" className="input" value={formData.matchType} onChange={e => setFormData({ ...formData, matchType: e.target.value })} aria-label="選擇匹配類型">
                                 <option value="prefix">Prefix</option><option value="keyword">Keyword</option><option value="contains">Contains</option><option value="regex">Regex</option>
                             </select>
                         </div>
-                        <div><label className="label">匹配值</label><input className="input" value={formData.matchValue} onChange={e => setFormData({ ...formData, matchValue: e.target.value })} placeholder="#todo" required /></div>
-                        <div><label className="label">Database ID</label><input className="input" value={formData.databaseId} onChange={e => setFormData({ ...formData, databaseId: e.target.value })} required /></div>
-                        <div><label className="label">Tags (逗號分隔)</label><input className="input" value={formData.tags} onChange={e => setFormData({ ...formData, tags: e.target.value })} placeholder="tag1, tag2" /></div>
+                        <div><label className="label" htmlFor="matchValue">匹配值</label><input id="matchValue" className="input" value={formData.matchValue} onChange={e => setFormData({ ...formData, matchValue: e.target.value })} placeholder="#todo" required /></div>
+                        <div><label className="label" htmlFor="ruleDatabaseId">Database ID</label><input id="ruleDatabaseId" className="input" value={formData.databaseId} onChange={e => setFormData({ ...formData, databaseId: e.target.value })} required /></div>
+                        <div><label className="label" htmlFor="ruleTags">Tags (逗號分隔)</label><input id="ruleTags" className="input" value={formData.tags} onChange={e => setFormData({ ...formData, tags: e.target.value })} placeholder="tag1, tag2" /></div>
                     </div>
                     <button type="submit" className="btn btn-primary">建立規則</button>
                 </form>
@@ -147,7 +147,7 @@ export default function RulesPage() {
             <div className={styles.testSection}>
                 <h3>🧪 測試規則匹配</h3>
                 <div className={styles.testRow}>
-                    <input className="input" value={testText} onChange={e => setTestText(e.target.value)} placeholder="輸入測試文字..." style={{ flex: 1 }} />
+                    <input className="input flex-1" value={testText} onChange={e => setTestText(e.target.value)} placeholder="輸入測試文字..." aria-label="測試文字" />
                     <button className="btn btn-secondary" onClick={handleTest}>測試</button>
                 </div>
                 {testResult && (
@@ -174,7 +174,7 @@ export default function RulesPage() {
                             <td><button className="btn btn-danger" onClick={() => handleDelete(r.id)}>刪除</button></td>
                         </tr>
                     ))}
-                    {rules.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center' }}>尚無規則</td></tr>}
+                    {rules.length === 0 && <tr><td colSpan={6} className="text-center">尚無規則</td></tr>}
                 </tbody>
             </table>
         </div>

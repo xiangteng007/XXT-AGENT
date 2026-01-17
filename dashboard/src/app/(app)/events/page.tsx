@@ -5,6 +5,7 @@ import { getFusedEvents } from '@/lib/api/client';
 import type { FusedEvent } from '@/lib/api/types';
 import { DataTable, FilterBar, SeverityBadge, LoadingSkeleton, EmptyState } from '@/components/shared';
 import type { Column } from '@/components/shared/DataTable';
+import { formatTime } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import {
     Dialog,
@@ -89,15 +90,7 @@ export default function EventsPage() {
         }
     };
 
-    const formatTime = (ts: string) => {
-        const date = new Date(ts);
-        return date.toLocaleString('zh-TW', {
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-        });
-    };
+    // formatTime is now imported from @/lib/utils
 
     const getDomainBadge = (domain: string) => {
         const styles = {

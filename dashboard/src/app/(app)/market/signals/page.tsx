@@ -53,82 +53,73 @@ export default function MarketSignalsPage() {
         }
     };
 
+    const getSeverityClass = (severity: number) => {
+        if (severity >= 70) return 'bg-destructive text-destructive-foreground';
+        if (severity >= 50) return 'bg-yellow-500 text-white';
+        return 'bg-muted text-muted-foreground';
+    };
+
+    const getDirectionLabel = (direction: string) => {
+        switch (direction) {
+            case 'positive': return '📈 上漲';
+            case 'negative': return '📉 下跌';
+            default: return '➡️ 中性';
+        }
+    };
+
     return (
-        <div>
-            <h1 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '24px' }}>信號事件</h1>
+        <div className="space-y-6">
+            <h1 className="text-2xl font-semibold">信號事件</h1>
 
             {/* Disclaimer */}
-            <div style={{
-                padding: '12px 16px',
-                background: 'var(--bg-tertiary)',
-                borderRadius: '8px',
-                marginBottom: '24px',
-                fontSize: '12px',
-                color: 'var(--text-muted)',
-                border: '1px solid var(--border-color)',
-            }}>
+            <div className="p-3 bg-muted/50 rounded-lg border text-xs text-muted-foreground">
                 ⚠️ 本頁面信號僅供參考，非投資建議。投資有風險，請謹慎評估。
             </div>
 
             {loading ? (
-                <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                <div className="text-center py-12 text-muted-foreground">
                     載入中...
                 </div>
             ) : signals.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                <div className="text-center py-12 text-muted-foreground">
                     目前沒有信號事件
                 </div>
             ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div className="flex flex-col gap-3">
                     {signals.map(signal => (
                         <div
                             key={signal.id}
-                            style={{
-                                padding: '16px 20px',
-                                background: 'var(--bg-secondary)',
-                                border: '1px solid var(--border-color)',
-                                borderRadius: '12px',
-                            }}
+                            className="p-4 bg-card border rounded-lg"
                         >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <span style={{ fontSize: '24px' }}>{getSignalIcon(signal.signalType)}</span>
+                            <div className="flex justify-between items-start mb-3">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-2xl">{getSignalIcon(signal.signalType)}</span>
                                     <div>
-                                        <div style={{ fontSize: '18px', fontWeight: 600 }}>{signal.symbol}</div>
-                                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                                        <div className="text-lg font-semibold">{signal.symbol}</div>
+                                        <div className="text-xs text-muted-foreground">
                                             {signal.signalType.replace('_', ' ')}
                                         </div>
                                     </div>
                                 </div>
-                                <div style={{ textAlign: 'right' }}>
-                                    <div style={{
-                                        display: 'inline-block',
-                                        padding: '4px 12px',
-                                        borderRadius: '16px',
-                                        fontSize: '14px',
-                                        fontWeight: 600,
-                                        background: signal.severity >= 70 ? 'var(--accent-danger)'
-                                            : signal.severity >= 50 ? 'var(--accent-warning)'
-                                                : 'var(--bg-tertiary)',
-                                        color: signal.severity >= 50 ? 'white' : 'var(--text-secondary)',
-                                    }}>
+                                <div className="text-right">
+                                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${getSeverityClass(signal.severity)}`}>
                                         {signal.severity}
-                                    </div>
-                                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                    </span>
+                                    <div className="text-xs text-muted-foreground mt-1">
                                         信心度: {(signal.confidence * 100).toFixed(0)}%
                                     </div>
                                 </div>
                             </div>
 
-                            <p style={{ color: 'var(--text-secondary)', marginBottom: '12px', fontSize: '14px' }}>
+                            <p className="text-muted-foreground text-sm mb-3">
                                 {signal.rationale}
                             </p>
 
-                            <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: 'var(--text-muted)' }}>
-                                <span>方向: {signal.direction === 'positive' ? '📈 上漲' : signal.direction === 'negative' ? '📉 下跌' : '➡️ 中性'}</span>
+                            <div className="flex gap-4 text-xs text-muted-foreground flex-wrap">
+                                <span>方向: {getDirectionLabel(signal.direction)}</span>
                                 <span>停損: ${signal.riskControls.stopLoss.toFixed(2)}</span>
                                 <span>建議部位: {signal.riskControls.maxPositionPct}%</span>
-                                <span style={{ marginLeft: 'auto' }}>{new Date(signal.ts).toLocaleString('zh-TW')}</span>
+                                <span className="ml-auto">{new Date(signal.ts).toLocaleString('zh-TW')}</span>
                             </div>
                         </div>
                     ))}

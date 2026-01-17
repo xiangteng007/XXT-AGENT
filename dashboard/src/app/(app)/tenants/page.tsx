@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/components/auth-context';
+import { useAuth } from '@/lib/AuthContext';
 import styles from './tenants.module.css';
 
 interface Tenant {
@@ -186,14 +186,14 @@ export default function TenantsPage() {
                                     <button className="btn btn-secondary" onClick={() => alert('Edit coming soon')}>
                                         編輯
                                     </button>
-                                    <button className="btn btn-danger" onClick={() => handleDelete(t.id)} style={{ marginLeft: '0.5rem' }}>
+                                    <button className="btn btn-danger" onClick={() => handleDelete(t.id)}>
                                         刪除
                                     </button>
                                 </td>
                             </tr>
                         ))}
                         {tenants.length === 0 && (
-                            <tr><td colSpan={6} style={{ textAlign: 'center' }}>尚無租戶</td></tr>
+                            <tr><td colSpan={6} className="text-center">尚無租戶</td></tr>
                         )}
                     </tbody>
                 </table>

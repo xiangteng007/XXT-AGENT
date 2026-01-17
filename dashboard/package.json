@@ -1,5 +1,5 @@
 {
-    "name": "linebot-notion-dashboard",
+    "name": "xxt-frontend",
     "version": "1.0.0",
     "private": true,
     "scripts": {
@@ -9,8 +9,11 @@
         "lint": "next lint"
     },
     "dependencies": {
+        "@google/generative-ai": "^0.24.1",
         "@radix-ui/react-dialog": "^1.1.15",
         "@radix-ui/react-dropdown-menu": "^2.1.16",
+        "@radix-ui/react-label": "^2.1.8",
+        "@radix-ui/react-select": "^2.2.6",
         "@radix-ui/react-separator": "^1.1.8",
         "@radix-ui/react-slot": "^1.2.4",
         "@radix-ui/react-switch": "^1.2.6",
@@ -23,6 +26,7 @@
         "next": "14.2.5",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
+        "swr": "^2.3.8",
         "tailwind-merge": "^3.4.0"
     },
     "devDependencies": {

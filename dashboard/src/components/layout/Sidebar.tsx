@@ -120,6 +120,17 @@ const mainNav: NavItem[] = [
     { href: '/social', label: '社群監控', icon: <GlobeIcon /> },
     { href: '/news', label: '新聞監控', icon: <LogIcon /> },
     { href: '/market', label: '市場監控', icon: <MarketIcon /> },
+    { href: '/portfolio', label: '投資組合', icon: <TrendingIcon /> },
+    { href: '/ai', label: 'AI 助理', icon: <GlobeIcon /> },
+];
+
+const adminNav: NavItem[] = [
+    { href: '/tenants', label: '租戶管理', icon: <UsersIcon /> },
+    { href: '/rules', label: '規則設定', icon: <RulesIcon /> },
+    { href: '/mappings', label: '關鍵字對應', icon: <MapIcon /> },
+    { href: '/jobs', label: '排程任務', icon: <ListIcon /> },
+    { href: '/logs', label: '系統日誌', icon: <LogIcon /> },
+    { href: '/metrics', label: '系統指標', icon: <ChartIcon /> },
 ];
 
 const settingsNav: NavItem[] = [
@@ -153,6 +164,22 @@ export function Sidebar() {
             <nav className="sidebar-nav">
                 {/* Main Navigation */}
                 {mainNav.map(item => (
+                    <Link
+                        key={item.href}
+                        href={item.href}
+                        className={`sidebar-nav-item ${isActive(item.href) ? 'active' : ''}`}
+                        onClick={() => isMobile && setSidebarOpen(false)}
+                    >
+                        {item.icon}
+                        {!sidebarCollapsed && <span className="label">{item.label}</span>}
+                    </Link>
+                ))}
+
+                {/* Admin Section */}
+                {!sidebarCollapsed && (
+                    <div className="sidebar-section-title">管理</div>
+                )}
+                {adminNav.map(item => (
                     <Link
                         key={item.href}
                         href={item.href}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/components/auth-context';
+import { useAuth } from '@/lib/AuthContext';
 import styles from './jobs.module.css';
 
 interface Job {
@@ -71,7 +71,7 @@ export default function JobsPage() {
         <div>
             <div className={styles.header}>
                 <h1>任務佇列</h1>
-                <select className="input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ width: 150 }}>
+                <select className="input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} aria-label="篩選任務狀態">
                     <option value="">全部狀態</option>
                     <option value="queued">Queued</option>
                     <option value="processing">Processing</option>
@@ -98,12 +98,12 @@ export default function JobsPage() {
                                         <button className="btn btn-primary" onClick={() => handleRequeue(j.id)}>🔄 重送</button>
                                     )}
                                     {['queued', 'processing', 'failed'].includes(j.status) && (
-                                        <button className="btn btn-secondary" onClick={() => handleIgnore(j.id)} style={{ marginLeft: '0.5rem' }}>忽略</button>
+                                        <button className="btn btn-secondary" onClick={() => handleIgnore(j.id)}>忽略</button>
                                     )}
                                 </td>
                             </tr>
                         ))}
-                        {jobs.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center' }}>無任務</td></tr>}
+                        {jobs.length === 0 && <tr><td colSpan={6} className="text-center">無任務</td></tr>}
                     </tbody>
                 </table>
             )}
