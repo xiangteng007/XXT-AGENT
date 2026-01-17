@@ -5,3 +5,4 @@ export { RawMarketEvent } from "./schema";
 export * from "./types";
 export * from "./idempotency";
 export * from "./dlq";
+export * from "./timeseries";

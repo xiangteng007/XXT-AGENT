@@ -13,3 +13,6 @@ export * from "./types";
 // Production hardening
 export * from "./idempotency";
 export * from "./dlq";
+
+// Time series storage
+export * from "./timeseries";

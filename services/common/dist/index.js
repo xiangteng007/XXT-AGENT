@@ -28,3 +28,5 @@ __exportStar(require("./types"), exports);
 // Production hardening
 __exportStar(require("./idempotency"), exports);
 __exportStar(require("./dlq"), exports);
+// Time series storage
+__exportStar(require("./timeseries"), exports);
