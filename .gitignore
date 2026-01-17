@@ -42,3 +42,8 @@ coverage/
 # Secrets (NEVER commit these)
 **/serviceAccountKey.json
 **/firebase-adminsdk*.json
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
