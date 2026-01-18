@@ -51,13 +51,5 @@ import {
   to = google_cloud_run_v2_service.telegram_bot
 }
 
-# Import existing Cloud Scheduler jobs
-import {
-  id = "projects/xxt-agent/locations/asia-east1/jobs/social-poll-tick"
-  to = google_cloud_scheduler_job.social_poll_tick
-}
+# Note: Cloud Scheduler jobs will be created by Terraform (not imported)
 
-import {
-  id = "projects/xxt-agent/locations/asia-east1/jobs/news-poll-tick"
-  to = google_cloud_scheduler_job.news_poll_tick
-}
