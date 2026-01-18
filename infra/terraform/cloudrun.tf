@@ -151,7 +151,7 @@ resource "google_cloud_run_v2_service" "social_dispatcher" {
       }
       env {
         name  = "SOCIAL_TASK_QUEUE"
-        value = data.google_cloud_tasks_queue.social_collect.name
+        value = google_cloud_tasks_queue.social_collect.name
       }
       env {
         name  = "SOCIAL_WORKER_URL"
