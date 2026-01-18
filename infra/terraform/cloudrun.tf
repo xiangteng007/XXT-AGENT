@@ -59,12 +59,16 @@ resource "google_cloud_run_v2_service" "market_streamer" {
         value = var.project_id
       }
       env {
-        name  = "TOPIC_RAW_MARKET"
+        name  = "PUBSUB_TOPIC_QUOTES_RAW"
         value = data.google_pubsub_topic.raw_market.name
       }
       env {
-        name  = "POLL_SECONDS"
-        value = "15"
+        name  = "FINNHUB_SECRET_NAME"
+        value = "finnhub-api-key"
+      }
+      env {
+        name  = "STREAMER_SYMBOLS"
+        value = "AAPL,MSFT,GOOGL,AMZN,TSLA,SPY,QQQ"
       }
     }
     scaling {
