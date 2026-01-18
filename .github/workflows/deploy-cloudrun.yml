@@ -45,6 +45,9 @@ jobs:
             docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest
           done
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
       - name: Terraform Init/Apply
         working-directory: infra/terraform
         run: |
