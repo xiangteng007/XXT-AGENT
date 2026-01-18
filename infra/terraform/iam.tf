@@ -1,5 +1,11 @@
+# Import existing service account into Terraform state
+import {
+  id = "projects/xxt-agent/serviceAccounts/ai-me-runtime-prod@xxt-agent.iam.gserviceaccount.com"
+  to = google_service_account.runtime_sa
+}
+
 resource "google_service_account" "runtime_sa" {
-  account_id   = "ai-me-runtime-${var.env}"
+  account_id   = "ai-me-runtime-prod" # Fixed to match existing
   display_name = "AI ME Runtime SA"
 }
 
