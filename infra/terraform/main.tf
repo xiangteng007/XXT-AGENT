@@ -13,15 +13,8 @@ provider "google" {
   region  = var.region
 }
 
-# Redis instance for caching
-resource "google_redis_instance" "cache" {
-  name           = "xxt-cache"
-  tier           = "BASIC"
-  memory_size_gb = 1
-  region         = var.region
-
-  redis_version = "REDIS_7_0"
-  display_name  = "XXT Agent Cache"
-
-  authorized_network = "projects/${var.project_id}/global/networks/default"
+# Reference existing Redis instance (already created in GCP Console)
+data "google_redis_instance" "cache" {
+  name   = "xxt-cache"
+  region = var.region
 }

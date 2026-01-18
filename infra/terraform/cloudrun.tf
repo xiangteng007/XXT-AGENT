@@ -60,7 +60,7 @@ resource "google_cloud_run_v2_service" "market_streamer" {
       }
       env {
         name  = "TOPIC_RAW_MARKET"
-        value = google_pubsub_topic.raw_market.name
+        value = data.google_pubsub_topic.raw_market.name
       }
       env {
         name  = "POLL_SECONDS"
@@ -87,7 +87,7 @@ resource "google_cloud_run_v2_service" "news_collector" {
       }
       env {
         name  = "TOPIC_RAW_NEWS"
-        value = google_pubsub_topic.raw_news.name
+        value = data.google_pubsub_topic.raw_news.name
       }
     }
   }
@@ -107,11 +107,11 @@ resource "google_cloud_run_v2_service" "quote_normalizer" {
       }
       env {
         name  = "REDIS_HOST"
-        value = google_redis_instance.cache.host
+        value = data.google_redis_instance.cache.host
       }
       env {
         name  = "TOPIC_EVENTS_NORMALIZED"
-        value = google_pubsub_topic.raw_market.name # Reusing same bus for simplicity
+        value = data.google_pubsub_topic.raw_market.name # Reusing same bus for simplicity
       }
     }
   }
@@ -131,7 +131,7 @@ resource "google_cloud_run_v2_service" "social_worker" {
       }
       env {
         name  = "TOPIC_RAW_SOCIAL"
-        value = google_pubsub_topic.raw_social.name
+        value = data.google_pubsub_topic.raw_social.name
       }
     }
   }
@@ -178,11 +178,11 @@ resource "google_cloud_run_v2_service" "fusion_engine" {
       }
       env {
         name  = "TOPIC_FUSED_EVENT"
-        value = google_pubsub_topic.fused_event.name
+        value = data.google_pubsub_topic.fused_event.name
       }
       env {
         name  = "REDIS_HOST"
-        value = google_redis_instance.cache.host
+        value = data.google_redis_instance.cache.host
       }
     }
   }
@@ -202,7 +202,7 @@ resource "google_cloud_run_v2_service" "alert_engine" {
       }
       env {
         name  = "REDIS_HOST"
-        value = google_redis_instance.cache.host
+        value = data.google_redis_instance.cache.host
       }
       env {
         name  = "TELEGRAM_BOT_TOKEN"
@@ -238,7 +238,7 @@ resource "google_cloud_run_v2_service" "trade_planner" {
       }
       env {
         name  = "REDIS_HOST"
-        value = google_redis_instance.cache.host
+        value = data.google_redis_instance.cache.host
       }
     }
   }
@@ -266,7 +266,7 @@ resource "google_cloud_run_v2_service" "telegram_bot" {
       }
       env {
         name  = "REDIS_HOST"
-        value = google_redis_instance.cache.host
+        value = data.google_redis_instance.cache.host
       }
     }
   }
