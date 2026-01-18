@@ -1,9 +1,11 @@
-project_id = "investment-manager-1007"
+project_id = "xxt-agent"
 region     = "asia-east1"
 env        = "prod"
 
-telegram_bot_token = "8447862702:AAHjL9Xl9Us84w3xT1mkk_wsV-GVQVCMuLM"
-telegram_chat_id   = "7327344106"
+# Sensitive values are passed via TF_VAR_* environment variables from GitHub Secrets
+# telegram_bot_token = (via TF_VAR_telegram_bot_token)
+# telegram_chat_id   = (via TF_VAR_telegram_chat_id)
+# gemini_api_key     = (via TF_VAR_gemini_api_key)
 
-line_notify_token  = ""
-webhook_url        = ""
+line_notify_token = ""
+webhook_url       = ""
