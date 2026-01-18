@@ -54,6 +54,9 @@ resource "google_cloud_run_v2_service" "market_streamer" {
       resources {
         cpu_idle = false
       }
+      ports {
+        container_port = 8080
+      }
       env {
         name  = "GCP_PROJECT_ID"
         value = var.project_id
@@ -69,6 +72,16 @@ resource "google_cloud_run_v2_service" "market_streamer" {
       env {
         name  = "STREAMER_SYMBOLS"
         value = "AAPL,MSFT,GOOGL,AMZN,TSLA,SPY,QQQ"
+      }
+      startup_probe {
+        http_get {
+          path = "/healthz"
+          port = 8080
+        }
+        initial_delay_seconds = 5
+        timeout_seconds       = 10
+        period_seconds        = 10
+        failure_threshold     = 10
       }
     }
     scaling {
