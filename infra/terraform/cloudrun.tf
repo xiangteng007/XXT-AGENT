@@ -269,6 +269,9 @@ resource "google_cloud_run_v2_service" "telegram_bot" {
     service_account = google_service_account.runtime_sa.email
     containers {
       image = local.img.telegram_bot
+      ports {
+        container_port = 8080
+      }
       env {
         name  = "GCP_PROJECT_ID"
         value = var.project_id
@@ -285,6 +288,17 @@ resource "google_cloud_run_v2_service" "telegram_bot" {
         name  = "REDIS_HOST"
         value = data.google_redis_instance.cache.host
       }
+      startup_probe {
+        http_get {
+          path = "/healthz"
+          port = 8080
+        }
+        initial_delay_seconds = 5
+        timeout_seconds       = 10
+        period_seconds        = 10
+        failure_threshold     = 10
+      }
     }
   }
 }
+
