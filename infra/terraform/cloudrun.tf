@@ -1,6 +1,6 @@
 locals {
   ar_host = "${var.region}-docker.pkg.dev"
-  ar_repo = google_artifact_registry_repository.repo.repository_id
+  ar_repo = data.google_artifact_registry_repository.repo.repository_id
   img = {
     market_streamer   = "${local.ar_host}/${var.project_id}/${local.ar_repo}/market-streamer:latest"
     news_collector    = "${local.ar_host}/${var.project_id}/${local.ar_repo}/news-collector:latest"
