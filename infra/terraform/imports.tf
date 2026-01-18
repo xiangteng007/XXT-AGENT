@@ -1,6 +1,20 @@
 # Import existing Cloud Run services into Terraform state
 # Only import services that already exist in GCP (these caused 409 conflicts)
-# Services that don't exist yet will be created by Terraform
+
+import {
+  id = "projects/xxt-agent/locations/asia-east1/services/ai-gateway"
+  to = google_cloud_run_v2_service.ai_gateway
+}
+
+import {
+  id = "projects/xxt-agent/locations/asia-east1/services/market-streamer"
+  to = google_cloud_run_v2_service.market_streamer
+}
+
+import {
+  id = "projects/xxt-agent/locations/asia-east1/services/news-collector"
+  to = google_cloud_run_v2_service.news_collector
+}
 
 import {
   id = "projects/xxt-agent/locations/asia-east1/services/quote-normalizer"
@@ -10,6 +24,11 @@ import {
 import {
   id = "projects/xxt-agent/locations/asia-east1/services/social-worker"
   to = google_cloud_run_v2_service.social_worker
+}
+
+import {
+  id = "projects/xxt-agent/locations/asia-east1/services/social-collector"
+  to = google_cloud_run_v2_service.social_dispatcher
 }
 
 import {
