@@ -129,10 +129,35 @@ async def main() -> None:
     logger.info(f"Project: {settings.gcp_project_id}")
     logger.info(f"Symbols: {settings.streamer_symbols}")
 
+    # Start health server first - must always be running for Cloud Run
+    health_task = asyncio.create_task(run_health_server(settings.health_port))
+    
+    # Give health server time to start before other tasks
+    await asyncio.sleep(1)
+    
+    # Run streamer and heartbeat with error handling
+    async def safe_run_streamer():
+        try:
+            await run_streamer_loop(settings)
+        except Exception as e:
+            logger.exception(f"Streamer loop failed: {e}")
+            # Keep running - don't crash the container
+            while True:
+                await asyncio.sleep(60)
+                logger.info("Streamer in error state, waiting for restart...")
+    
+    async def safe_heartbeat():
+        try:
+            await heartbeat_task(settings)
+        except Exception as e:
+            logger.exception(f"Heartbeat failed: {e}")
+            while True:
+                await asyncio.sleep(60)
+    
     await asyncio.gather(
-        run_health_server(settings.health_port),
-        run_streamer_loop(settings),
-        heartbeat_task(settings),
+        health_task,
+        safe_run_streamer(),
+        safe_heartbeat(),
     )
 
 
