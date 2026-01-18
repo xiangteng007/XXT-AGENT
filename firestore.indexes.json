@@ -65,16 +65,6 @@
             ]
         },
         {
-            "collectionGroup": "members",
-            "queryScope": "COLLECTION_GROUP",
-            "fields": [
-                {
-                    "fieldPath": "userId",
-                    "order": "ASCENDING"
-                }
-            ]
-        },
-        {
             "collectionGroup": "integrations",
             "queryScope": "COLLECTION",
             "fields": [
