@@ -83,7 +83,7 @@ jobs:
           FIREBASE_CLI_EXPERIMENTS: webframeworks
 
       - name: Deploy Cloud Functions
-        run: firebase deploy --only functions --project ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: firebase deploy --only functions --force --project ${{ secrets.FIREBASE_PROJECT_ID }}
         env:
           FIREBASE_CLI_EXPERIMENTS: webframeworks
 
