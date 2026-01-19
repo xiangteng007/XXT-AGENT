@@ -8,6 +8,7 @@
 import * as admin from 'firebase-admin';
 import { CloudTasksClient } from '@google-cloud/tasks';
 import { SocialSource, CollectJob } from '../types/social.types';
+import { getErrorMessage } from '../utils/error-handling';
 
 const db = admin.firestore();
 const tasksClient = new CloudTasksClient();
@@ -49,18 +50,18 @@ export async function dispatchSocialCollectJobs(): Promise<{
             try {
                 await createCollectTask(source);
                 result.dispatched++;
-            } catch (err: any) {
+            } catch (err: unknown) {
                 console.error(`[Social Dispatcher] Failed to create task for ${source.id}:`, err);
-                result.errors.push(`${source.id}: ${err.message}`);
+                result.errors.push(`${source.id}: ${getErrorMessage(err)}`);
             }
         }
 
         console.log('[Social Dispatcher] Dispatch complete:', result);
         return result;
 
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error('[Social Dispatcher] Fatal error:', err);
-        result.errors.push(err.message);
+        result.errors.push(getErrorMessage(err));
         return result;
     }
 }

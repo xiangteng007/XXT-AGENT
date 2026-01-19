@@ -9,6 +9,7 @@ import { setGlobalOptions } from 'firebase-functions/v2';
 import { handleWebhook } from './handlers/webhook.handler.v2';
 import { handleWorker } from './handlers/worker.handler';
 import { handleCleanup } from './handlers/cleanup.handler';
+import type { Request, Response } from 'express';
 
 // Set global options for all functions
 setGlobalOptions({
@@ -65,11 +66,11 @@ export const lineWorkerScheduled = onSchedule(
         timeoutSeconds: 300,
     },
     async () => {
-        const mockReq = { method: 'POST', headers: {} } as any;
+        const mockReq = { method: 'POST', headers: {} } as unknown as Request;
         const mockRes = {
             status: () => mockRes,
-            json: (data: any) => console.log('[Scheduled Worker]', data),
-        } as any;
+            json: (data: unknown) => console.log('[Scheduled Worker]', data),
+        } as unknown as Response;
         await handleWorker(mockReq, mockRes);
     }
 );
@@ -104,11 +105,11 @@ export const lineCleanupScheduled = onSchedule(
         timeoutSeconds: 540,
     },
     async () => {
-        const mockReq = { method: 'POST', headers: {} } as any;
+        const mockReq = { method: 'POST', headers: {} } as unknown as Request;
         const mockRes = {
             status: () => mockRes,
-            json: (data: any) => console.log('[Scheduled Cleanup]', data),
-        } as any;
+            json: (data: unknown) => console.log('[Scheduled Cleanup]', data),
+        } as unknown as Response;
         await handleCleanup(mockReq, mockRes);
     }
 );

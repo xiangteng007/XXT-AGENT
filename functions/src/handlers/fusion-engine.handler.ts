@@ -6,6 +6,7 @@
 
 import { Request, Response } from 'express';
 import { runFusionEngine } from '../services/fusion-engine.service';
+import { getErrorMessage } from '../utils/error-handling';
 
 export async function handleFusionEngine(req: Request, res: Response): Promise<void> {
     console.log('[Fusion Engine Handler] Triggered');
@@ -19,11 +20,11 @@ export async function handleFusionEngine(req: Request, res: Response): Promise<v
             timestamp: new Date().toISOString(),
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('[Fusion Engine Handler] Error:', error);
         res.status(500).json({
             success: false,
-            error: error.message,
+            error: getErrorMessage(error),
         });
     }
 }

@@ -73,7 +73,7 @@ export async function enrichWithGemini(request: GeminiEnrichRequest): Promise<Ge
         const parsed = parseGeminiResponse(response);
         return validated(parsed);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error('[Gemini] Enrichment failed:', err);
 
         // Return default response on failure
@@ -205,22 +205,23 @@ function clamp(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, Math.round(value)));
 }
 
-function validateSentiment(s: any): 'positive' | 'negative' | 'neutral' {
+function validateSentiment(s: unknown): 'positive' | 'negative' | 'neutral' {
     if (s === 'positive' || s === 'negative' || s === 'neutral') {
         return s;
     }
     return 'neutral';
 }
 
-function validateEntities(entities: any): Entity[] {
+function validateEntities(entities: unknown): Entity[] {
     if (!Array.isArray(entities)) return [];
 
     return entities
-        .filter(e => e && typeof e === 'object' && e.type && e.value)
+        .filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object' && 'type' in e && 'value' in e)
         .map(e => ({
-            type: ['ticker', 'fund', 'future', 'topic', 'location', 'person', 'org'].includes(e.type) ? e.type : 'topic',
+            type: ['ticker', 'fund', 'future', 'topic', 'location', 'person', 'org'].includes(String(e.type))
+                ? (e.type as Entity['type']) : 'topic',
             value: String(e.value),
-            confidence: e.confidence,
+            confidence: typeof e.confidence === 'number' ? e.confidence : undefined,
         }))
         .slice(0, 10);
 }

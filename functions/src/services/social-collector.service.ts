@@ -19,6 +19,7 @@ import { createRSSAdapter } from './adapters/rss.adapter';
 import { enrichWithGemini } from './gemini-enricher.service';
 import { logAudit } from './audit.service';
 import { incrementMetric } from './metrics.service';
+import { getErrorMessage } from '../utils/error-handling';
 
 const db = admin.firestore();
 
@@ -111,9 +112,9 @@ export async function processCollectJob(job: CollectJob): Promise<{
                     await createFusedEvent(enriched);
                 }
 
-            } catch (itemErr: any) {
+            } catch (itemErr: unknown) {
                 console.error('[Social Collector] Error processing item:', itemErr);
-                result.errors.push(itemErr.message);
+                result.errors.push(getErrorMessage(itemErr));
             }
         }
 
@@ -133,7 +134,7 @@ export async function processCollectJob(job: CollectJob): Promise<{
         console.log('[Social Collector] Job complete:', result);
         return result;
 
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error('[Social Collector] Job failed:', err);
 
         // Update cursor error state
@@ -144,14 +145,15 @@ export async function processCollectJob(job: CollectJob): Promise<{
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         }, { merge: true });
 
+        const errorMessage = getErrorMessage(err);
         await logAudit({
             tenantId: job.tenantId,
             type: 'error',
             action: 'social_collect_failed',
-            details: { sourceId: job.sourceId, error: err.message },
+            details: { sourceId: job.sourceId, error: errorMessage },
         });
 
-        result.errors.push(err.message);
+        result.errors.push(errorMessage);
         return result;
     }
 }

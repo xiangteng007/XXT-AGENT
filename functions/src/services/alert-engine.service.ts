@@ -6,7 +6,7 @@
  */
 
 import * as admin from 'firebase-admin';
-import { NotificationSetting, NotificationConfig , FusedEvent } from '../types/social.types';
+import { NotificationSetting, NotificationConfig, FusedEvent } from '../types/social.types';
 
 import { logAudit } from './audit.service';
 import { incrementMetric } from './metrics.service';
@@ -47,7 +47,7 @@ export async function sendAlertsForEvent(event: FusedEvent): Promise<{
                     },
                 });
 
-            } catch (err: any) {
+            } catch (err: unknown) {
                 console.error(`[Alert Engine] Failed to send via ${setting.channel}:`, err);
                 result.failed++;
             }
@@ -64,7 +64,7 @@ export async function sendAlertsForEvent(event: FusedEvent): Promise<{
 
         return result;
 
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error('[Alert Engine] Fatal error:', err);
         return result;
     }

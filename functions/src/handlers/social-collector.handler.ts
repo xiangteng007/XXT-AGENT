@@ -31,14 +31,16 @@ export async function handleSocialCollector(req: Request, res: Response): Promis
             timestamp: new Date().toISOString(),
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('[Social Collector Handler] Error:', error);
 
+        const message = error instanceof Error ? error.message : String(error);
+        const errorCode = (error as { code?: number }).code;
         // Return 500 for retry, 400 for no-retry
-        const isRetryable = error.code === 429 || error.code >= 500;
+        const isRetryable = errorCode === 429 || (errorCode !== undefined && errorCode >= 500);
         res.status(isRetryable ? 500 : 400).json({
             success: false,
-            error: error.message,
+            error: message,
             retryable: isRetryable,
         });
     }

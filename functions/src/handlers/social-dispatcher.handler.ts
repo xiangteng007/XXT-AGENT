@@ -19,11 +19,12 @@ export async function handleSocialDispatcher(req: Request, res: Response): Promi
             timestamp: new Date().toISOString(),
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
         console.error('[Social Dispatcher Handler] Error:', error);
         res.status(500).json({
             success: false,
-            error: error.message,
+            error: message,
         });
     }
 }

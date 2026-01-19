@@ -17,6 +17,7 @@ import {
 } from '../types/market.types';
 import { FusedEvent } from '../types/social.types';
 import { incrementMetric } from './metrics.service';
+import { getErrorMessage } from '../utils/error-handling';
 
 const db = admin.firestore();
 
@@ -69,9 +70,9 @@ export async function runMarketStreamer(): Promise<{
 
                     result.signals++;
                 }
-            } catch (err: any) {
+            } catch (err: unknown) {
                 console.error(`[Market Streamer] Error processing ${quote.symbol}:`, err);
-                result.errors.push(`${quote.symbol}: ${err.message}`);
+                result.errors.push(`${quote.symbol}: ${getErrorMessage(err)}`);
             }
         }
 
@@ -82,9 +83,9 @@ export async function runMarketStreamer(): Promise<{
         console.log('[Market Streamer] Cycle complete:', result);
         return result;
 
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error('[Market Streamer] Fatal error:', err);
-        result.errors.push(err.message);
+        result.errors.push(getErrorMessage(err));
         return result;
     }
 }

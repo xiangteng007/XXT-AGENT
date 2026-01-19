@@ -172,8 +172,9 @@ export default function SocialAnalyticsPage() {
                                         </div>
                                         <div className="h-3 bg-muted rounded-full overflow-hidden">
                                             <div
-                                                className="h-full bg-primary"
-                                                style={{ width: `${pct}%` }}
+                                                className="h-full bg-primary transition-all"
+                                                style={{ '--progress-width': `${pct}%` } as React.CSSProperties}
+                                                data-width={pct}
                                             />
                                         </div>
                                     </div>
@@ -197,7 +198,8 @@ export default function SocialAnalyticsPage() {
                                 <div
                                     key={hour}
                                     className="flex-1 bg-primary/80 hover:bg-primary rounded-t transition-colors"
-                                    style={{ height: `${(count / maxHourly) * 100}%`, minHeight: count > 0 ? '4px' : '0' }}
+                                    style={{ '--bar-height': `${(count / maxHourly) * 100}%` } as React.CSSProperties}
+                                    data-count={count}
                                     title={`${hour}:00 - ${count} 則`}
                                 />
                             ))}

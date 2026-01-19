@@ -3,6 +3,13 @@ import { getNotionToken } from './secrets.service';
 import { retry, isRetryableError } from '../utils/retry';
 import { NotionProperties } from '../types';
 
+// Type definition for select option
+interface SelectOption {
+    name: string;
+    id?: string;
+    color?: string;
+}
+
 interface WriteResult {
     success: boolean;
     pageId?: string;
@@ -119,18 +126,18 @@ export async function getDatabaseSchema(
         const schema: Record<string, { type: string; options?: string[] }> = {};
 
         for (const [name, property] of Object.entries(response.properties)) {
-            const prop = property as any;
-            schema[name] = { type: prop.type };
+            const propType = property.type;
+            schema[name] = { type: propType };
 
-            // Extract options for select/multi_select
-            if (prop.type === 'select' && prop.select?.options) {
-                schema[name].options = prop.select.options.map((o: any) => o.name);
+            // Extract options for select/multi_select/status
+            if (propType === 'select' && 'select' in property && property.select?.options) {
+                schema[name].options = (property.select.options as SelectOption[]).map(o => o.name);
             }
-            if (prop.type === 'multi_select' && prop.multi_select?.options) {
-                schema[name].options = prop.multi_select.options.map((o: any) => o.name);
+            if (propType === 'multi_select' && 'multi_select' in property && property.multi_select?.options) {
+                schema[name].options = (property.multi_select.options as SelectOption[]).map(o => o.name);
             }
-            if (prop.type === 'status' && prop.status?.options) {
-                schema[name].options = prop.status.options.map((o: any) => o.name);
+            if (propType === 'status' && 'status' in property && property.status?.options) {
+                schema[name].options = (property.status.options as SelectOption[]).map(o => o.name);
             }
         }
 

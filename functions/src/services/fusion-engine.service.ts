@@ -11,6 +11,7 @@ import * as admin from 'firebase-admin';
 import { FusedEvent, Entity } from '../types/social.types';
 import { logAudit } from './audit.service';
 import { incrementMetric } from './metrics.service';
+import { getErrorMessage } from '../utils/error-handling';
 
 const db = admin.firestore();
 
@@ -54,9 +55,9 @@ export async function runFusionEngine(): Promise<{
             try {
                 await createFusedEvent(corr);
                 result.fused++;
-            } catch (err: any) {
+            } catch (err: unknown) {
                 console.error('[Fusion Engine] Failed to create fused event:', err);
-                result.errors.push(err.message);
+                result.errors.push(getErrorMessage(err));
             }
         }
 
@@ -66,9 +67,9 @@ export async function runFusionEngine(): Promise<{
         console.log('[Fusion Engine] Cycle complete:', result);
         return result;
 
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error('[Fusion Engine] Fatal error:', err);
-        result.errors.push(err.message);
+        result.errors.push(getErrorMessage(err));
         return result;
     }
 }
