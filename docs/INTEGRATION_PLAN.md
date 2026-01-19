@@ -159,54 +159,54 @@ docs/
 
 ### Phase 1: Architecture Unification
 
-- [ ] Fix rawBody signature verification
-- [ ] Create `worker.handler.ts` for queue consumption
-- [ ] Create `queue.service.ts` (Cloud Tasks)
-- [ ] Create `audit.service.ts` (deduplication)
-- [ ] Update webhook to enqueue instead of direct Notion call
-- [ ] Update `index.ts` to export both handlers
+- [x] Fix rawBody signature verification
+- [x] Create `worker.handler.ts` for queue consumption
+- [x] Create `queue.service.ts` (Cloud Tasks)
+- [x] Create `audit.service.ts` (deduplication)
+- [x] Update webhook to enqueue instead of direct Notion call
+- [x] Update `index.ts` to export both handlers
 
 ### Phase 2: Dedup & Cleanup
 
-- [ ] Implement `processedEvents` check in webhook
-- [ ] Add correlation IDs (eventId, jobId)
-- [ ] Verify no duplicate code paths
+- [x] Implement `processedEvents` check in webhook
+- [x] Add correlation IDs (eventId, jobId)
+- [x] Verify no duplicate code paths
 
 ### Phase 3: Queue + Retry + DLQ
 
-- [ ] Cloud Tasks queue with retry policy
-- [ ] Job status tracking in Firestore
-- [ ] DLQ handling for failed jobs
-- [ ] Per-tenant rate limiting
+- [x] Cloud Tasks queue with retry policy
+- [x] Job status tracking in Firestore
+- [x] DLQ handling for failed jobs
+- [x] Per-tenant rate limiting
 
 ### Phase 4: Security & Audit
 
-- [ ] Fix rawBody extraction
-- [ ] Audit all Secret Manager usage
-- [ ] Structured logging with correlation
-- [ ] Add request validation middleware
+- [x] Fix rawBody extraction
+- [x] Audit all Secret Manager usage
+- [x] Structured logging with correlation
+- [x] Add request validation middleware
 
 ### Phase 5: Admin Dashboard MVP
 
-- [ ] Next.js app with Firebase Auth
-- [ ] Tenant management UI
-- [ ] Rules CRUD
-- [ ] Logs viewer
-- [ ] Jobs queue monitor
+- [x] Next.js app with Firebase Auth
+- [x] Tenant management UI
+- [x] Rules CRUD
+- [x] Logs viewer
+- [x] Jobs queue monitor
 
 ### Phase 6: Message Type Expansion
 
-- [ ] Create `normalized-message.model.ts`
-- [ ] Create `mapper.service.ts`
-- [ ] Add image handling (GCS upload)
-- [ ] Add location handling (Google Maps URL)
-- [ ] Add OCR stub
+- [x] Create `normalized-message.model.ts`
+- [x] Create `mapper.service.ts`
+- [x] Add image handling (GCS upload)
+- [x] Add location handling (Google Maps URL)
+- [x] Add OCR stub
 
 ### Phase 7: Metrics & Reporting
 
-- [ ] Create `metrics.service.ts`
-- [ ] Daily aggregate writes
-- [ ] Dashboard metrics view
+- [x] Create `metrics.service.ts`
+- [x] Daily aggregate writes
+- [x] Dashboard metrics view
 
 ---
 
