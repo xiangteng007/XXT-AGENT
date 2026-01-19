@@ -89,6 +89,38 @@ async def fetch_real_posts(platform: str, config: dict) -> List[Dict[str, Any]]:
                     p for p in posts 
                     if any(kw.lower() in p["title"].lower() for kw in keywords)
                 ]
+        
+        elif platform.lower() in ("twitter", "x"):
+            username = config.get("username")
+            search_query = config.get("search_query")
+            limit = config.get("limit", 20)
+            
+            if username:
+                posts = await adapter.fetch_user_timeline(username, limit)
+            elif search_query:
+                posts = await adapter.search_tweets(search_query, limit)
+            else:
+                logger.warning("Twitter requires 'username' or 'search_query' in config")
+        
+        elif platform.lower() == "weibo":
+            keyword = config.get("keyword") or config.get("search_query")
+            if keyword:
+                posts = await adapter.search_posts(keyword)
+            else:
+                # Fetch hot topics as fallback
+                topics = await adapter.fetch_hot_topics()
+                posts = [{
+                    "postId": f"hot_{i}",
+                    "title": t.get("topic", ""),
+                    "text": f"熱度: {t.get('hot', 0)}",
+                    "url": t.get("url", ""),
+                    "author": "weibo_hot",
+                    "createdAt": datetime.now().isoformat(),
+                    "likes": t.get("hot", 0),
+                    "comments": 0,
+                    "shares": 0,
+                    "views": 0,
+                } for i, t in enumerate(topics[:20])]
                 
     except Exception as e:
         logger.error(f"Error fetching from {platform}: {e}")
@@ -226,9 +258,9 @@ async def healthz():
     return {
         "ok": True, 
         "service": "social-worker",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "real_adapters": USE_REAL_ADAPTERS,
-        "supported_platforms": ["reddit", "ptt"]
+        "supported_platforms": ["reddit", "ptt", "twitter", "weibo"]
     }
 
 
@@ -253,6 +285,26 @@ async def list_platforms():
                     "pages": "Number of pages to fetch",
                     "keywordRules": "List of keywords to filter by"
                 }
+            },
+            "twitter": {
+                "description": "Twitter/X timeline or search (API key optional, uses Nitter fallback)",
+                "aliases": ["x"],
+                "config": {
+                    "username": "Twitter username to fetch timeline",
+                    "search_query": "Keyword search (requires API key)",
+                    "limit": "Number of tweets (max 100)"
+                },
+                "env_vars": {
+                    "TWITTER_BEARER_TOKEN": "Optional: Twitter API v2 Bearer Token for full access"
+                }
+            },
+            "weibo": {
+                "description": "Weibo (微博) Chinese social media",
+                "config": {
+                    "keyword": "Search keyword",
+                    "search_query": "Alternative to keyword"
+                },
+                "notes": "If no keyword provided, fetches hot topics"
             }
         }
     }
@@ -260,3 +312,4 @@ async def list_platforms():
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
