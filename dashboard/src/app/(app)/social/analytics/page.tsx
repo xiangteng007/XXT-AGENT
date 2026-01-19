@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { LoadingSkeleton } from '@/components/shared';
+import chartStyles from '@/styles/charts.module.css';
 import type { SocialPlatform } from '@/lib/social/types';
 import {
     Activity,
@@ -172,7 +173,7 @@ export default function SocialAnalyticsPage() {
                                         </div>
                                         <div className="h-3 bg-muted rounded-full overflow-hidden">
                                             <div
-                                                className="h-full bg-primary transition-all"
+                                                className={`${chartStyles.progressBar} bg-primary`}
                                                 style={{ '--progress-width': `${pct}%` } as React.CSSProperties}
                                                 data-width={pct}
                                             />
@@ -197,7 +198,7 @@ export default function SocialAnalyticsPage() {
                             {hourlyDistribution.map((count, hour) => (
                                 <div
                                     key={hour}
-                                    className="flex-1 bg-primary/80 hover:bg-primary rounded-t transition-colors"
+                                    className={`flex-1 ${chartStyles.barChartItem} bg-primary/80 hover:bg-primary rounded-t`}
                                     style={{ '--bar-height': `${(count / maxHourly) * 100}%` } as React.CSSProperties}
                                     data-count={count}
                                     title={`${hour}:00 - ${count} 則`}

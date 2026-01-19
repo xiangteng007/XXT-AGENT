@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { LoadingSkeleton } from '@/components/shared';
+import chartStyles from '@/styles/charts.module.css';
 import type { SocialPost, SentimentAnalysis as SentimentType } from '@/lib/social/types';
 import {
     Activity,
@@ -169,8 +170,8 @@ export default function SentimentAnalysisPage() {
                                             <div className="text-sm font-medium">{label}</div>
                                             <div className="h-2 bg-muted rounded-full mt-2 overflow-hidden">
                                                 <div
-                                                    className={`h-full ${color}`}
-                                                    style={{ width: `${(emotions[key as keyof typeof emotions] * 100)}%` }}
+                                                    className={`${chartStyles.progressBar} ${color}`}
+                                                    style={{ '--progress-width': `${(emotions[key as keyof typeof emotions] * 100)}%` } as React.CSSProperties}
                                                 />
                                             </div>
                                             <div className="text-xs text-muted-foreground mt-1">

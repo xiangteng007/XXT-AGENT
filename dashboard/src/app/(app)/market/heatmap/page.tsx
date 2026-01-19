@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { LoadingSkeleton } from '@/components/shared';
+import chartStyles from '@/styles/charts.module.css';
 import type { HeatmapCell } from '@/lib/market/types';
 import {
     Grid3X3,
@@ -197,12 +198,11 @@ export default function MarketHeatmapPage() {
                                     return (
                                         <div
                                             key={stock.symbol}
-                                            className={`p-2 rounded flex flex-col items-center justify-center cursor-pointer hover:opacity-90 transition-opacity ${getHeatmapColor(stock.changePct)}`}
+                                            className={`${chartStyles.heatmapCell} p-2 rounded flex flex-col items-center justify-center cursor-pointer hover:opacity-90 transition-opacity ${getHeatmapColor(stock.changePct)}`}
                                             style={{
-                                                width: `${size}px`,
-                                                height: `${size * 0.7}px`,
-                                                minWidth: '60px',
-                                            }}
+                                                '--cell-width': `${size}px`,
+                                                '--cell-height': `${size * 0.7}px`,
+                                            } as React.CSSProperties}
                                             title={`${stock.name}: ${stock.changePct >= 0 ? '+' : ''}${stock.changePct.toFixed(2)}%`}
                                         >
                                             <span className="font-bold text-sm">{stock.symbol}</span>

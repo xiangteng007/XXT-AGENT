@@ -3,6 +3,7 @@
 import { ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import chartStyles from '@/styles/charts.module.css';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface ChartCardProps {
@@ -129,7 +130,10 @@ interface StatsRowProps {
 
 export function StatsRow({ items }: StatsRowProps) {
     return (
-        <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${items.length}, 1fr)` }}>
+        <div
+            className={chartStyles.statsGrid}
+            style={{ '--stats-columns': items.length } as React.CSSProperties}
+        >
             {items.map((item, idx) => (
                 <div key={idx} className="text-center p-3 rounded-lg bg-muted/50">
                     <div className="text-xs text-muted-foreground mb-1">{item.label}</div>
