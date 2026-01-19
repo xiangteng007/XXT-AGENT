@@ -66,7 +66,7 @@ export interface NormalizedPost {
     severity: number; // 0-100
     entities: Entity[];
     dedupHash: string; // SHA256(title + url + createdAtDate)
-    rawRef: Record<string, any>;
+    rawRef: Record<string, unknown>;
     insertedAt: Date;
 }
 
@@ -105,7 +105,7 @@ export interface FusedEvent {
     market?: MarketData;
     rationale?: string;
     impactHint?: string;
-    rawRef?: Record<string, any>;
+    rawRef?: Record<string, unknown>;
 }
 
 export interface MarketData {
@@ -119,17 +119,34 @@ export interface MarketData {
 }
 
 // ================================
+// Raw Social Item (Platform-specific data)
+// ================================
+
+export interface RawSocialItem {
+    id?: string;
+    postId?: string;
+    title?: string;
+    text?: string;
+    content?: string;
+    url?: string;
+    author?: string;
+    createdAt?: string | Date;
+    engagement?: Partial<Engagement>;
+    [key: string]: unknown;
+}
+
+// ================================
 // Adapter Interface
 // ================================
 
 export interface SocialAdapter {
     platform: string;
     fetchDelta(cursor: SocialCursor, config: SourceConfig): Promise<FetchResult>;
-    mapToNormalized(item: any, source: SocialSource): NormalizedPost;
+    mapToNormalized(item: RawSocialItem | Record<string, unknown>, source: SocialSource): NormalizedPost;
 }
 
 export interface FetchResult {
-    items: any[];
+    items: Array<RawSocialItem | Record<string, unknown>>;
     nextCursor: Partial<SocialCursor>;
     rateLimit?: {
         remaining: number;

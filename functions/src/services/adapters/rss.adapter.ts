@@ -23,6 +23,7 @@ interface RSSItem {
     author?: string;
     categories?: string[];
     guid?: string;
+    [key: string]: unknown;
 }
 
 /**

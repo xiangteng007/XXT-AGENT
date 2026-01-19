@@ -130,8 +130,8 @@ export function AdvancedFilters({
                                                     key={opt.value}
                                                     onClick={() => handleMultiSelect(config.key, opt.value)}
                                                     className={`px-2 py-1 text-xs rounded-full border transition-all ${selected
-                                                            ? 'bg-primary text-primary-foreground border-primary'
-                                                            : 'bg-background hover:border-primary/50'
+                                                        ? 'bg-primary text-primary-foreground border-primary'
+                                                        : 'bg-background hover:border-primary/50'
                                                         }`}
                                                 >
                                                     {opt.label}
@@ -188,7 +188,7 @@ export function AdvancedFilters({
                                             return (
                                                 <Badge key={`${key}-${v}`} variant="secondary" className="gap-1">
                                                     {opt?.label || v}
-                                                    <button onClick={() => handleMultiSelect(key, v)}>
+                                                    <button onClick={() => handleMultiSelect(key, v)} aria-label={`移除篩選 ${opt?.label || v}`}>
                                                         <X className="h-3 w-3" />
                                                     </button>
                                                 </Badge>
@@ -200,7 +200,7 @@ export function AdvancedFilters({
                                     return (
                                         <Badge key={key} variant="secondary" className="gap-1">
                                             {config.label}: {opt?.label || value}
-                                            <button onClick={() => onChange(key, config.type === 'multi-select' ? [] : '')}>
+                                            <button onClick={() => onChange(key, config.type === 'multi-select' ? [] : '')} aria-label={`移除篩選 ${config.label}`}>
                                                 <X className="h-3 w-3" />
                                             </button>
                                         </Badge>
@@ -236,8 +236,8 @@ export function QuickFilters({
             <button
                 onClick={() => onChange('all')}
                 className={`px-3 py-1.5 text-sm rounded-full border whitespace-nowrap transition-all ${selected === 'all'
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-background hover:border-primary/50'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background hover:border-primary/50'
                     }`}
             >
                 全部
@@ -247,8 +247,8 @@ export function QuickFilters({
                     key={opt.value}
                     onClick={() => onChange(opt.value)}
                     className={`px-3 py-1.5 text-sm rounded-full border whitespace-nowrap transition-all flex items-center gap-1.5 ${selected === opt.value
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-background hover:border-primary/50'
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background hover:border-primary/50'
                         }`}
                 >
                     {opt.icon}

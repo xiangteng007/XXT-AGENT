@@ -253,7 +253,7 @@ export default function SocialSettingsPage() {
                         </div>
 
                         <div className="pt-4 border-t">
-                            <label className="text-sm font-medium">最低嚴重度閾值</label>
+                            <label id="severity-label" className="text-sm font-medium">最低嚴重度閾值</label>
                             <div className="flex items-center gap-4 mt-2">
                                 <input
                                     type="range"
@@ -262,6 +262,7 @@ export default function SocialSettingsPage() {
                                     value={minSeverity}
                                     onChange={(e) => setMinSeverity(Number(e.target.value))}
                                     className="flex-1"
+                                    aria-label="最低嚴重度閾值"
                                 />
                                 <span className="text-sm font-medium w-12">{minSeverity}</span>
                             </div>
