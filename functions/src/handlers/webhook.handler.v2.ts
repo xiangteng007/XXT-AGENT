@@ -41,7 +41,8 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
 
         // 3. Get raw body for signature verification
         // Cloud Functions Gen 2 provides rawBody
-        const rawBody = (req as any).rawBody?.toString('utf-8') || JSON.stringify(req.body);
+        const reqWithRawBody = req as Request & { rawBody?: Buffer };
+        const rawBody = reqWithRawBody.rawBody?.toString('utf-8') || JSON.stringify(req.body);
 
         // 4. Parse body
         const body = req.body as LineWebhookBody;

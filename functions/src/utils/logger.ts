@@ -1,5 +1,5 @@
 import { getDb } from '../config/firebase';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { OperationLog, LogType, MessageLog, NotionLog } from '../models';
 
 interface LogEntry {
@@ -28,7 +28,7 @@ export async function logOperation(entry: LogEntry): Promise<void> {
                 lineUserId: hashUserId(entry.message.lineUserId),
             } : undefined,
             notion: entry.notion,
-            timestamp: FieldValue.serverTimestamp() as any,
+            timestamp: FieldValue.serverTimestamp() as unknown as Timestamp,
             duration: entry.duration,
         };
 

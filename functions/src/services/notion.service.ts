@@ -61,7 +61,7 @@ export async function writeToNotion(params: WriteParams): Promise<WriteResult> {
         // Build page creation request
         const pageRequest: Parameters<typeof notion.pages.create>[0] = {
             parent: { database_id: databaseId },
-            properties: properties as any, // Type assertion for flexibility
+            properties: properties as unknown as Parameters<typeof notion.pages.create>[0]['properties'],
         };
 
         // Add content blocks if provided
@@ -90,7 +90,7 @@ export async function writeToNotion(params: WriteParams): Promise<WriteResult> {
         return {
             success: true,
             pageId: response.id,
-            url: (response as any).url,
+            url: 'url' in response ? (response as { url: string }).url : undefined,
         };
 
     } catch (error: unknown) {
@@ -163,7 +163,7 @@ export async function updateNotionPage(
         const response = await retry(
             async () => notion.pages.update({
                 page_id: pageId,
-                properties: properties as any,
+                properties: properties as unknown as Parameters<typeof notion.pages.update>[0]['properties'],
             }),
             {
                 maxRetries: 3,

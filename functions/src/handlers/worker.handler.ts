@@ -81,7 +81,7 @@ async function processJob(job: Job): Promise<void> {
         // Route by message type
         switch (payload.messageType) {
             case 'text':
-                properties = (payload.properties || buildTextProperties(payload.text || '')) as any;
+                properties = (payload.properties || buildTextProperties(payload.text || '')) as unknown as NotionProperties;
                 break;
             case 'image':
                 properties = await buildImageProperties(job);
@@ -90,14 +90,14 @@ async function processJob(job: Job): Promise<void> {
                 properties = buildLocationProperties(job);
                 break;
             default:
-                properties = (payload.properties || {}) as any;
+                properties = (payload.properties || {}) as unknown as NotionProperties;
         }
 
         // Write to Notion
         const result = await writeToNotion({
             integrationId: payload.notionIntegrationId,
             databaseId: payload.databaseId,
-            properties: properties as any,
+            properties,
         });
 
         if (!result.success) {
