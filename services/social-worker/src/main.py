@@ -1,4 +1,8 @@
-from fastapi import FastAPI, Request
+"""
+Social Worker Service
+Fetches posts from real social media platforms (Reddit, PTT) and publishes to Pub/Sub.
+"""
+from fastapi import FastAPI, Request, HTTPException
 import uvicorn
 import logging
 import os
@@ -7,33 +11,98 @@ import json
 from google.cloud import pubsub_v1
 from datetime import datetime
 import pytz
+from typing import List, Dict, Any, Optional
+import asyncio
+
+from adapters import create_adapter, RedditAdapter, PTTAdapter
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("social-worker")
 
-app = FastAPI()
+app = FastAPI(title="Social Worker", version="2.0.0")
 
 # Pub/Sub
 publisher = pubsub_v1.PublisherClient()
 
 # Config
 PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")
-TOPIC_RAW_SOCIAL = os.getenv("TOPIC_RAW_SOCIAL", "")
+TOPIC_RAW_SOCIAL = os.getenv("TOPIC_RAW_SOCIAL", "raw-social-events")
 
-def get_iso_now_taipei():
+# Feature flags
+USE_REAL_ADAPTERS = os.getenv("USE_REAL_ADAPTERS", "true").lower() == "true"
+
+
+def get_iso_now_taipei() -> str:
     taipei = pytz.timezone("Asia/Taipei")
     return datetime.now(taipei).isoformat()
 
-def sha256(s: str):
+
+def sha256(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
-def stub_fetch_posts(platform: str, config: dict):
-    # MVP stub: generate a synthetic post
-    keywords = config.get("keywordRules", ["地震", "停電"])
+
+async def fetch_real_posts(platform: str, config: dict) -> List[Dict[str, Any]]:
+    """
+    Fetch real posts from social media platforms.
+    
+    Config options:
+    - For Reddit:
+        - subreddit: str (default: "taiwan")
+        - sort: str (default: "new") 
+        - limit: int (default: 25)
+        - search_query: str (optional, for keyword search)
+    - For PTT:
+        - board: str (default: "Gossiping")
+        - pages: int (default: 1)
+    """
+    adapter = create_adapter(platform)
+    
+    if not adapter:
+        logger.warning(f"No adapter for platform: {platform}, using stub")
+        return stub_fetch_posts(platform, config)
+    
+    posts = []
+    
+    try:
+        if platform.lower() == "reddit":
+            subreddit = config.get("subreddit", "taiwan")
+            sort = config.get("sort", "new")
+            limit = config.get("limit", 25)
+            search_query = config.get("search_query")
+            
+            if search_query:
+                posts = await adapter.search_subreddit(subreddit, search_query, limit)
+            else:
+                posts, _ = await adapter.fetch_subreddit(subreddit, sort, limit)
+                
+        elif platform.lower() == "ptt":
+            board = config.get("board", "Gossiping")
+            pages = config.get("pages", 1)
+            
+            posts = await adapter.fetch_board(board, pages)
+            
+            # Optionally filter by keywords
+            keywords = config.get("keywordRules", [])
+            if keywords:
+                posts = [
+                    p for p in posts 
+                    if any(kw.lower() in p["title"].lower() for kw in keywords)
+                ]
+                
+    except Exception as e:
+        logger.error(f"Error fetching from {platform}: {e}")
+        return []
+    
+    return posts
+
+
+def stub_fetch_posts(platform: str, config: dict) -> List[Dict[str, Any]]:
+    """MVP stub: generate a synthetic post for testing."""
     import random
-    kw = random.choice(keywords)
-    title = f"{platform.upper()} 爆量訊號：{kw}（Python MVP stub）"
+    keywords = config.get("keywordRules", ["地震", "停電"])
+    kw = random.choice(keywords) if keywords else "測試"
+    title = f"{platform.upper()} 爆量訊號：{kw}（Stub）"
     url = f"https://social.example.com/post/{random.randint(1000, 9999)}"
     
     return [{
@@ -41,18 +110,43 @@ def stub_fetch_posts(platform: str, config: dict):
         "title": title,
         "text": f"{kw} 相關貼文快速增加，區域分布在北中南。",
         "url": url,
+        "author": "stub_user",
+        "createdAt": datetime.now().isoformat(),
         "likes": random.randint(0, 500),
         "comments": random.randint(0, 150),
         "shares": random.randint(0, 80),
         "views": random.randint(0, 5000)
     }]
 
+
 @app.post("/work")
 async def handle_work(request: Request):
+    """
+    Process a social collect job.
+    
+    Expected payload:
+    {
+        "tenantId": "string",
+        "sourceId": "string",
+        "platform": "reddit" | "ptt",
+        "config": {
+            // For Reddit:
+            "subreddit": "taiwan",
+            "sort": "new",
+            "limit": 25,
+            "search_query": "optional keyword"
+            
+            // For PTT:
+            "board": "Gossiping",
+            "pages": 1,
+            "keywordRules": ["地震", "停電"]
+        }
+    }
+    """
     try:
         payload = await request.json()
     except Exception:
-        return {"ok": False, "error": "invalid json"}, 400
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
         
     tenant_id = payload.get("tenantId")
     source_id = payload.get("sourceId")
@@ -60,50 +154,109 @@ async def handle_work(request: Request):
     config = payload.get("config", {})
     
     if not tenant_id or not source_id or not platform:
-        return {"ok": False, "error": "missing fields"}, 400
+        raise HTTPException(status_code=400, detail="Missing required fields: tenantId, sourceId, platform")
 
     ts = get_iso_now_taipei()
-    items = stub_fetch_posts(platform, config)
-    published = 0
     
-    topic_path = publisher.topic_path(PROJECT_ID, TOPIC_RAW_SOCIAL)
+    # Fetch posts from real platform or stub
+    if USE_REAL_ADAPTERS:
+        items = await fetch_real_posts(platform, config)
+    else:
+        items = stub_fetch_posts(platform, config)
+    
+    if not items:
+        logger.info(f"No items fetched for {platform}:{source_id}")
+        return {"ok": True, "published": 0, "fetched": 0}
+    
+    published = 0
+    topic_path = publisher.topic_path(PROJECT_ID, TOPIC_RAW_SOCIAL) if PROJECT_ID and TOPIC_RAW_SOCIAL else None
 
     for it in items:
         # Use first 10 chars of TS (YYYY-MM-DD) for dedup to avoid repeat alert on same day
-        dedup_seed = f"{it['title']}|{it['url']}|{ts[:10]}"
+        dedup_seed = f"{it.get('title', '')}|{it.get('url', '')}|{ts[:10]}"
         dedup_hash = sha256(dedup_seed)
         
         evt = {
-            "id": f"raws_{int(datetime.now().timestamp())}_{source_id}",
+            "id": f"raws_{int(datetime.now().timestamp())}_{source_id}_{it.get('postId', '')}",
             "ts": ts,
             "source": "social",
             "tenantId": tenant_id,
             "platform": platform,
             "sourceId": source_id,
-            "postId": it["postId"],
-            "title": it["title"],
-            "text": it["text"],
-            "url": it["url"],
+            "postId": it.get("postId", ""),
+            "title": it.get("title", ""),
+            "text": it.get("text", ""),
+            "url": it.get("url", ""),
+            "author": it.get("author", ""),
+            "createdAt": it.get("createdAt", ts),
             "engagement": {
-                "likes": it["likes"],
-                "comments": it["comments"],
-                "shares": it["shares"],
-                "views": it["views"]
+                "likes": it.get("likes", 0),
+                "comments": it.get("comments", 0),
+                "shares": it.get("shares", 0),
+                "views": it.get("views", 0)
             },
-            "dedupHash": dedup_hash
+            "dedupHash": dedup_hash,
+            "metadata": {
+                "subreddit": it.get("subreddit"),
+                "board": it.get("board"),
+                "flair": it.get("flair"),
+            }
         }
         
-        data = json.dumps(evt).encode("utf-8")
-        future = publisher.publish(topic_path, data)
-        future.result() # Wait for publish
-        published += 1
+        # Publish to Pub/Sub if configured
+        if topic_path:
+            try:
+                data = json.dumps(evt).encode("utf-8")
+                future = publisher.publish(topic_path, data)
+                future.result()  # Wait for publish
+                published += 1
+            except Exception as e:
+                logger.error(f"Pub/Sub publish error: {e}")
+        else:
+            # Log only mode (for testing without Pub/Sub)
+            logger.info(f"Would publish: {evt['title'][:50]}...")
+            published += 1
         
-    logger.info(f"Worker done. Published {published} items for tenant {tenant_id}")
-    return {"ok": True, "published": published}
+    logger.info(f"Worker done. Fetched {len(items)}, published {published} items for tenant {tenant_id}")
+    return {"ok": True, "published": published, "fetched": len(items)}
+
 
 @app.get("/healthz")
 async def healthz():
-    return {"ok": True, "service": "social-worker"}
+    return {
+        "ok": True, 
+        "service": "social-worker",
+        "version": "2.0.0",
+        "real_adapters": USE_REAL_ADAPTERS,
+        "supported_platforms": ["reddit", "ptt"]
+    }
+
+
+@app.get("/platforms")
+async def list_platforms():
+    """List supported platforms and their configuration options."""
+    return {
+        "platforms": {
+            "reddit": {
+                "description": "Reddit subreddit scraper (no API key required)",
+                "config": {
+                    "subreddit": "Subreddit name (without r/)",
+                    "sort": "new | hot | top | rising",
+                    "limit": "Number of posts (max 100)",
+                    "search_query": "Optional keyword search"
+                }
+            },
+            "ptt": {
+                "description": "PTT board scraper",
+                "config": {
+                    "board": "Board name (e.g., Gossiping, Stock, Tech_Job)",
+                    "pages": "Number of pages to fetch",
+                    "keywordRules": "List of keywords to filter by"
+                }
+            }
+        }
+    }
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)

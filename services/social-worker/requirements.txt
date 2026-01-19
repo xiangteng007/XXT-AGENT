@@ -1,4 +1,6 @@
-fastapi
-uvicorn
-google-cloud-pubsub
-pytz
+fastapi>=0.109.0
+uvicorn>=0.27.0
+google-cloud-pubsub>=2.19.0
+pytz>=2024.1
+httpx>=0.26.0
+beautifulsoup4>=4.12.0
