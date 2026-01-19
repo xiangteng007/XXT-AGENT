@@ -14,7 +14,7 @@ import pytz
 from typing import List, Dict, Any, Optional
 import asyncio
 
-from adapters import create_adapter, RedditAdapter, PTTAdapter
+from adapters import create_adapter, RedditAdapter, PTTAdapter, TwitterAdapter, WeiboAdapter, FacebookAdapter
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -121,6 +121,15 @@ async def fetch_real_posts(platform: str, config: dict) -> List[Dict[str, Any]]:
                     "shares": 0,
                     "views": 0,
                 } for i, t in enumerate(topics[:20])]
+        
+        elif platform.lower() in ("facebook", "fb"):
+            page_id = config.get("page_id") or config.get("pageId")
+            limit = config.get("limit", 25)
+            
+            if page_id:
+                posts = await adapter.fetch_page_posts(page_id, limit)
+            else:
+                logger.warning("Facebook requires 'page_id' in config")
                 
     except Exception as e:
         logger.error(f"Error fetching from {platform}: {e}")
@@ -258,9 +267,9 @@ async def healthz():
     return {
         "ok": True, 
         "service": "social-worker",
-        "version": "2.1.0",
+        "version": "2.2.0",
         "real_adapters": USE_REAL_ADAPTERS,
-        "supported_platforms": ["reddit", "ptt", "twitter", "weibo"]
+        "supported_platforms": ["reddit", "ptt", "twitter", "weibo", "facebook"]
     }
 
 
@@ -305,6 +314,18 @@ async def list_platforms():
                     "search_query": "Alternative to keyword"
                 },
                 "notes": "If no keyword provided, fetches hot topics"
+            },
+            "facebook": {
+                "description": "Facebook page posts (requires API access token)",
+                "aliases": ["fb"],
+                "config": {
+                    "page_id": "Facebook Page ID or username",
+                    "limit": "Number of posts (max 100)"
+                },
+                "env_vars": {
+                    "FACEBOOK_ACCESS_TOKEN": "Required: Facebook Graph API access token"
+                },
+                "notes": "Only public page posts are accessible due to privacy policies"
             }
         }
     }

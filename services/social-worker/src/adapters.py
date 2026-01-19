@@ -596,6 +596,121 @@ class WeiboAdapter:
         return soup.get_text(strip=True)[:1000]
 
 
+class FacebookAdapter:
+    """
+    Facebook/Meta adapter for public page posts.
+    Uses Facebook Graph API - requires App Access Token.
+    
+    Environment Variables:
+        FACEBOOK_ACCESS_TOKEN: App access token from Facebook Developer Console
+    
+    Note: Due to Facebook's privacy policies, only public page posts can be fetched.
+    Personal user timelines are not accessible without user authentication.
+    """
+    
+    GRAPH_API_VERSION = "v18.0"
+    GRAPH_API_BASE = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
+    
+    def __init__(self, access_token: Optional[str] = None):
+        self.access_token = access_token or os.environ.get("FACEBOOK_ACCESS_TOKEN")
+        self.client = httpx.AsyncClient(
+            timeout=30.0,
+            follow_redirects=True
+        )
+    
+    async def fetch_page_posts(
+        self, 
+        page_id: str, 
+        limit: int = 25
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch posts from a Facebook Page.
+        
+        Args:
+            page_id: Facebook Page ID or username
+            limit: Number of posts to fetch (max 100)
+        """
+        if not self.access_token:
+            logger.warning("Facebook API requires FACEBOOK_ACCESS_TOKEN")
+            return []
+        
+        url = f"{self.GRAPH_API_BASE}/{page_id}/posts"
+        params = {
+            "access_token": self.access_token,
+            "limit": min(limit, 100),
+            "fields": "id,message,created_time,permalink_url,shares,reactions.summary(true),comments.summary(true)"
+        }
+        
+        try:
+            response = await self.client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            posts = []
+            for post in data.get("data", []):
+                reactions = post.get("reactions", {}).get("summary", {})
+                comments = post.get("comments", {}).get("summary", {})
+                shares = post.get("shares", {})
+                
+                posts.append({
+                    "postId": post.get("id", ""),
+                    "title": "",
+                    "text": post.get("message", ""),
+                    "url": post.get("permalink_url", f"https://facebook.com/{post.get('id', '')}"),
+                    "author": page_id,
+                    "createdAt": post.get("created_time", ""),
+                    "likes": reactions.get("total_count", 0),
+                    "comments": comments.get("total_count", 0),
+                    "shares": shares.get("count", 0),
+                    "views": 0,
+                })
+            
+            return posts
+            
+        except httpx.HTTPError as e:
+            logger.error(f"Facebook API error for page {page_id}: {e}")
+            return []
+    
+    async def fetch_page_info(self, page_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch basic page information."""
+        if not self.access_token:
+            return None
+        
+        url = f"{self.GRAPH_API_BASE}/{page_id}"
+        params = {
+            "access_token": self.access_token,
+            "fields": "id,name,about,fan_count,followers_count,website,category"
+        }
+        
+        try:
+            response = await self.client.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+            
+        except httpx.HTTPError as e:
+            logger.error(f"Facebook page info error for {page_id}: {e}")
+            return None
+    
+    async def search_posts(
+        self, 
+        query: str, 
+        limit: int = 25
+    ) -> List[Dict[str, Any]]:
+        """
+        Search public posts (limited functionality).
+        Note: Facebook restricts public post search significantly.
+        This mainly works for searching within pages the app has access to.
+        """
+        if not self.access_token:
+            logger.warning("Facebook search requires FACEBOOK_ACCESS_TOKEN")
+            return []
+        
+        # Facebook's public post search is very limited
+        # Most useful for searching specific page content
+        logger.info(f"Facebook public search is limited. Query: {query}")
+        return []
+
+
 # Factory function
 def create_adapter(platform: str):
     """Create the appropriate adapter for a platform."""
@@ -605,6 +720,8 @@ def create_adapter(platform: str):
         "twitter": TwitterAdapter,
         "x": TwitterAdapter,  # Alias for Twitter
         "weibo": WeiboAdapter,
+        "facebook": FacebookAdapter,
+        "fb": FacebookAdapter,  # Alias for Facebook
     }
     
     adapter_class = adapters.get(platform.lower())
@@ -612,3 +729,4 @@ def create_adapter(platform: str):
         return adapter_class()
     
     return None
+
