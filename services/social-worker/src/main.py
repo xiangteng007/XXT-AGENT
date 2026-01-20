@@ -160,6 +160,17 @@ def stub_fetch_posts(platform: str, config: dict) -> List[Dict[str, Any]]:
     }]
 
 
+@app.get("/healthz")
+async def healthz():
+    """Health check endpoint for Cloud Run"""
+    return {
+        "status": "ok",
+        "service": "social-worker",
+        "version": "2.2.0",
+        "platforms": ["reddit", "ptt", "twitter", "weibo", "facebook"]
+    }
+
+
 @app.post("/work")
 async def handle_work(request: Request):
     """
