@@ -20,10 +20,20 @@ from adapters import create_adapter, RedditAdapter, PTTAdapter, TwitterAdapter, 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("social-worker")
 
-app = FastAPI(title="Social Worker", version="2.0.0")
+app = FastAPI(title="Social Worker", version="2.2.0")
 
-# Pub/Sub
-publisher = pubsub_v1.PublisherClient()
+# Pub/Sub (lazy-initialized)
+_publisher = None
+
+def get_publisher():
+    global _publisher
+    if _publisher is None:
+        try:
+            _publisher = pubsub_v1.PublisherClient()
+        except Exception as e:
+            logger.warning(f"Failed to create Pub/Sub client: {e}")
+    return _publisher
+
 
 # Config
 PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")
