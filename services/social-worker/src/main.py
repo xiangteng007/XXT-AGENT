@@ -170,8 +170,8 @@ def stub_fetch_posts(platform: str, config: dict) -> List[Dict[str, Any]]:
     }]
 
 
-@app.get("/healthz")
-async def healthz():
+@app.get("/health")
+async def health():
     """Health check endpoint for Cloud Run"""
     return {
         "status": "ok",
@@ -231,7 +231,8 @@ async def handle_work(request: Request):
         return {"ok": True, "published": 0, "fetched": 0}
     
     published = 0
-    topic_path = publisher.topic_path(PROJECT_ID, TOPIC_RAW_SOCIAL) if PROJECT_ID and TOPIC_RAW_SOCIAL else None
+    pub = get_publisher()
+    topic_path = pub.topic_path(PROJECT_ID, TOPIC_RAW_SOCIAL) if pub and PROJECT_ID and TOPIC_RAW_SOCIAL else None
 
     for it in items:
         # Use first 10 chars of TS (YYYY-MM-DD) for dedup to avoid repeat alert on same day
@@ -269,7 +270,7 @@ async def handle_work(request: Request):
         if topic_path:
             try:
                 data = json.dumps(evt).encode("utf-8")
-                future = publisher.publish(topic_path, data)
+                future = pub.publish(topic_path, data)
                 future.result()  # Wait for publish
                 published += 1
             except Exception as e:
@@ -283,15 +284,7 @@ async def handle_work(request: Request):
     return {"ok": True, "published": published, "fetched": len(items)}
 
 
-@app.get("/healthz")
-async def healthz():
-    return {
-        "ok": True, 
-        "service": "social-worker",
-        "version": "2.2.0",
-        "real_adapters": USE_REAL_ADAPTERS,
-        "supported_platforms": ["reddit", "ptt", "twitter", "weibo", "facebook"]
-    }
+# (Duplicate /healthz removed - route defined above at line 173)
 
 
 @app.get("/platforms")
