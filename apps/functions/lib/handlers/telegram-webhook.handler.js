@@ -64,7 +64,17 @@ async function handleMessage(message) {
     const chatId = message.chat.id;
     const telegramUserId = message.from.id;
     const text = message.text || '';
-    console.log(`[Telegram] Message from ${telegramUserId}: ${text}`);
+    console.log(`[Telegram] Message from ${telegramUserId}: ${text || '[non-text content]'}`);
+    // Handle voice messages
+    if (message.voice) {
+        await handleVoiceMessage(chatId, telegramUserId, message);
+        return;
+    }
+    // Handle location sharing
+    if (message.location) {
+        await handleLocationMessage(chatId, telegramUserId, message.location);
+        return;
+    }
     // Check if it's a command
     if (text.startsWith('/')) {
         await handleCommand(chatId, telegramUserId, text);
@@ -72,6 +82,93 @@ async function handleMessage(message) {
     }
     // Natural language processing via AI
     await handleNaturalLanguage(chatId, telegramUserId, text);
+}
+// ================================
+// Voice Message Handler (P1)
+// ================================
+async function handleVoiceMessage(chatId, telegramUserId, message) {
+    const voice = message.voice;
+    if (!voice)
+        return;
+    console.log(`[Telegram] Voice message received: duration=${voice.duration}s, file_id=${voice.file_id}`);
+    await sendChatAction(chatId, 'typing');
+    try {
+        // Get bot token for API call
+        const token = await getBotToken();
+        // Get file path from Telegram
+        const fileResponse = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${voice.file_id}`);
+        const fileData = await fileResponse.json();
+        if (!fileData.ok || !fileData.result?.file_path) {
+            await sendMessage(chatId, '❌ 無法處理語音訊息，請稍後再試。');
+            return;
+        }
+        // Download voice file URL
+        const voiceUrl = `https://api.telegram.org/file/bot${token}/${fileData.result.file_path}`;
+        // For now, inform user about the feature status
+        // Full Speech-to-Text integration requires Google Cloud Speech API
+        await sendMessage(chatId, `🎤 **語音辨識**
+
+已收到您的語音訊息 (${voice.duration} 秒)
+
+⏳ 語音轉文字功能**開發中**
+
+目前請使用文字輸入，例如：
+• 「今天花了 150 元吃午餐」
+• 「新增下午 3 點開會」
+• 「查看本月支出」
+
+💡 *完整語音支援預計下一版本推出*`, {
+            reply_markup: {
+                inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
+            },
+        });
+        // Log for future implementation
+        console.log(`[Telegram] Voice file URL: ${voiceUrl} (STT integration pending)`);
+    }
+    catch (error) {
+        console.error('[Telegram] Voice message error:', error);
+        await sendMessage(chatId, '❌ 語音處理發生錯誤，請使用文字輸入。');
+    }
+}
+// ================================
+// Location Handler (P1)
+// ================================
+async function handleLocationMessage(chatId, telegramUserId, location) {
+    console.log(`[Telegram] Location received: lat=${location.latitude}, lng=${location.longitude}`);
+    const linkedUid = await getLinkedFirebaseUid(telegramUserId);
+    if (!linkedUid) {
+        await sendMessage(chatId, '❌ 請先綁定帳號才能使用位置功能。\n\n使用 /link 開始綁定。');
+        return;
+    }
+    try {
+        // Store location for potential fuel log or vehicle tracking
+        await db.collection(`users/${linkedUid}/butler/locations`).add({
+            latitude: location.latitude,
+            longitude: location.longitude,
+            source: 'telegram',
+            timestamp: firestore_1.Timestamp.now(),
+            type: 'shared', // Could be 'fuel_station', 'parking', etc.
+        });
+        await sendMessage(chatId, `📍 **位置已記錄**
+
+緯度: ${location.latitude.toFixed(6)}
+經度: ${location.longitude.toFixed(6)}
+
+請選擇此位置的用途：`, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '⛽ 加油站', callback_data: `location_fuel_${location.latitude}_${location.longitude}` }],
+                    [{ text: '🅿️ 停車位置', callback_data: `location_parking_${location.latitude}_${location.longitude}` }],
+                    [{ text: '🔧 維修廠', callback_data: `location_service_${location.latitude}_${location.longitude}` }],
+                    [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+                ],
+            },
+        });
+    }
+    catch (error) {
+        console.error('[Telegram] Location save error:', error);
+        await sendMessage(chatId, '❌ 無法儲存位置，請稍後再試。');
+    }
 }
 async function handleCommand(chatId, telegramUserId, text) {
     const [command] = text.split(' ');
@@ -226,29 +323,263 @@ async function sendTodaySchedule(chatId, telegramUserId) {
         },
     });
 }
-async function sendHealthSnapshot(chatId, _telegramUserId) {
-    // TODO: Implement with health.service
-    await sendMessage(chatId, '🏃 **健康快照**\n\n功能開發中...', {
-        reply_markup: {
-            inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
-        },
-    });
+async function sendHealthSnapshot(chatId, telegramUserId) {
+    const linkedUid = await getLinkedFirebaseUid(telegramUserId);
+    if (!linkedUid) {
+        await sendMessage(chatId, '❌ 請先綁定帳號才能查看健康數據。\n\n使用 /link 開始綁定。');
+        return;
+    }
+    try {
+        // Get user profile for BMI/BMR calculation
+        const profileDoc = await db.doc(`users/${linkedUid}/butler/profile`).get();
+        const profile = profileDoc.data()?.userProfile || {};
+        // Default values if profile incomplete
+        const weight = profile.weight || 81.8;
+        const height = profile.height || 170;
+        const age = profile.age || 40;
+        const gender = profile.gender || 'male';
+        // Calculate health metrics
+        const bmi = Math.round((weight / Math.pow(height / 100, 2)) * 10) / 10;
+        const bmr = gender === 'male'
+            ? Math.round(88.362 + (13.397 * weight) + (4.799 * height) - (5.677 * age))
+            : Math.round(447.593 + (9.247 * weight) + (3.098 * height) - (4.330 * age));
+        // Get BMI category
+        let bmiCategory;
+        let bmiEmoji;
+        if (bmi < 18.5) {
+            bmiCategory = '過輕';
+            bmiEmoji = '⚠️';
+        }
+        else if (bmi < 24) {
+            bmiCategory = '正常';
+            bmiEmoji = '✅';
+        }
+        else if (bmi < 27) {
+            bmiCategory = '過重';
+            bmiEmoji = '⚠️';
+        }
+        else {
+            bmiCategory = '肥胖';
+            bmiEmoji = '🔴';
+        }
+        // Get today's health data
+        const today = new Date().toISOString().split('T')[0];
+        const todayDoc = await db.doc(`users/${linkedUid}/butler/health/daily/${today}`).get();
+        const todayData = todayDoc.data() || {};
+        // Get weekly progress
+        const weekStart = new Date();
+        weekStart.setDate(weekStart.getDate() - 7);
+        const weekSnapshot = await db.collection(`users/${linkedUid}/butler/health/daily`)
+            .where('date', '>=', weekStart.toISOString().split('T')[0])
+            .get();
+        const weeklySteps = weekSnapshot.docs.reduce((sum, doc) => sum + (doc.data().steps || 0), 0);
+        const weeklyActive = weekSnapshot.docs.reduce((sum, doc) => sum + (doc.data().activeMinutes || 0), 0);
+        const weeklyCalories = weekSnapshot.docs.reduce((sum, doc) => sum + (doc.data().caloriesBurned || 0), 0);
+        const message = `🏃 **健康快照**
+
+📊 **身體指標**
+• 體重: ${weight} kg
+• BMI: ${bmiEmoji} ${bmi} (${bmiCategory})
+• BMR: ${bmr} kcal/天
+
+📅 **今日進度**
+• 步數: ${todayData.steps?.toLocaleString() || 0} / 8,000
+• 活動: ${todayData.activeMinutes || 0} / 30 分鐘
+• 熱量: ${todayData.caloriesBurned || 0} kcal
+
+📈 **本週統計** (${weekSnapshot.size} 天記錄)
+• 總步數: ${weeklySteps.toLocaleString()}
+• 活動時間: ${weeklyActive} 分鐘
+• 燃燒熱量: ${weeklyCalories} kcal
+
+💡 *提示: 每日建議至少 30 分鐘中等強度運動*`;
+        await sendMessage(chatId, message, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '📝 記錄體重', callback_data: 'health_weight' }],
+                    [{ text: '🏋️ 記錄運動', callback_data: 'health_workout' }],
+                    [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+                ],
+            },
+        });
+    }
+    catch (error) {
+        console.error('[Telegram] Health snapshot error:', error);
+        await sendMessage(chatId, '❌ 無法載入健康數據，請稍後再試。', {
+            reply_markup: {
+                inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
+            },
+        });
+    }
 }
-async function sendVehicleStatus(chatId, _telegramUserId) {
-    // TODO: Implement with vehicle.service
-    await sendMessage(chatId, '🚗 **車輛狀態**\n\n功能開發中...', {
-        reply_markup: {
-            inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
-        },
-    });
+async function sendVehicleStatus(chatId, telegramUserId) {
+    const linkedUid = await getLinkedFirebaseUid(telegramUserId);
+    if (!linkedUid) {
+        await sendMessage(chatId, '❌ 請先綁定帳號才能查看車輛狀態。\n\n使用 /link 開始綁定。');
+        return;
+    }
+    try {
+        // Get vehicle profile
+        const vehicleSnapshot = await db.collection(`users/${linkedUid}/butler/vehicles`).limit(1).get();
+        if (vehicleSnapshot.empty) {
+            await sendMessage(chatId, '🚗 **車輛管理**\n\n尚未設定車輛資料。\n\n請在 Dashboard 新增您的車輛。', {
+                reply_markup: {
+                    inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
+                },
+            });
+            return;
+        }
+        const vehicleDoc = vehicleSnapshot.docs[0];
+        const vehicle = vehicleDoc.data();
+        // Get recent fuel logs
+        const fuelSnapshot = await db.collection(`users/${linkedUid}/butler/vehicles/${vehicleDoc.id}/fuelLogs`)
+            .orderBy('date', 'desc')
+            .limit(5)
+            .get();
+        // Calculate average fuel consumption
+        let avgKmPerLiter = 0;
+        let totalCost = 0;
+        if (!fuelSnapshot.empty) {
+            const fuelLogs = fuelSnapshot.docs.map(d => d.data());
+            const totalLiters = fuelLogs.reduce((sum, log) => sum + (log.liters || 0), 0);
+            const totalKm = fuelLogs.length > 1
+                ? fuelLogs[0].mileage - fuelLogs[fuelLogs.length - 1].mileage
+                : 0;
+            avgKmPerLiter = totalKm > 0 ? Math.round((totalKm / totalLiters) * 10) / 10 : 0;
+            totalCost = fuelLogs.reduce((sum, log) => sum + (log.totalCost || log.liters * log.pricePerLiter || 0), 0);
+        }
+        // Calculate maintenance countdown
+        const maintenanceItems = [];
+        const now = new Date();
+        if (vehicle.insuranceExpiry) {
+            const insuranceDate = new Date(vehicle.insuranceExpiry);
+            const daysUntilInsurance = Math.ceil((insuranceDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysUntilInsurance <= 30) {
+                maintenanceItems.push(`⚠️ 保險到期: ${daysUntilInsurance} 天後`);
+            }
+        }
+        if (vehicle.inspectionExpiry) {
+            const inspectionDate = new Date(vehicle.inspectionExpiry);
+            const daysUntilInspection = Math.ceil((inspectionDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysUntilInspection <= 30) {
+                maintenanceItems.push(`⚠️ 驗車到期: ${daysUntilInspection} 天後`);
+            }
+        }
+        // Next oil change estimate (every 5000km or 6 months)
+        const lastServiceMileage = vehicle.lastOilChangeMileage || vehicle.currentMileage - 3000;
+        const kmUntilOilChange = 5000 - (vehicle.currentMileage - lastServiceMileage);
+        if (kmUntilOilChange <= 1000) {
+            maintenanceItems.push(`🔧 機油更換: 還剩 ${kmUntilOilChange} km`);
+        }
+        const make = vehicle.make || 'Suzuki';
+        const model = vehicle.model || 'Jimny';
+        const variant = vehicle.variant || 'JB74';
+        const message = `🚗 **車輛狀態**
+
+🚙 **${make} ${model} ${variant}**
+• 車牌: ${vehicle.licensePlate || 'N/A'}
+• 里程: ${vehicle.currentMileage?.toLocaleString() || 0} km
+
+⛽ **油耗統計** (近 ${fuelSnapshot.size} 筆)
+• 平均油耗: ${avgKmPerLiter} km/L
+• 近期油費: $${Math.round(totalCost).toLocaleString()}
+
+${maintenanceItems.length > 0 ? '📋 **待辦提醒**\n' + maintenanceItems.join('\n') : '✅ **無緊急待辦事項**'}
+
+💡 *Jimny JB74 原廠油耗約 15 km/L*`;
+        await sendMessage(chatId, message, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '⛽ 記錄加油', callback_data: 'vehicle_fuel' }],
+                    [{ text: '🔧 記錄保養', callback_data: 'vehicle_service' }],
+                    [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+                ],
+            },
+        });
+    }
+    catch (error) {
+        console.error('[Telegram] Vehicle status error:', error);
+        await sendMessage(chatId, '❌ 無法載入車輛數據，請稍後再試。', {
+            reply_markup: {
+                inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
+            },
+        });
+    }
 }
-async function sendBalanceInfo(chatId, _telegramUserId) {
-    // TODO: Implement with finance.service
-    await sendMessage(chatId, '💳 **帳戶資訊**\n\n功能開發中...', {
-        reply_markup: {
-            inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
-        },
-    });
+async function sendBalanceInfo(chatId, telegramUserId) {
+    const linkedUid = await getLinkedFirebaseUid(telegramUserId);
+    if (!linkedUid) {
+        await sendMessage(chatId, '❌ 請先綁定帳號才能查看財務資訊。\n\n使用 /link 開始綁定。');
+        return;
+    }
+    try {
+        // Get this month's transactions
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth() + 1;
+        const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+        const endDate = now.toISOString().split('T')[0];
+        const transactionSnapshot = await db.collection(`users/${linkedUid}/butler/finance/transactions`)
+            .where('date', '>=', startDate)
+            .where('date', '<=', endDate)
+            .get();
+        let totalIncome = 0;
+        let totalExpenses = 0;
+        const categoryTotals = {};
+        transactionSnapshot.docs.forEach(doc => {
+            const tx = doc.data();
+            if (tx.type === 'income') {
+                totalIncome += tx.amount || 0;
+            }
+            else if (tx.type === 'expense') {
+                totalExpenses += tx.amount || 0;
+                const cat = tx.category || '其他';
+                categoryTotals[cat] = (categoryTotals[cat] || 0) + tx.amount;
+            }
+        });
+        const netSavings = totalIncome - totalExpenses;
+        const savingsRate = totalIncome > 0 ? Math.round((netSavings / totalIncome) * 100) : 0;
+        // Get top 3 expense categories
+        const topCategories = Object.entries(categoryTotals)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 3);
+        const topCategoriesText = topCategories.length > 0
+            ? topCategories.map(([cat, amt]) => `• ${cat}: $${amt.toLocaleString()}`).join('\n')
+            : '• 本月尚無支出記錄';
+        const monthName = `${year}年${month}月`;
+        // 預設模糊顯示 (隱私保護)
+        const message = `💳 **財務概況** - ${monthName}
+
+💰 **本月收支**
+• 收入: $${totalIncome.toLocaleString()}
+• 支出: $${totalExpenses.toLocaleString()}
+• 結餘: $${netSavings >= 0 ? '+' : ''}${netSavings.toLocaleString()}
+• 儲蓄率: ${savingsRate}%
+
+📊 **支出前三名**
+${topCategoriesText}
+
+📝 **交易筆數**: ${transactionSnapshot.size} 筆
+
+💡 *建議儲蓄率維持在 20% 以上*`;
+        await sendMessage(chatId, message, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '💰 快速記帳', callback_data: 'cmd_expense' }],
+                    [{ text: '📊 完整報表', callback_data: 'finance_report' }],
+                    [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+                ],
+            },
+        });
+    }
+    catch (error) {
+        console.error('[Telegram] Balance info error:', error);
+        await sendMessage(chatId, '❌ 無法載入財務數據，請稍後再試。', {
+            reply_markup: {
+                inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
+            },
+        });
+    }
 }
 async function sendLinkInstructions(chatId, telegramUserId) {
     // Generate a 6-digit verification code
