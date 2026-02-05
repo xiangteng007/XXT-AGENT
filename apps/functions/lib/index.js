@@ -4,7 +4,7 @@
  * Firebase Cloud Functions Entry Point
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.handleButlerWebhook = exports.handleButlerApi = exports.handleCleanup = exports.handleWorker = exports.handleWebhook = exports.butlerWebhook = exports.butlerApi = exports.lineCleanupScheduled = exports.lineCleanup = exports.lineWorkerScheduled = exports.lineWorker = exports.lineWebhook = void 0;
+exports.handleTelegramWebhook = exports.handleButlerWebhook = exports.handleButlerApi = exports.handleCleanup = exports.handleWorker = exports.handleWebhook = exports.telegramWebhook = exports.butlerWebhook = exports.butlerApi = exports.lineCleanupScheduled = exports.lineCleanup = exports.lineWorkerScheduled = exports.lineWorker = exports.lineWebhook = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const v2_1 = require("firebase-functions/v2");
@@ -100,6 +100,18 @@ exports.butlerWebhook = (0, https_1.onRequest)({
     invoker: 'public',
     memory: '256MiB',
 }, butler_webhook_handler_1.handleButlerWebhook);
+/**
+ * Telegram Bot Webhook Endpoint
+ * Handles incoming updates from Telegram Bot API
+ */
+const telegram_webhook_handler_1 = require("./handlers/telegram-webhook.handler");
+Object.defineProperty(exports, "handleTelegramWebhook", { enumerable: true, get: function () { return telegram_webhook_handler_1.handleTelegramWebhook; } });
+exports.telegramWebhook = (0, https_1.onRequest)({
+    cors: false,
+    invoker: 'public',
+    memory: '256MiB',
+    timeoutSeconds: 30,
+}, telegram_webhook_handler_1.handleTelegramWebhook);
 // Auth triggers - temporarily disabled until Firebase Auth is enabled in project
 // To re-enable: uncomment and ensure Firebase Auth is enabled in the GCP project
 // export { onUserCreated } from './triggers/auth.trigger';

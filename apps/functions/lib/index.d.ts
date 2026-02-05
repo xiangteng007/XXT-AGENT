@@ -35,5 +35,11 @@ export declare const butlerApi: import("firebase-functions/v2/https").HttpsFunct
  * Butler LINE Webhook Endpoint
  */
 export declare const butlerWebhook: import("firebase-functions/v2/https").HttpsFunction;
-export { handleWebhook, handleWorker, handleCleanup, handleButlerApi, handleButlerWebhook };
+/**
+ * Telegram Bot Webhook Endpoint
+ * Handles incoming updates from Telegram Bot API
+ */
+import { handleTelegramWebhook } from './handlers/telegram-webhook.handler';
+export declare const telegramWebhook: import("firebase-functions/v2/https").HttpsFunction;
+export { handleWebhook, handleWorker, handleCleanup, handleButlerApi, handleButlerWebhook, handleTelegramWebhook };
 //# sourceMappingURL=index.d.ts.map

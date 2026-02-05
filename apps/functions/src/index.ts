@@ -127,9 +127,26 @@ export const butlerWebhook = onRequest(
     handleButlerWebhook as AnyHandler
 );
 
+/**
+ * Telegram Bot Webhook Endpoint
+ * Handles incoming updates from Telegram Bot API
+ */
+import { handleTelegramWebhook } from './handlers/telegram-webhook.handler';
+
+export const telegramWebhook = onRequest(
+    {
+        cors: false,
+        invoker: 'public',
+        memory: '256MiB',
+        timeoutSeconds: 30,
+    },
+    handleTelegramWebhook as AnyHandler
+);
+
 // Export handlers for testing
-export { handleWebhook, handleWorker, handleCleanup, handleButlerApi, handleButlerWebhook };
+export { handleWebhook, handleWorker, handleCleanup, handleButlerApi, handleButlerWebhook, handleTelegramWebhook };
 
 // Auth triggers - temporarily disabled until Firebase Auth is enabled in project
 // To re-enable: uncomment and ensure Firebase Auth is enabled in the GCP project
 // export { onUserCreated } from './triggers/auth.trigger';
+
