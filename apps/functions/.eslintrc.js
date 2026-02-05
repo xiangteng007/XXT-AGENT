@@ -36,5 +36,7 @@ module.exports = {
         'comma-dangle': ['error', 'always-multiline'],
         'object-curly-spacing': ['error', 'always'],
         'semi': ['error', 'always'],
+        '@typescript-eslint/no-var-requires': 'warn',
+        '@typescript-eslint/no-require-imports': 'warn',
     },
 };

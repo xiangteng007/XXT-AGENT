@@ -57,7 +57,7 @@ export function rateLimiter(options?: {
         try {
             const db = getFirestore();
             const identifier = getIdentifier(req);
-            const docId = `${keyPrefix}${identifier}`.replace(/[\/\.\#\$\[\]]/g, '_');
+            const docId = `${keyPrefix}${identifier}`.replace(/[/.#$[\]]/g, '_');
             const docRef = db.collection(RATE_LIMIT_COLLECTION).doc(docId);
 
             const now = Timestamp.now();
@@ -83,7 +83,7 @@ export function rateLimiter(options?: {
                     return { 
                         allowed: false, 
                         remaining: 0,
-                        retryAfter: Math.ceil((data.windowStart.toMillis() + windowMs - now.toMillis()) / 1000)
+                        retryAfter: Math.ceil((data.windowStart.toMillis() + windowMs - now.toMillis()) / 1000),
                     };
                 }
 

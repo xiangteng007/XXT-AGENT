@@ -13,7 +13,7 @@
 import * as admin from 'firebase-admin';
 import { 
     notificationService, 
-    NotificationTemplates
+    NotificationTemplates,
 } from './notification.service';
 import { vehicleService } from './vehicle.service';
 import { financeService } from './finance.service';

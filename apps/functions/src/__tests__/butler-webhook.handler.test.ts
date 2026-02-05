@@ -122,7 +122,7 @@ describe('Butler Webhook Handler', () => {
                 { data: '幫助', expectedKeyword: '幫助' },
             ];
             
-            richMenuActions.forEach(({ data, expectedKeyword }) => {
+            richMenuActions.forEach(({ data, expectedKeyword: _expectedKeyword }) => {
                 expect(data.length).toBeGreaterThan(0);
             });
         });

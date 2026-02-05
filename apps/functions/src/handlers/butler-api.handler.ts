@@ -98,7 +98,7 @@ export async function handleButlerApi(req: Request, res: Response): Promise<void
 // Profile Handler
 // ================================
 
-async function handleProfile(req: Request, res: Response, uid: string, action: string): Promise<void> {
+async function handleProfile(req: Request, res: Response, uid: string, _action: string): Promise<void> {
     if (req.method === 'GET') {
         const profile = await butlerService.getProfile(uid);
         res.json(profile);

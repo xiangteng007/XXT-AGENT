@@ -210,7 +210,7 @@ export function withCache<T>(
  * Sanitize key for Firestore document ID
  */
 function sanitizeKey(key: string): string {
-    return key.replace(/[\/\.\#\$\[\]]/g, '_').substring(0, 500);
+    return key.replace(/[/.#$[\]]/g, '_').substring(0, 500);
 }
 
 /**

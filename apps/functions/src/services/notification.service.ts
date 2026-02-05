@@ -423,7 +423,7 @@ export const NotificationTemplates = {
 
     // Schedule
     eventReminder: (title: string, time: string, minutesBefore: number) => ({
-        title: `活動提醒 📅`,
+        title: '活動提醒 📅',
         message: `${title} 將於 ${minutesBefore} 分鐘後開始 (${time})`,
     }),
 

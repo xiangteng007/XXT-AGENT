@@ -30,7 +30,7 @@ export type {
     DailySchedule, 
     TimeSlot,
     ReminderNotification,
-    WeekOverview 
+    WeekOverview, 
 } from '../schedule.service';
 
 // Business
@@ -43,5 +43,5 @@ export type {
     Client, 
     BusinessMetrics,
     ProjectTimelineItem,
-    BusinessDashboard 
+    BusinessDashboard, 
 } from '../business.service';

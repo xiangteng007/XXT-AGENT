@@ -8,7 +8,7 @@ export { createRSSAdapter } from './rss.adapter';
 export { 
     createFacebookAdapter, 
     createInstagramAdapter, 
-    createThreadsAdapter 
+    createThreadsAdapter, 
 } from './meta.adapter';
 
 import { SocialAdapter } from '../../types/social.types';
