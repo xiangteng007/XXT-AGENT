@@ -11,7 +11,6 @@ import { handleWorker } from './handlers/worker.handler';
 import { handleCleanup } from './handlers/cleanup.handler';
 import { handleButlerApi } from './handlers/butler-api.handler';
 import { handleButlerWebhook } from './handlers/butler-webhook.handler';
-import type { Request, Response } from 'express';
 
 // Set global options for all functions
 setGlobalOptions({
@@ -21,44 +20,35 @@ setGlobalOptions({
     maxInstances: 10,
 });
 
+// Type assertion helper for cross-library type compatibility
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyHandler = any;
+
 /**
  * LINE Webhook Endpoint
- * 
- * This function receives webhook events from LINE and enqueues jobs.
- * Fast ACK design - does not wait for Notion writes.
- * 
- * @example
- * POST https://asia-east1-{project-id}.cloudfunctions.net/lineWebhook
  */
 export const lineWebhook = onRequest(
     {
-        cors: false, // LINE doesn't need CORS
-        invoker: 'public', // Allow public access for LINE webhook
+        cors: false,
+        invoker: 'public',
     },
-    handleWebhook
+    handleWebhook as AnyHandler
 );
 
 /**
- * Worker Endpoint (HTTP trigger for testing/manual invocation)
- * 
- * Processes queued jobs and writes to Notion.
- * 
- * @example
- * POST https://asia-east1-{project-id}.cloudfunctions.net/lineWorker
+ * Worker Endpoint
  */
 export const lineWorker = onRequest(
     {
         cors: false,
-        memory: '512MiB', // Worker may need more memory
-        timeoutSeconds: 300, // 5 minutes for batch processing
+        memory: '512MiB',
+        timeoutSeconds: 300,
     },
-    handleWorker
+    handleWorker as AnyHandler
 );
 
 /**
  * Scheduled Worker
- * 
- * Runs every minute to process queued jobs.
  */
 export const lineWorkerScheduled = onSchedule(
     {
@@ -68,36 +58,31 @@ export const lineWorkerScheduled = onSchedule(
         timeoutSeconds: 300,
     },
     async () => {
-        const mockReq = { method: 'POST', headers: {} } as unknown as Request;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mockReq = { method: 'POST', headers: {} } as any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const mockRes = {
             status: () => mockRes,
             json: (data: unknown) => console.log('[Scheduled Worker]', data),
-        } as unknown as Response;
+        } as any;
         await handleWorker(mockReq, mockRes);
     }
 );
 
 /**
- * Cleanup Endpoint (HTTP trigger for manual invocation)
- * 
- * Cleans up old jobs, logs, and images.
- * 
- * @example
- * POST https://asia-east1-{project-id}.cloudfunctions.net/lineCleanup
+ * Cleanup Endpoint
  */
 export const lineCleanup = onRequest(
     {
         cors: false,
         memory: '512MiB',
-        timeoutSeconds: 540, // 9 minutes
+        timeoutSeconds: 540,
     },
-    handleCleanup
+    handleCleanup as AnyHandler
 );
 
 /**
  * Scheduled Cleanup
- * 
- * Runs daily at 3:00 AM to clean up old data.
  */
 export const lineCleanupScheduled = onSchedule(
     {
@@ -107,39 +92,31 @@ export const lineCleanupScheduled = onSchedule(
         timeoutSeconds: 540,
     },
     async () => {
-        const mockReq = { method: 'POST', headers: {} } as unknown as Request;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mockReq = { method: 'POST', headers: {} } as any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const mockRes = {
             status: () => mockRes,
             json: (data: unknown) => console.log('[Scheduled Cleanup]', data),
-        } as unknown as Response;
+        } as any;
         await handleCleanup(mockReq, mockRes);
     }
 );
 
 /**
  * Butler API Endpoint
- * 
- * Personal Butler System RESTful API.
- * 
- * @example
- * GET https://asia-east1-{project-id}.cloudfunctions.net/butlerApi/health/today
  */
 export const butlerApi = onRequest(
     {
-        cors: true, // Allow cross-origin requests
+        cors: true,
         memory: '512MiB',
         timeoutSeconds: 60,
     },
-    handleButlerApi
+    handleButlerApi as AnyHandler
 );
 
 /**
  * Butler LINE Webhook Endpoint
- * 
- * Personal Butler (小秘書) LINE Bot webhook handler.
- * 
- * @example
- * POST https://asia-east1-{project-id}.cloudfunctions.net/butlerWebhook
  */
 export const butlerWebhook = onRequest(
     {
@@ -147,7 +124,7 @@ export const butlerWebhook = onRequest(
         invoker: 'public',
         memory: '256MiB',
     },
-    handleButlerWebhook
+    handleButlerWebhook as AnyHandler
 );
 
 // Export handlers for testing

@@ -1,0 +1,1 @@
+{"version":3,"file":"social-dispatcher.service.d.ts","sourceRoot":"","sources":["../../src/services/social-dispatcher.service.ts"],"names":[],"mappings":"AAAA;;;;;GAKG;AAeH;;GAEG;AACH,wBAAsB,yBAAyB,IAAI,OAAO,CAAC;IACvD,UAAU,EAAE,MAAM,CAAC;IACnB,OAAO,EAAE,MAAM,CAAC;IAChB,MAAM,EAAE,MAAM,EAAE,CAAC;CACpB,CAAC,CAuCD;AAsCD;;GAEG;AACH,wBAAsB,qBAAqB,IAAI,OAAO,CAAC,MAAM,EAAE,CAAC,CAG/D"}
