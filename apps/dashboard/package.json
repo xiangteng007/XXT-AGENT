@@ -1,5 +1,5 @@
 {
-    "name": "xxt-frontend",
+    "name": "@xxt-agent/dashboard",
     "version": "1.0.0",
     "private": true,
     "scripts": {

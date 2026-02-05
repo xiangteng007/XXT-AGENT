@@ -1,7 +1,7 @@
 {
-    "name": "senteng-linebot-notion-functions",
+    "name": "@xxt-agent/functions",
     "version": "1.0.0",
-    "description": "LINE to Notion multi-tenant platform - Cloud Functions",
+    "description": "XXT-AGENT Personal Butler System - Cloud Functions",
     "main": "lib/index.js",
     "scripts": {
         "build": "tsc",
