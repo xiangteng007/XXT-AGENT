@@ -152,3 +152,6 @@ export const butlerWebhook = onRequest(
 
 // Export handlers for testing
 export { handleWebhook, handleWorker, handleCleanup, handleButlerApi, handleButlerWebhook };
+
+// Auth triggers - auto-provision superadmin on first login
+export { onUserCreated } from './triggers/auth.trigger';
