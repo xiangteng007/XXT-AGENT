@@ -87,7 +87,9 @@ export default function MarketDashboardPage() {
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <BarChart3 className="h-6 w-6" />
+                        <div className="p-2 rounded-xl bg-gradient-to-br from-gold/20 to-gold/5 border border-gold/20">
+                            <BarChart3 className="h-6 w-6 text-gold" />
+                        </div>
                         市場監控
                     </h1>
                     <div className="flex items-center gap-2 text-muted-foreground">
@@ -115,9 +117,9 @@ export default function MarketDashboardPage() {
 
             {/* Indices */}
             {summary?.indices && summary.indices.length > 0 && (
-                <div className="grid gap-3 md:grid-cols-4">
+                <div className="grid gap-3 md:grid-cols-4 animate-stagger">
                     {summary.indices.slice(0, 4).map((idx) => (
-                        <Card key={idx.name}>
+                        <Card key={idx.name} className="card-glow card-lift cursor-pointer">
                             <CardContent className="pt-4">
                                 <div className="flex items-center justify-between">
                                     <span className="font-medium">{idx.name}</span>
@@ -138,40 +140,55 @@ export default function MarketDashboardPage() {
             )}
 
             {/* Stats */}
-            <div className="grid gap-4 md:grid-cols-3">
-                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">自選標的</CardTitle>
-                        <Star className="h-4 w-4 text-blue-600" />
+            <div className="grid gap-4 md:grid-cols-3 animate-stagger">
+                {/* Watchlist Card - Blue accent */}
+                <Card className="bg-card border-blue-500/30 relative overflow-hidden card-glow card-lift cursor-pointer">
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent pointer-events-none" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">自選標的</CardTitle>
+                        <div className="p-2 rounded-lg bg-blue-500/20">
+                            <Star className="h-4 w-4 text-blue-400" />
+                        </div>
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-blue-700 dark:text-blue-300">
+                    <CardContent className="relative">
+                        <div className="text-4xl font-bold text-foreground tracking-tight">
                             {watchlist.length || summary?.watchlistCount || 0}
                         </div>
+                        <p className="text-xs text-blue-400 mt-1">追蹤中的標的數量</p>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950 dark:to-amber-900">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">今日訊號</CardTitle>
-                        <Zap className="h-4 w-4 text-amber-600" />
+                {/* Signals Card - Gold accent */}
+                <Card className="bg-card border-gold/30 relative overflow-hidden card-glow card-lift cursor-pointer">
+                    <div className="absolute inset-0 bg-gradient-to-br from-gold/10 to-transparent pointer-events-none" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">今日訊號</CardTitle>
+                        <div className="p-2 rounded-lg bg-gold/20">
+                            <Zap className="h-4 w-4 text-gold" />
+                        </div>
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-amber-700 dark:text-amber-300">
+                    <CardContent className="relative">
+                        <div className="text-4xl font-bold text-foreground tracking-tight">
                             {signals.length || summary?.signalsToday || 0}
                         </div>
+                        <p className="text-xs text-gold mt-1">交易訊號數量</p>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">活躍警報</CardTitle>
-                        <Bell className="h-4 w-4 text-purple-600" />
+                {/* Alerts Card - Purple accent */}
+                <Card className="bg-card border-purple-500/30 relative overflow-hidden card-glow card-lift cursor-pointer">
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-transparent pointer-events-none" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">活躍警報</CardTitle>
+                        <div className="p-2 rounded-lg bg-purple-500/20">
+                            <Bell className="h-4 w-4 text-purple-400" />
+                        </div>
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-purple-700 dark:text-purple-300">
+                    <CardContent className="relative">
+                        <div className="text-4xl font-bold text-foreground tracking-tight">
                             {summary?.alertsCount || 0}
                         </div>
+                        <p className="text-xs text-purple-400 mt-1">價格警報數量</p>
                     </CardContent>
                 </Card>
             </div>

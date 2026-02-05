@@ -80,9 +80,14 @@ export default function SocialDashboardPage() {
         <div className="space-y-6">
             {/* Header */}
             <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-2xl font-bold">社群監控</h1>
-                    <p className="text-muted-foreground">即時社群動態與情緒分析</p>
+                <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-gradient-to-br from-gold/20 to-gold/5 border border-gold/20">
+                        <MessageSquare className="h-6 w-6 text-gold" />
+                    </div>
+                    <div>
+                        <h1 className="text-2xl font-bold">社群監控</h1>
+                        <p className="text-muted-foreground">即時社群動態與情緒分析</p>
+                    </div>
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" asChild>
@@ -101,70 +106,86 @@ export default function SocialDashboardPage() {
             </div>
 
             {/* Stats Cards */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">今日貼文</CardTitle>
-                        <MessageSquare className="h-4 w-4 text-blue-600" />
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 animate-stagger">
+                {/* 今日貼文 - Blue accent */}
+                <Card className="bg-card border-blue-500/30 relative overflow-hidden card-glow card-lift cursor-pointer">
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent pointer-events-none" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">今日貼文</CardTitle>
+                        <div className="p-2 rounded-lg bg-blue-500/20">
+                            <MessageSquare className="h-4 w-4 text-blue-400" />
+                        </div>
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-blue-700 dark:text-blue-300">
+                    <CardContent className="relative">
+                        <div className="text-4xl font-bold text-foreground tracking-tight">
                             {summary?.todayPosts ?? 0}
                         </div>
                         <div className="flex items-center gap-1 mt-1">
                             {getTrendIcon(summary?.postsTrend ?? 0)}
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-xs text-blue-400">
                                 {formatTrend(summary?.postsTrend ?? 0)} vs 昨日
                             </span>
                         </div>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-pink-50 to-pink-100 dark:from-pink-950 dark:to-pink-900 border-pink-200 dark:border-pink-800">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">總互動數</CardTitle>
-                        <Heart className="h-4 w-4 text-pink-600" />
+                {/* 總互動數 - Pink accent */}
+                <Card className="bg-card border-pink-500/30 relative overflow-hidden card-glow card-lift cursor-pointer">
+                    <div className="absolute inset-0 bg-gradient-to-br from-pink-500/10 to-transparent pointer-events-none" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">總互動數</CardTitle>
+                        <div className="p-2 rounded-lg bg-pink-500/20">
+                            <Heart className="h-4 w-4 text-pink-400" />
+                        </div>
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-pink-700 dark:text-pink-300">
+                    <CardContent className="relative">
+                        <div className="text-4xl font-bold text-foreground tracking-tight">
                             {(summary?.todayEngagement ?? 0).toLocaleString()}
                         </div>
                         <div className="flex items-center gap-1 mt-1">
                             {getTrendIcon(summary?.engagementTrend ?? 0)}
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-xs text-pink-400">
                                 {formatTrend(summary?.engagementTrend ?? 0)} vs 昨日
                             </span>
                         </div>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950 dark:to-amber-900 border-amber-200 dark:border-amber-800">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">今日警報</CardTitle>
-                        <Bell className="h-4 w-4 text-amber-600" />
+                {/* 今日警報 - Gold accent */}
+                <Card className="bg-card border-gold/30 relative overflow-hidden card-glow card-lift cursor-pointer">
+                    <div className="absolute inset-0 bg-gradient-to-br from-gold/10 to-transparent pointer-events-none" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">今日警報</CardTitle>
+                        <div className="p-2 rounded-lg bg-gold/20">
+                            <Bell className="h-4 w-4 text-gold" />
+                        </div>
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-amber-700 dark:text-amber-300">
+                    <CardContent className="relative">
+                        <div className="text-4xl font-bold text-foreground tracking-tight">
                             {summary?.todayAlerts ?? 0}
                         </div>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-gold">
                             需要關注的事件
                         </span>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950 dark:to-emerald-900 border-emerald-200 dark:border-emerald-800">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">整體情緒</CardTitle>
-                        {getSentimentIcon(sentimentSummary.overall)}
+                {/* 整體情緒 - Emerald accent */}
+                <Card className="bg-card border-emerald-500/30 relative overflow-hidden card-glow card-lift cursor-pointer">
+                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent pointer-events-none" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">整體情緒</CardTitle>
+                        <div className="p-2 rounded-lg bg-emerald-500/20">
+                            {getSentimentIcon(sentimentSummary.overall)}
+                        </div>
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-emerald-700 dark:text-emerald-300">
+                    <CardContent className="relative">
+                        <div className="text-4xl font-bold text-foreground tracking-tight">
                             {sentimentSummary.overall === 'positive' ? '正面' :
                                 sentimentSummary.overall === 'negative' ? '負面' :
                                     sentimentSummary.overall === 'mixed' ? '混合' : '中性'}
                         </div>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-emerald-400">
                             信心度 {(sentimentSummary.confidence * 100).toFixed(0)}%
                         </span>
                     </CardContent>

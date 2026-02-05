@@ -98,7 +98,7 @@ export default function OverviewPage() {
             </header>
 
             {/* Metrics Grid - International Layout */}
-            <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4 animate-stagger">
                 <MetricCard
                     title="每分鐘處理"
                     value={metrics?.pipeline.ingestPerMin ?? 0}
@@ -133,7 +133,7 @@ export default function OverviewPage() {
             {/* Two Column Premium Layout */}
             <section className="grid gap-6 lg:grid-cols-5">
                 {/* Severity Distribution - Compact */}
-                <Card className="lg:col-span-2 border-border/50 bg-card/50 backdrop-blur-sm">
+                <Card className="lg:col-span-2 border-border/50 bg-card/50 backdrop-blur-sm card-glow card-lift cursor-pointer">
                     <CardHeader className="pb-4">
                         <CardTitle className="text-base font-semibold flex items-center gap-2.5">
                             <div className="p-1.5 rounded-lg bg-gold/10">
@@ -173,7 +173,7 @@ export default function OverviewPage() {
                 </Card>
 
                 {/* Service Status - Enhanced */}
-                <Card className="lg:col-span-3 border-border/50 bg-card/50 backdrop-blur-sm">
+                <Card className="lg:col-span-3 border-border/50 bg-card/50 backdrop-blur-sm card-glow card-lift cursor-pointer">
                     <CardHeader className="pb-4">
                         <CardTitle className="text-base font-semibold flex items-center gap-2.5">
                             <div className="p-1.5 rounded-lg bg-gold/10">
@@ -211,7 +211,7 @@ export default function OverviewPage() {
             </section>
 
             {/* Events Timeline - Premium Design */}
-            <Card className="border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden">
+            <Card className="border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden card-glow">
                 <CardHeader className="flex flex-row items-center justify-between border-b border-border/50 bg-muted/20">
                     <CardTitle className="text-base font-semibold">最新事件</CardTitle>
                     <Link

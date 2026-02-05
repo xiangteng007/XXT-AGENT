@@ -101,6 +101,14 @@ const MarketIcon = () => (
     </svg>
 );
 
+const SparklesIcon = () => (
+    <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M12 3l1.09 3.26L16 8l-2.91 1.74L12 13l-1.09-3.26L8 8l2.91-1.74L12 3z" />
+        <path d="M5 17l.5 1.5L7 19l-1.5.5L5 21l-.5-1.5L3 19l1.5-.5L5 17z" />
+        <path d="M19 8l.5 1.5L21 10l-1.5.5L19 12l-.5-1.5L17 10l1.5-.5L19 8z" />
+    </svg>
+);
+
 const CloseIcon = () => (
     <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <line x1="18" y1="6" x2="6" y2="18" />
@@ -116,6 +124,7 @@ interface NavItem {
 
 const mainNav: NavItem[] = [
     { href: '/', label: '總覽', icon: <HomeIcon /> },
+    { href: '/butler', label: '個人管家', icon: <SparklesIcon /> },
     { href: '/events', label: '融合事件', icon: <TrendingIcon /> },
     { href: '/social', label: '社群監控', icon: <GlobeIcon /> },
     { href: '/news', label: '新聞監控', icon: <LogIcon /> },
@@ -126,6 +135,7 @@ const mainNav: NavItem[] = [
 
 const adminNav: NavItem[] = [
     { href: '/tenants', label: '租戶管理', icon: <UsersIcon /> },
+    { href: '/team', label: '團隊成員', icon: <UsersIcon /> },
     { href: '/rules', label: '規則設定', icon: <RulesIcon /> },
     { href: '/mappings', label: '關鍵字對應', icon: <MapIcon /> },
     { href: '/jobs', label: '排程任務', icon: <ListIcon /> },

@@ -97,7 +97,9 @@ export default function NewsDashboardPage() {
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <Newspaper className="h-6 w-6" />
+                        <div className="p-2 rounded-xl bg-gradient-to-br from-gold/20 to-gold/5 border border-gold/20">
+                            <Newspaper className="h-6 w-6 text-gold" />
+                        </div>
                         新聞監控
                     </h1>
                     <p className="text-muted-foreground">財經新聞即時追蹤與 AI 分析</p>
@@ -119,65 +121,81 @@ export default function NewsDashboardPage() {
             </div>
 
             {/* Stats Cards */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">今日新聞</CardTitle>
-                        <Newspaper className="h-4 w-4 text-blue-600" />
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 animate-stagger">
+                {/* 今日新聞 - Blue accent */}
+                <Card className="bg-card border-blue-500/30 relative overflow-hidden card-glow card-lift cursor-pointer">
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent pointer-events-none" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">今日新聞</CardTitle>
+                        <div className="p-2 rounded-lg bg-blue-500/20">
+                            <Newspaper className="h-4 w-4 text-blue-400" />
+                        </div>
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-blue-700 dark:text-blue-300">
+                    <CardContent className="relative">
+                        <div className="text-4xl font-bold text-foreground tracking-tight">
                             {summary?.todayArticles ?? 0}
                         </div>
                         <div className="flex items-center gap-1 mt-1">
                             {getTrendIcon(summary?.articlesTrend ?? 0)}
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-xs text-blue-400">
                                 {(summary?.articlesTrend ?? 0) >= 0 ? '+' : ''}{summary?.articlesTrend ?? 0}% vs 昨日
                             </span>
                         </div>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950 dark:to-red-900 border-red-200 dark:border-red-800">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">重大新聞</CardTitle>
-                        <AlertTriangle className="h-4 w-4 text-red-600" />
+                {/* 重大新聞 - Red accent */}
+                <Card className="bg-card border-red-500/30 relative overflow-hidden card-glow card-lift cursor-pointer">
+                    <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 to-transparent pointer-events-none" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">重大新聞</CardTitle>
+                        <div className="p-2 rounded-lg bg-red-500/20">
+                            <AlertTriangle className="h-4 w-4 text-red-400" />
+                        </div>
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-red-700 dark:text-red-300">
+                    <CardContent className="relative">
+                        <div className="text-4xl font-bold text-foreground tracking-tight">
                             {summary?.todayHighImpact ?? 0}
                         </div>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-red-400">
                             需要關注的重大事件
                         </span>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950 dark:to-emerald-900 border-emerald-200 dark:border-emerald-800">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">整體情緒</CardTitle>
-                        {summary?.overallSentiment && sentimentConfig[summary.overallSentiment]?.icon}
+                {/* 整體情緒 - Emerald accent */}
+                <Card className="bg-card border-emerald-500/30 relative overflow-hidden card-glow card-lift cursor-pointer">
+                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent pointer-events-none" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">整體情緒</CardTitle>
+                        <div className="p-2 rounded-lg bg-emerald-500/20">
+                            {summary?.overallSentiment && sentimentConfig[summary.overallSentiment]?.icon}
+                        </div>
                     </CardHeader>
-                    <CardContent>
-                        <div className={`text-3xl font-bold ${sentimentConfig[summary?.overallSentiment ?? 'neutral']?.color || ''}`}>
+                    <CardContent className="relative">
+                        <div className={`text-4xl font-bold ${sentimentConfig[summary?.overallSentiment ?? 'neutral']?.color || 'text-foreground'}`}>
                             {sentimentConfig[summary?.overallSentiment ?? 'neutral']?.label || '中性'}
                         </div>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-emerald-400">
                             情緒分數 {((summary?.sentimentScore ?? 0) * 100).toFixed(0)}
                         </span>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 border-purple-200 dark:border-purple-800">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">監控狀態</CardTitle>
-                        <Globe className="h-4 w-4 text-purple-600" />
+                {/* 監控狀態 - Purple accent */}
+                <Card className="bg-card border-purple-500/30 relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-transparent pointer-events-none" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">監控狀態</CardTitle>
+                        <div className="p-2 rounded-lg bg-purple-500/20">
+                            <Globe className="h-4 w-4 text-purple-400" />
+                        </div>
                     </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-purple-700 dark:text-purple-300">
+                    <CardContent className="relative">
+                        <div className="text-4xl font-bold text-foreground tracking-tight">
                             {summary?.activeSources ?? 0}
                         </div>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-purple-400">
                             個來源 / {summary?.activeAlerts ?? 0} 個警報
                         </span>
                     </CardContent>
