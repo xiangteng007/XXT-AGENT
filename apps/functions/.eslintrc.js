@@ -1,0 +1,40 @@
+module.exports = {
+    root: true,
+    env: {
+        es6: true,
+        node: true,
+    },
+    extends: [
+        'eslint:recommended',
+        'plugin:import/errors',
+        'plugin:import/warnings',
+        'plugin:import/typescript',
+        'plugin:@typescript-eslint/recommended',
+        'prettier',
+    ],
+    parser: '@typescript-eslint/parser',
+    parserOptions: {
+        project: ['tsconfig.eslint.json'],
+        sourceType: 'module',
+        tsconfigRootDir: __dirname,
+    },
+    ignorePatterns: [
+        '/lib/**/*',
+        '/node_modules/**/*',
+        '.eslintrc.js',
+        'jest.config.js',
+    ],
+    plugins: ['@typescript-eslint', 'import'],
+    rules: {
+        'import/no-unresolved': 'off',
+        'indent': 'off',
+        '@typescript-eslint/indent': 'off',
+        'quotes': ['error', 'single', { avoidEscape: true }],
+        '@typescript-eslint/no-explicit-any': 'warn',
+        '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+        'max-len': ['warn', { code: 120, ignoreStrings: true, ignoreTemplateLiterals: true }],
+        'comma-dangle': ['error', 'always-multiline'],
+        'object-curly-spacing': ['error', 'always'],
+        'semi': ['error', 'always'],
+    },
+};
