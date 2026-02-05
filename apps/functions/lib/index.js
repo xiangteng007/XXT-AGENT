@@ -106,11 +106,15 @@ exports.butlerWebhook = (0, https_1.onRequest)({
  */
 const telegram_webhook_handler_1 = require("./handlers/telegram-webhook.handler");
 Object.defineProperty(exports, "handleTelegramWebhook", { enumerable: true, get: function () { return telegram_webhook_handler_1.handleTelegramWebhook; } });
+const params_1 = require("firebase-functions/params");
+// Define secrets from Secret Manager
+const telegramBotToken = (0, params_1.defineSecret)('TELEGRAM_BOT_TOKEN');
 exports.telegramWebhook = (0, https_1.onRequest)({
     cors: false,
     invoker: 'public',
     memory: '256MiB',
     timeoutSeconds: 30,
+    secrets: [telegramBotToken],
 }, telegram_webhook_handler_1.handleTelegramWebhook);
 // Auth triggers - temporarily disabled until Firebase Auth is enabled in project
 // To re-enable: uncomment and ensure Firebase Auth is enabled in the GCP project

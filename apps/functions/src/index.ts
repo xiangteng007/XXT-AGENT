@@ -132,6 +132,10 @@ export const butlerWebhook = onRequest(
  * Handles incoming updates from Telegram Bot API
  */
 import { handleTelegramWebhook } from './handlers/telegram-webhook.handler';
+import { defineSecret } from 'firebase-functions/params';
+
+// Define secrets from Secret Manager
+const telegramBotToken = defineSecret('TELEGRAM_BOT_TOKEN');
 
 export const telegramWebhook = onRequest(
     {
@@ -139,6 +143,7 @@ export const telegramWebhook = onRequest(
         invoker: 'public',
         memory: '256MiB',
         timeoutSeconds: 30,
+        secrets: [telegramBotToken],
     },
     handleTelegramWebhook as AnyHandler
 );
