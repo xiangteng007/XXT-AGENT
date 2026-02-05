@@ -10,7 +10,7 @@ const config: Config = {
     theme: {
         extend: {
             colors: {
-                // Tactical Dark Theme - matching appshell.css
+                // Carbon Black Gold Theme - International Premium Design
                 background: "hsl(var(--background))",
                 foreground: "hsl(var(--foreground))",
                 card: {
@@ -44,12 +44,19 @@ const config: Config = {
                 border: "hsl(var(--border))",
                 input: "hsl(var(--input))",
                 ring: "hsl(var(--ring))",
-                // Severity colors
+                // Gold Palette
+                gold: {
+                    DEFAULT: "#D4AF37",
+                    dark: "#B8860B",
+                    light: "#F4D03F",
+                    muted: "#8B6914",
+                },
+                // Severity colors - Gold theme aligned
                 severity: {
-                    critical: "#ef4444",
-                    high: "#f59e0b",
-                    medium: "#6366f1",
-                    low: "#22c55e",
+                    critical: "#DC2626",
+                    high: "#FCD34D",
+                    medium: "#D4AF37",
+                    low: "#4ADE80",
                 },
             },
             borderRadius: {

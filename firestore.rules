@@ -145,6 +145,20 @@ service cloud.firestore {
     }
     
     // ========================
+    // Personal Butler System (users collection)
+    // ========================
+    match /users/{userId} {
+      // Users can only access their own data
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      
+      // Butler profile and subcollections
+      match /butler/{document=**} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow write: if isAuthenticated() && request.auth.uid == userId;
+      }
+    }
+    
+    // ========================
     // System config
     // ========================
     match /system/{docId} {

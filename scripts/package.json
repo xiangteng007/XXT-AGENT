@@ -1,16 +1,18 @@
-# This file tells npm that the scripts folder is a separate package
 {
-    "name": "line-notion-scripts",
+    "name": "xxt-agent-scripts",
     "type": "commonjs",
     "private": true,
     "scripts": {
-        "init": "npx ts-node init-firestore.ts"
+        "init": "npx ts-node init-firestore.ts",
+        "rich-menu": "npx ts-node setup-rich-menu.ts"
     },
     "devDependencies": {
+        "@types/node": "^20.0.0",
         "ts-node": "^10.9.2",
         "typescript": "^5.7.2"
     },
     "dependencies": {
-        "firebase-admin": "^12.7.0"
+        "firebase-admin": "^12.7.0",
+        "sharp": "^0.34.5"
     }
 }

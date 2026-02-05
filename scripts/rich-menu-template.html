@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>小秘書 Rich Menu - 2500x1686</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            width: 2500px;
+            height: 1686px;
+            overflow: hidden;
+            font-family: 'Noto Sans TC', sans-serif;
+        }
+        
+        .container {
+            width: 2500px;
+            height: 1686px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 8px;
+            padding: 8px;
+            background: linear-gradient(145deg, #0d0d1a 0%, #1a1a2e 50%, #0f0f23 100%);
+        }
+        
+        .button {
+            background: linear-gradient(160deg, rgba(255,215,0,0.06) 0%, rgba(25,25,45,0.98) 100%);
+            border: 3px solid rgba(255,215,0,0.35);
+            border-radius: 32px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+            box-shadow: 
+                0 12px 40px rgba(0,0,0,0.4),
+                inset 0 2px 0 rgba(255,255,255,0.08);
+        }
+        
+        .icon {
+            font-size: 180px;
+            line-height: 1;
+        }
+        
+        .label {
+            font-size: 72px;
+            font-weight: 700;
+            color: #ffffff;
+            text-shadow: 0 3px 12px rgba(0,0,0,0.6);
+            letter-spacing: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="button">
+            <span class="icon">📋</span>
+            <span class="label">行程</span>
+        </div>
+        <div class="button">
+            <span class="icon">💰</span>
+            <span class="label">財務</span>
+        </div>
+        <div class="button">
+            <span class="icon">🚗</span>
+            <span class="label">愛車</span>
+        </div>
+        <div class="button">
+            <span class="icon">🏃</span>
+            <span class="label">健康</span>
+        </div>
+        <div class="button">
+            <span class="icon">🏢</span>
+            <span class="label">業務</span>
+        </div>
+        <div class="button">
+            <span class="icon">❓</span>
+            <span class="label">幫助</span>
+        </div>
+    </div>
+</body>
+</html>

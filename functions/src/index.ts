@@ -9,6 +9,8 @@ import { setGlobalOptions } from 'firebase-functions/v2';
 import { handleWebhook } from './handlers/webhook.handler.v2';
 import { handleWorker } from './handlers/worker.handler';
 import { handleCleanup } from './handlers/cleanup.handler';
+import { handleButlerApi } from './handlers/butler-api.handler';
+import { handleButlerWebhook } from './handlers/butler-webhook.handler';
 import type { Request, Response } from 'express';
 
 // Set global options for all functions
@@ -114,5 +116,39 @@ export const lineCleanupScheduled = onSchedule(
     }
 );
 
+/**
+ * Butler API Endpoint
+ * 
+ * Personal Butler System RESTful API.
+ * 
+ * @example
+ * GET https://asia-east1-{project-id}.cloudfunctions.net/butlerApi/health/today
+ */
+export const butlerApi = onRequest(
+    {
+        cors: true, // Allow cross-origin requests
+        memory: '512MiB',
+        timeoutSeconds: 60,
+    },
+    handleButlerApi
+);
+
+/**
+ * Butler LINE Webhook Endpoint
+ * 
+ * Personal Butler (小秘書) LINE Bot webhook handler.
+ * 
+ * @example
+ * POST https://asia-east1-{project-id}.cloudfunctions.net/butlerWebhook
+ */
+export const butlerWebhook = onRequest(
+    {
+        cors: false,
+        invoker: 'public',
+        memory: '256MiB',
+    },
+    handleButlerWebhook
+);
+
 // Export handlers for testing
-export { handleWebhook, handleWorker, handleCleanup };
+export { handleWebhook, handleWorker, handleCleanup, handleButlerApi, handleButlerWebhook };
