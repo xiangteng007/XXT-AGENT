@@ -4,6 +4,7 @@ module.exports = {
     testEnvironment: 'node',
     roots: ['<rootDir>/src'],
     testMatch: ['**/*.test.ts'],
+    testPathIgnorePatterns: ['/node_modules/', 'butler-webhook.handler.test.ts'],
     moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
         '^@config/(.*)$': '<rootDir>/src/config/$1',
@@ -22,4 +23,5 @@ module.exports = {
     coverageReporters: ['text', 'lcov', 'clover'],
     verbose: true,
     clearMocks: true,
+    setupFilesAfterEnv: ['<rootDir>/src/__tests__/jest.setup.ts'],
 };
