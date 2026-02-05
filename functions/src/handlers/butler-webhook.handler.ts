@@ -10,8 +10,14 @@ import * as crypto from 'crypto';
 import { generateAIResponse } from '../services/butler-ai.service';
 
 // LINE Channel Secret for signature verification
-const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || 'a510312a83a792d27e439ec9ed29a303';
-const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || '/VnoczueCOD+OBZj7l5m3lsQBk50/whhQRa/jerM/P4aQPgzDoW0zqDqfYiyl076mIbxFef58FmbGWLVBYbCRFjb9XjdLNHwjAFiYdn8q+7i7ImVxoOwrYXl0WsMxe3rjePuozaGdmSVU3COICF5CAdB04t89/1O/w1cDnyilFU=';
+// SECURITY: These MUST be set via environment variables - no fallback values allowed
+const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
+const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+
+// Validate required environment variables at startup
+if (!CHANNEL_SECRET || !CHANNEL_ACCESS_TOKEN) {
+    console.error('CRITICAL: LINE_CHANNEL_SECRET and LINE_CHANNEL_ACCESS_TOKEN must be set');
+}
 
 // LINE API Base URL
 const LINE_API_BASE = 'https://api.line.me/v2/bot';

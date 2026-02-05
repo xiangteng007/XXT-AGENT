@@ -115,8 +115,7 @@ async function aiRequest<T>(
  * Initialize AI client (compatibility function, no-op in new architecture)
  */
 export function initializeGemini(_apiKey?: string): boolean {
-    // No longer needed - backend handles initialization
-    console.log('AI client using secure backend gateway');
+    // Backend handles initialization - no direct API key usage
     return true;
 }
 
