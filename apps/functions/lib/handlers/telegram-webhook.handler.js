@@ -75,6 +75,11 @@ async function handleMessage(message) {
         await handleLocationMessage(chatId, telegramUserId, message.location);
         return;
     }
+    // Handle photo messages (OCR for receipts)
+    if (message.photo && message.photo.length > 0) {
+        await handlePhotoMessage(chatId, telegramUserId, message);
+        return;
+    }
     // Check if it's a command
     if (text.startsWith('/')) {
         await handleCommand(chatId, telegramUserId, text);
@@ -168,6 +173,70 @@ async function handleLocationMessage(chatId, telegramUserId, location) {
     catch (error) {
         console.error('[Telegram] Location save error:', error);
         await sendMessage(chatId, '❌ 無法儲存位置，請稍後再試。');
+    }
+}
+// ================================
+// Photo/OCR Handler (P2)
+// ================================
+async function handlePhotoMessage(chatId, telegramUserId, message) {
+    const photos = message.photo;
+    if (!photos || photos.length === 0)
+        return;
+    // Get the highest resolution photo (last in array)
+    const photo = photos[photos.length - 1];
+    const caption = message.caption || '';
+    console.log(`[Telegram] Photo received: file_id=${photo.file_id}, caption="${caption}"`);
+    const linkedUid = await getLinkedFirebaseUid(telegramUserId);
+    if (!linkedUid) {
+        await sendMessage(chatId, '❌ 請先綁定帳號才能使用圖片功能。\n\n使用 /link 開始綁定。');
+        return;
+    }
+    await sendChatAction(chatId, 'typing');
+    try {
+        // Get bot token for API call
+        const token = await getBotToken();
+        // Get file path from Telegram
+        const fileResponse = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${photo.file_id}`);
+        const fileData = await fileResponse.json();
+        if (!fileData.ok || !fileData.result?.file_path) {
+            await sendMessage(chatId, '❌ 無法處理圖片，請稍後再試。');
+            return;
+        }
+        // Get photo URL
+        const photoUrl = `https://api.telegram.org/file/bot${token}/${fileData.result.file_path}`;
+        console.log(`[Telegram] Photo URL: ${photoUrl}`);
+        // Store photo reference for processing
+        await db.collection(`users/${linkedUid}/butler/photos`).add({
+            telegramFileId: photo.file_id,
+            caption: caption,
+            source: 'telegram',
+            timestamp: firestore_1.Timestamp.now(),
+            processed: false,
+            type: 'receipt_pending',
+        });
+        // For now, provide manual entry option
+        // Full Vision API OCR integration would go here
+        await sendMessage(chatId, `📸 **圖片已接收**
+
+${caption ? `說明: "${caption}"` : ''}
+
+🔍 **OCR 功能開發中**
+
+請選擇此圖片的用途：`, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🧾 發票記帳', callback_data: 'photo_receipt' }],
+                    [{ text: '💳 信用卡帳單', callback_data: 'photo_creditcard' }],
+                    [{ text: '📊 手動輸入金額', callback_data: 'photo_manual' }],
+                    [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+                ],
+            },
+        });
+        console.log(`[Telegram] Photo saved and awaiting classification (Vision API pending)`);
+    }
+    catch (error) {
+        console.error('[Telegram] Photo message error:', error);
+        await sendMessage(chatId, '❌ 圖片處理發生錯誤，請稍後再試。');
     }
 }
 async function handleCommand(chatId, telegramUserId, text) {
