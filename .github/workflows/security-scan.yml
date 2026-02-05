@@ -25,25 +25,25 @@ jobs:
               with:
                   node-version: "20"
                   cache: "npm"
-                  cache-dependency-path: functions/package-lock.json
+                  cache-dependency-path: apps/functions/package-lock.json
 
             # Functions audit
             - name: Install Functions dependencies
               run: npm ci
-              working-directory: functions
+              working-directory: apps/functions
 
             - name: Run npm audit (Functions)
               run: npm audit --audit-level=high || true
-              working-directory: functions
+              working-directory: apps/functions
 
             # Dashboard audit
             - name: Install Dashboard dependencies
               run: npm ci
-              working-directory: dashboard
+              working-directory: apps/dashboard
 
             - name: Run npm audit (Dashboard)
               run: npm audit --audit-level=high || true
-              working-directory: dashboard
+              working-directory: apps/dashboard
 
     codeql-analysis:
         name: CodeQL Analysis

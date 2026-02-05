@@ -26,19 +26,19 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
-          cache-dependency-path: functions/package-lock.json
+          cache-dependency-path: apps/functions/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: functions
+        working-directory: apps/functions
 
       - name: Run linter
         run: npm run lint
-        working-directory: functions
+        working-directory: apps/functions
 
       - name: Run tests
         run: npm test
-        working-directory: functions
+        working-directory: apps/functions
 
   deploy:
     name: Deploy to Firebase
@@ -59,15 +59,15 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
-          cache-dependency-path: functions/package-lock.json
+          cache-dependency-path: apps/functions/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: functions
+        working-directory: apps/functions
 
       - name: Build functions
         run: npm run build
-        working-directory: functions
+        working-directory: apps/functions
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
