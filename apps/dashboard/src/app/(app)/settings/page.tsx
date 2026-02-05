@@ -189,9 +189,16 @@ export default function SettingsPage() {
                 <CardContent className="space-y-3">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <span className="text-sm">Telegram Chat</span>
+                            <span className="text-sm">Telegram Bot</span>
                         </div>
-                        <Badge variant="secondary">***7890</Badge>
+                        <div className="flex items-center gap-2">
+                            <Badge variant="secondary">***7890</Badge>
+                            <a href="/settings/link-telegram">
+                                <Button variant="outline" size="sm">
+                                    綁定帳號
+                                </Button>
+                            </a>
+                        </div>
                     </div>
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
