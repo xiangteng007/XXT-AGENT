@@ -6,19 +6,39 @@
  */
 
 import { Request, Response } from 'express';
-// Removed unused crypto import
 import { generateAIResponse } from '../services/butler-ai.service';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 
-// Telegram Bot Token from environment
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+// Lazy-loaded Bot Token from Secret Manager
+let cachedBotToken: string | null = null;
 
-// Validate required environment variables at startup
-if (!BOT_TOKEN) {
-    console.error('CRITICAL: TELEGRAM_BOT_TOKEN must be set');
+async function getBotToken(): Promise<string> {
+    if (cachedBotToken) {
+        return cachedBotToken;
+    }
+    
+    // Try environment variable first (for local dev)
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+        cachedBotToken = process.env.TELEGRAM_BOT_TOKEN;
+        return cachedBotToken;
+    }
+    
+    // Load from Secret Manager
+    try {
+        const client = new SecretManagerServiceClient();
+        const [version] = await client.accessSecretVersion({
+            name: 'projects/xxt-agent/secrets/TELEGRAM_BOT_TOKEN/versions/latest',
+        });
+        cachedBotToken = version.payload?.data?.toString() || '';
+        console.log('[Telegram] Bot token loaded from Secret Manager');
+        return cachedBotToken;
+    } catch (error) {
+        console.error('[Telegram] Failed to load token from Secret Manager:', error);
+        throw new Error('TELEGRAM_BOT_TOKEN not available');
+    }
 }
 
-const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 const db = getFirestore();
 
 // ================================
@@ -401,7 +421,8 @@ async function sendMessage(
     options?: { reply_markup?: { inline_keyboard: InlineKeyboardButton[][] } }
 ): Promise<void> {
     try {
-        const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
+        const token = await getBotToken();
+        const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -423,7 +444,8 @@ async function sendMessage(
 
 async function sendChatAction(chatId: number, action: 'typing' | 'upload_photo'): Promise<void> {
     try {
-        await fetch(`${TELEGRAM_API}/sendChatAction`, {
+        const token = await getBotToken();
+        await fetch(`https://api.telegram.org/bot${token}/sendChatAction`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ chat_id: chatId, action }),
@@ -435,7 +457,8 @@ async function sendChatAction(chatId: number, action: 'typing' | 'upload_photo')
 
 async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
     try {
-        await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
+        const token = await getBotToken();
+        await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ callback_query_id: callbackQueryId, text }),
@@ -461,3 +484,4 @@ async function getLinkedFirebaseUid(telegramUserId: number): Promise<string | nu
         return null;
     }
 }
+

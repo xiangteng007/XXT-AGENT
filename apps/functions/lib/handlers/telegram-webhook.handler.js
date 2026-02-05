@@ -7,16 +7,35 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleTelegramWebhook = handleTelegramWebhook;
-// Removed unused crypto import
 const butler_ai_service_1 = require("../services/butler-ai.service");
 const firestore_1 = require("firebase-admin/firestore");
-// Telegram Bot Token from environment
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-// Validate required environment variables at startup
-if (!BOT_TOKEN) {
-    console.error('CRITICAL: TELEGRAM_BOT_TOKEN must be set');
+const secret_manager_1 = require("@google-cloud/secret-manager");
+// Lazy-loaded Bot Token from Secret Manager
+let cachedBotToken = null;
+async function getBotToken() {
+    if (cachedBotToken) {
+        return cachedBotToken;
+    }
+    // Try environment variable first (for local dev)
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+        cachedBotToken = process.env.TELEGRAM_BOT_TOKEN;
+        return cachedBotToken;
+    }
+    // Load from Secret Manager
+    try {
+        const client = new secret_manager_1.SecretManagerServiceClient();
+        const [version] = await client.accessSecretVersion({
+            name: 'projects/xxt-agent/secrets/TELEGRAM_BOT_TOKEN/versions/latest',
+        });
+        cachedBotToken = version.payload?.data?.toString() || '';
+        console.log('[Telegram] Bot token loaded from Secret Manager');
+        return cachedBotToken;
+    }
+    catch (error) {
+        console.error('[Telegram] Failed to load token from Secret Manager:', error);
+        throw new Error('TELEGRAM_BOT_TOKEN not available');
+    }
 }
-const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 const db = (0, firestore_1.getFirestore)();
 // ================================
 // Main Handler
@@ -310,7 +329,8 @@ async function handleExpenseCategory(chatId, telegramUserId, category) {
 // ================================
 async function sendMessage(chatId, text, options) {
     try {
-        const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
+        const token = await getBotToken();
+        const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -331,7 +351,8 @@ async function sendMessage(chatId, text, options) {
 }
 async function sendChatAction(chatId, action) {
     try {
-        await fetch(`${TELEGRAM_API}/sendChatAction`, {
+        const token = await getBotToken();
+        await fetch(`https://api.telegram.org/bot${token}/sendChatAction`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ chat_id: chatId, action }),
@@ -343,7 +364,8 @@ async function sendChatAction(chatId, action) {
 }
 async function answerCallbackQuery(callbackQueryId, text) {
     try {
-        await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
+        const token = await getBotToken();
+        await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ callback_query_id: callbackQueryId, text }),
