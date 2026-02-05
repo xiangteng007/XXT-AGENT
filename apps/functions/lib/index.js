@@ -4,7 +4,7 @@
  * Firebase Cloud Functions Entry Point
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onUserCreated = exports.handleButlerWebhook = exports.handleButlerApi = exports.handleCleanup = exports.handleWorker = exports.handleWebhook = exports.butlerWebhook = exports.butlerApi = exports.lineCleanupScheduled = exports.lineCleanup = exports.lineWorkerScheduled = exports.lineWorker = exports.lineWebhook = void 0;
+exports.handleButlerWebhook = exports.handleButlerApi = exports.handleCleanup = exports.handleWorker = exports.handleWebhook = exports.butlerWebhook = exports.butlerApi = exports.lineCleanupScheduled = exports.lineCleanup = exports.lineWorkerScheduled = exports.lineWorker = exports.lineWebhook = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const v2_1 = require("firebase-functions/v2");
@@ -100,7 +100,7 @@ exports.butlerWebhook = (0, https_1.onRequest)({
     invoker: 'public',
     memory: '256MiB',
 }, butler_webhook_handler_1.handleButlerWebhook);
-// Auth triggers - auto-provision superadmin on first login
-var auth_trigger_1 = require("./triggers/auth.trigger");
-Object.defineProperty(exports, "onUserCreated", { enumerable: true, get: function () { return auth_trigger_1.onUserCreated; } });
+// Auth triggers - temporarily disabled until Firebase Auth is enabled in project
+// To re-enable: uncomment and ensure Firebase Auth is enabled in the GCP project
+// export { onUserCreated } from './triggers/auth.trigger';
 //# sourceMappingURL=index.js.map

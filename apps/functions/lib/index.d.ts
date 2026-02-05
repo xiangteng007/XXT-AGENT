@@ -36,5 +36,4 @@ export declare const butlerApi: import("firebase-functions/v2/https").HttpsFunct
  */
 export declare const butlerWebhook: import("firebase-functions/v2/https").HttpsFunction;
 export { handleWebhook, handleWorker, handleCleanup, handleButlerApi, handleButlerWebhook };
-export { onUserCreated } from './triggers/auth.trigger';
 //# sourceMappingURL=index.d.ts.map
