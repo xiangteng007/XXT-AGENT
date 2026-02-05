@@ -1,8 +1,8 @@
 # XXT-AGENT 系統憲法 (System Constitution)
 
-> **版本**: 1.0  
+> **版本**: 2.2  
 > **生效日期**: 2026-02-04  
-> **最後更新**: 2026-02-04
+> **最後更新**: 2026-02-06
 
 ---
 
@@ -109,6 +109,43 @@
 | **Cloud Functions** | https://console.cloud.google.com/functions?project=xxt-agent |
 | **Firestore** | https://console.firebase.google.com/project/xxt-agent/firestore |
 | **Secret Manager** | https://console.cloud.google.com/security/secret-manager?project=xxt-agent |
+
+---
+
+## 第四章-B：通訊渠道整合
+
+### 第 7-1 條：LINE Bot (小秘書)
+
+| 項目 | 值 |
+|------|-----|
+| **Bot 名稱** | 小秘書 |
+| **Webhook URL** | `https://asia-east1-xxt-agent.cloudfunctions.net/butlerWebhook` |
+| **功能** | 日程、記帳、健康、AI 對話 |
+| **Secret Key** | `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` |
+
+### 第 7-2 條：Telegram Bot
+
+| 項目 | 值 |
+|------|-----|
+| **Bot 名稱** | XXT1007_BOT |
+| **Bot 連結** | https://t.me/XXT1007_BOT |
+| **Webhook URL** | `https://asia-east1-xxt-agent.cloudfunctions.net/telegramWebhook` |
+| **Secret Key** | `TELEGRAM_BOT_TOKEN` (存於 GCP Secret Manager) |
+| **建立日期** | 2026-02-06 |
+
+**功能列表**:
+
+| 命令 | 功能 |
+|------|------|
+| `/start` | 歡迎訊息與功能介紹 |
+| `/menu` | 主選單 (Inline Keyboard) |
+| `/today` | 今日行程 |
+| `/expense` | 快速記帳 |
+| `/health` | 健康快照 |
+| `/car` | 車輛狀態 |
+| `/balance` | 帳戶餘額 |
+| `/link` | 帳號綁定 (6 位數驗證碼) |
+| 自然語言 | AI 對話 (Gemini 1.5) |
 
 ---
 
@@ -346,12 +383,13 @@ XXT-AGENT 專家委員會由 **94 位專家** 組成，涵蓋 **12 大領域**�
 | v1.0 | 2026-02-04 | 初版建立，記錄正確的前後端部署資訊 |
 | v2.0 | 2026-02-04 | 新增 94 位專家委員會，涵蓋 12 大領域 |
 | v2.1 | 2026-02-04 | 新增 6 位運動訓練專家 (H9-H14)，總計 100 位專家 |
+| v2.2 | 2026-02-06 | 新增 Telegram Bot (XXT1007_BOT)，記錄通訊渠道整合 |
 
 ---
 
 ## 狀態標語
 
-> ✅ **XXT-AGENT 系統憲法 v2.1 已正式生效。100 位專家委員會已就位，涵蓋治理、生活、戶外、投資、健康、法律、系統工程等 12 大領域。**
+> ✅ **XXT-AGENT 系統憲法 v2.2 已正式生效。100 位專家委員會已就位，涵蓋 12 大領域。LINE Bot 與 Telegram Bot 雙通道整合完成。**
 
 ---
 
