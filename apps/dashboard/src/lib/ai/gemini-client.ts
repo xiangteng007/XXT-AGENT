@@ -56,18 +56,68 @@ export interface AIModelInfo {
 }
 
 /**
- * Get available models from backend
+ * Default available models (fallback when backend is unavailable)
+ */
+const DEFAULT_MODELS: AIModelInfo[] = [
+    {
+        id: 'gemini-1.5-flash',
+        name: 'Gemini 1.5 Flash',
+        description: '快速、經濟的選擇，適合日常對話',
+        tier: 'economy',
+        isDefault: true
+    },
+    {
+        id: 'gemini-1.5-pro',
+        name: 'Gemini 1.5 Pro',
+        description: '更強推理能力，支持長上下文',
+        tier: 'premium',
+        isDefault: false
+    },
+    {
+        id: 'gpt-4o',
+        name: 'GPT-4o',
+        description: 'OpenAI 最強模型，優秀的推理和創意能力',
+        tier: 'latest',
+        isDefault: false
+    },
+    {
+        id: 'gpt-4o-mini',
+        name: 'GPT-4o Mini',
+        description: 'GPT-4o 的經濟版本，性價比最佳',
+        tier: 'standard',
+        isDefault: false
+    }
+];
+
+/**
+ * Get available models from backend (with fallback)
  */
 export async function getAvailableModels(): Promise<AIModelInfo[]> {
     try {
         const response = await fetch(`${config.baseUrl}/ai/models`);
+        if (!response.ok) {
+            console.warn('Backend AI models unavailable, using defaults');
+            return DEFAULT_MODELS;
+        }
         const data = await response.json();
-        return data.models || [];
+        const models = data.models || [];
+        // If backend returns empty or only Gemini, merge with GPT models
+        if (models.length === 0) {
+            return DEFAULT_MODELS;
+        }
+        // Check if GPT models are missing and add them
+        const hasGPT = models.some((m: AIModelInfo) => m.id.startsWith('gpt'));
+        if (!hasGPT) {
+            const gptModels = DEFAULT_MODELS.filter(m => m.id.startsWith('gpt'));
+            return [...models, ...gptModels];
+        }
+        return models;
     } catch (error) {
-        console.error('Failed to fetch models:', error);
-        return [];
+        console.error('Failed to fetch models, using defaults:', error);
+        return DEFAULT_MODELS;
     }
 }
+
 
 /**
  * Make authenticated request to AI Gateway

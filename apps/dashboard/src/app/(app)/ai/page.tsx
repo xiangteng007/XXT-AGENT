@@ -325,7 +325,9 @@ export default function AIAssistantPage() {
                         <CardContent className="pt-4">
                             <div className="flex items-center justify-between">
                                 <span className="text-sm text-muted-foreground">AI 模型</span>
-                                <Badge variant="secondary">Gemini 1.5 Flash</Badge>
+                                <Badge variant="secondary">
+                                    {models.find(m => m.id === selectedModel)?.name || selectedModel}
+                                </Badge>
                             </div>
                         </CardContent>
                     </Card>
