@@ -3,15 +3,21 @@
  * Butler AI Service
  *
  * Provides intelligent response generation for the Personal Butler
- * using Gemini AI with fallback to keyword matching.
+ * using Gemini AI or OpenAI GPT with fallback to keyword matching.
  */
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateAIResponse = generateAIResponse;
 exports.isAIAvailable = isAIAvailable;
+exports.getAvailableModels = getAvailableModels;
 const generative_ai_1 = require("@google/generative-ai");
+const openai_1 = __importDefault(require("openai"));
 const secret_manager_1 = require("@google-cloud/secret-manager");
 const secretManager = new secret_manager_1.SecretManagerServiceClient();
 let geminiClient = null;
+let openaiClient = null;
 // Butler persona and capabilities
 const BUTLER_SYSTEM_PROMPT = `你是「小秘書」，一個專業的個人智能管家助理。
 
@@ -59,23 +65,72 @@ async function getGeminiClient() {
     }
 }
 /**
+ * Initialize OpenAI client
+ */
+async function getOpenAIClient() {
+    if (openaiClient)
+        return openaiClient;
+    const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'xxt-agent';
+    const secretName = `projects/${projectId}/secrets/OPENAI_API_KEY/versions/latest`;
+    try {
+        const [version] = await secretManager.accessSecretVersion({ name: secretName });
+        const apiKey = version.payload?.data?.toString() || '';
+        openaiClient = new openai_1.default({ apiKey });
+        console.log('[Butler AI] OpenAI client initialized');
+        return openaiClient;
+    }
+    catch (err) {
+        console.error('[Butler AI] Failed to get OpenAI API key:', err);
+        throw new Error('OpenAI API key not available');
+    }
+}
+/**
+ * Generate AI response using Gemini
+ */
+async function generateGeminiResponse(userMessage, model, contextPrompt) {
+    const client = await getGeminiClient();
+    const geminiModel = client.getGenerativeModel({ model });
+    const result = await geminiModel.generateContent([
+        { text: BUTLER_SYSTEM_PROMPT + contextPrompt },
+        { text: `用戶訊息：${userMessage}` },
+    ]);
+    return result.response.text();
+}
+/**
+ * Generate AI response using OpenAI GPT
+ */
+async function generateOpenAIResponse(userMessage, model, contextPrompt) {
+    const client = await getOpenAIClient();
+    const completion = await client.chat.completions.create({
+        model: model,
+        messages: [
+            { role: 'system', content: BUTLER_SYSTEM_PROMPT + contextPrompt },
+            { role: 'user', content: userMessage },
+        ],
+        max_tokens: 1000,
+        temperature: 0.7,
+    });
+    return completion.choices[0]?.message?.content || '抱歉，我無法產生回應。';
+}
+/**
  * Generate AI response for user message
  */
 async function generateAIResponse(userMessage, userId, context) {
+    const selectedModel = context?.model || 'gemini-1.5-flash';
     try {
-        const client = await getGeminiClient();
-        const model = client.getGenerativeModel({ model: 'gemini-1.5-flash' });
         // Build conversation context
         let contextPrompt = '';
         if (context?.previousMessages?.length) {
             contextPrompt = '\n\n最近的對話：\n' + context.previousMessages.slice(-3).join('\n');
         }
-        const result = await model.generateContent([
-            { text: BUTLER_SYSTEM_PROMPT + contextPrompt },
-            { text: `用戶訊息：${userMessage}` },
-        ]);
-        const response = result.response.text();
-        console.log(`[Butler AI] Generated response for user ${userId || 'unknown'}`);
+        let response;
+        if (selectedModel.startsWith('gpt')) {
+            response = await generateOpenAIResponse(userMessage, selectedModel, contextPrompt);
+        }
+        else {
+            response = await generateGeminiResponse(userMessage, selectedModel, contextPrompt);
+        }
+        console.log(`[Butler AI] Generated response using ${selectedModel} for user ${userId || 'unknown'}`);
         return response;
     }
     catch (err) {
@@ -163,13 +218,24 @@ function generateFallbackResponse(text) {
 /**
  * Check if AI service is available
  */
-async function isAIAvailable() {
+async function isAIAvailable(model) {
     try {
-        await getGeminiClient();
+        if (model?.startsWith('gpt')) {
+            await getOpenAIClient();
+        }
+        else {
+            await getGeminiClient();
+        }
         return true;
     }
     catch {
         return false;
     }
+}
+/**
+ * Get available AI models
+ */
+function getAvailableModels() {
+    return ['gemini-1.5-flash', 'gemini-1.5-pro', 'gpt-4o', 'gpt-4o-mini'];
 }
 //# sourceMappingURL=butler-ai.service.js.map
