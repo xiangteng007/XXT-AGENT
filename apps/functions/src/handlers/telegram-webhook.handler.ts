@@ -325,7 +325,7 @@ ${caption ? `說明: "${caption}"` : ''}
             },
         });
 
-        console.log(`[Telegram] Photo saved and awaiting classification (Vision API pending)`);
+        console.log('[Telegram] Photo saved and awaiting classification (Vision API pending)');
 
     } catch (error) {
         console.error('[Telegram] Photo message error:', error);
