@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getFirestore } from 'firebase-admin/firestore';
 import { verifyAuth } from '@/lib/auth';
-import { initializeFirebaseAdmin } from '@/lib/firebase-admin';
-
-// Ensure Firebase is initialized
-initializeFirebaseAdmin();
+import { getAdminDb } from '@/lib/firebase-admin';
 
 /**
  * GET /api/news/articles
@@ -23,10 +19,11 @@ export async function GET(req: NextRequest) {
         const topic = searchParams.get('topic');
         const limit = parseInt(searchParams.get('limit') || '50', 10);
 
-        const db = getFirestore();
+        const db = getAdminDb();
         let query = db.collection('market_news')
             .orderBy('ts', 'desc')
             .limit(Math.min(limit, 100));
+
 
         // Apply filters if provided
         if (source) {
