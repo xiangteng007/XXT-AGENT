@@ -140,6 +140,16 @@ async function aiRequest<T>(
     endpoint: string,
     body: Record<string, unknown>
 ): Promise<T> {
+    // Check if we're in production without a real AI Gateway
+    const gatewayUrl = config.baseUrl || '';
+    const isLocalhost = gatewayUrl.includes('localhost') || gatewayUrl.includes('127.0.0.1');
+    const isProduction = typeof window !== 'undefined' && 
+        window.location.hostname !== 'localhost';
+    
+    if (isProduction && isLocalhost) {
+        throw new Error('AI Gateway 未配置。請聯繫管理員設定 NEXT_PUBLIC_AI_GATEWAY_URL 環境變數。');
+    }
+
     const url = `${config.baseUrl}${endpoint}`;
 
     const controller = new AbortController();
