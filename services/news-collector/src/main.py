@@ -5,8 +5,9 @@ Cloud Run service that:
 1. Is triggered by Cloud Scheduler every minute
 2. Fetches news from Finnhub market news API
 3. Fetches news from configured RSS feeds
-4. Deduplicates using Redis
+4. Deduplicates using Redis (or in-memory fallback)
 5. Publishes new items to news.raw Pub/Sub topic
+6. Writes directly to Firestore for dashboard display
 """
 from __future__ import annotations
 
@@ -15,6 +16,12 @@ from datetime import datetime, timezone
 from aiohttp import web
 import aiohttp
 import feedparser
+
+try:
+    from google.cloud import firestore
+    FIRESTORE_AVAILABLE = True
+except ImportError:
+    FIRESTORE_AVAILABLE = False
 
 from .config import Settings
 from .pubsub import PubSubPublisher
@@ -53,7 +60,10 @@ def parse_rss(urls: list[str]) -> list[dict]:
 
     for url in urls:
         try:
+            logger.info(f"Fetching RSS: {url}")
             feed = feedparser.parse(url)
+            source_name = getattr(feed.feed, "title", url)[:50]
+            
             for entry in feed.entries[:50]:  # Limit per feed
                 link = getattr(entry, "link", "") or ""
                 title = getattr(entry, "title", "") or ""
@@ -63,6 +73,7 @@ def parse_rss(urls: list[str]) -> list[dict]:
                 if link:
                     items.append({
                         "source": "rss",
+                        "source_name": source_name,
                         "feed_url": url,
                         "url": link,
                         "headline": title,
@@ -73,7 +84,26 @@ def parse_rss(urls: list[str]) -> list[dict]:
             logger.warning(f"RSS parse failed for {url}: {e}")
             continue
     
+    logger.info(f"Parsed {len(items)} RSS items from {len(urls)} feeds")
     return items
+
+
+def write_to_firestore(db, headline: str, summary: str, url: str, source: str, category: str, ts, image: str = "") -> bool:
+    """Write a news item to Firestore (best effort)."""
+    try:
+        db.collection("market_news").add({
+            "headline": headline,
+            "summary": summary,
+            "url": url,
+            "source": source,
+            "category": category,
+            "ts": ts,
+            "image": image,
+        })
+        return True
+    except Exception as e:
+        logger.warning(f"Firestore write failed (continuing): {e}")
+        return False
 
 
 async def handle_run(request: web.Request) -> web.Response:
@@ -81,13 +111,17 @@ async def handle_run(request: web.Request) -> web.Response:
     settings: Settings = request.app["settings"]
     pub: PubSubPublisher = request.app["pub"]
     dedup: Deduper = request.app["dedup"]
+    db = request.app.get("db")
 
     ingested_at = datetime.now(timezone.utc).isoformat()
+    ts = datetime.now(timezone.utc)
     published_count = 0
     skipped_count = 0
+    firestore_written = 0
 
     # 1) Fetch Finnhub market news
     finnhub_items = await fetch_finnhub_news(settings.finnhub_api_key)
+    logger.info(f"Got {len(finnhub_items)} items from Finnhub")
     
     for item in finnhub_items[:100]:
         url = item.get("url", "") or ""
@@ -114,11 +148,27 @@ async def handle_run(request: web.Request) -> web.Response:
             "image": item.get("image", ""),
         }
         
-        pub.publish_json(settings.topic_news_raw, event)
+        # Publish to Pub/Sub
+        if settings.topic_news_raw:
+            pub.publish_json(settings.topic_news_raw, event)
+        
+        # Write to Firestore for dashboard
+        if db:
+            if write_to_firestore(db,
+                headline=item.get("headline", ""),
+                summary=item.get("summary", ""),
+                url=url,
+                source="finnhub",
+                category=item.get("category", "general"),
+                ts=ts,
+                image=item.get("image", "")):
+                firestore_written += 1
+        
         published_count += 1
 
     # 2) Fetch RSS feeds
     rss_urls = settings.rss_url_list()
+    logger.info(f"RSS URLs to fetch: {rss_urls}")
     rss_items = parse_rss(rss_urls)
     
     for item in rss_items[:200]:
@@ -144,15 +194,30 @@ async def handle_run(request: web.Request) -> web.Response:
             "feed_url": item.get("feed_url", ""),
         }
         
-        pub.publish_json(settings.topic_news_raw, event)
+        # Publish to Pub/Sub
+        if settings.topic_news_raw:
+            pub.publish_json(settings.topic_news_raw, event)
+        
+        # Write to Firestore for dashboard
+        if db:
+            if write_to_firestore(db,
+                headline=item.get("headline", ""),
+                summary=item.get("summary", ""),
+                url=url,
+                source=item.get("source_name", "RSS"),
+                category="rss",
+                ts=ts):
+                firestore_written += 1
+        
         published_count += 1
 
-    logger.info(f"News collection complete: {published_count} published, {skipped_count} skipped (duplicates)")
+    logger.info(f"News collection complete: {published_count} published, {skipped_count} skipped, {firestore_written} written to Firestore")
     
     return web.json_response({
         "ok": True, 
         "published": published_count,
-        "skipped": skipped_count
+        "skipped": skipped_count,
+        "firestore_written": firestore_written
     })
 
 
@@ -169,6 +234,18 @@ def create_app() -> web.Application:
     app["settings"] = settings
     app["pub"] = PubSubPublisher(settings.gcp_project_id)
     app["dedup"] = Deduper(settings.redis_host, settings.redis_port)
+    
+    # Initialize Firestore (optional)
+    if FIRESTORE_AVAILABLE and settings.gcp_project_id:
+        try:
+            app["db"] = firestore.Client(project=settings.gcp_project_id)
+            logger.info("Firestore client initialized")
+        except Exception as e:
+            logger.warning(f"Firestore init failed: {e}")
+            app["db"] = None
+    else:
+        logger.warning("Firestore not available or no project ID")
+        app["db"] = None
 
     app.router.add_post("/run", handle_run)
     app.router.add_get("/healthz", handle_health)

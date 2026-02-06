@@ -1,5 +1,6 @@
 aiohttp==3.9.5
 google-cloud-pubsub==2.23.1
+google-cloud-firestore==2.16.1
 orjson==3.10.7
 pydantic==2.8.2
 redis==5.0.7
