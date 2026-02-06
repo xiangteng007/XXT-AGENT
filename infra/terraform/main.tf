@@ -6,6 +6,12 @@ terraform {
       version = "~> 6.0"
     }
   }
+
+  # GCS backend for persistent state across CI/CD runs
+  backend "gcs" {
+    bucket = "xxt-agent-terraform-state"
+    prefix = "terraform/cloudrun"
+  }
 }
 
 provider "google" {
