@@ -1,19 +1,12 @@
 # Cloud Tasks Queue for Social Collection
-# Import block removed - causes CI/CD conflicts without persistent state
+# Using data source to reference existing queue (avoids 409 conflict)
 
-resource "google_cloud_tasks_queue" "social_collect" {
+data "google_cloud_tasks_queue" "social_collect" {
   name     = "social-collect-queue"
-  location = "asia-east1" # var.region causes issues with import
+  location = "asia-east1"
+}
 
-  rate_limits {
-    max_dispatches_per_second = 5
-    max_concurrent_dispatches = 20
-  }
-
-  retry_config {
-    max_attempts  = 8
-    max_backoff   = "60s"
-    min_backoff   = "1s"
-    max_doublings = 6
-  }
+# For use in other resources that reference this queue
+locals {
+  social_task_queue_name = data.google_cloud_tasks_queue.social_collect.name
 }

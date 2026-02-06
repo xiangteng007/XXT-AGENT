@@ -20,7 +20,7 @@ resource "google_cloud_run_v2_service" "ai_gateway" {
   location = var.region
 
   template {
-    service_account = google_service_account.runtime_sa.email
+    service_account = data.google_service_account.runtime_sa.email
     containers {
       image = local.img.ai_gateway
       resources {
@@ -48,7 +48,7 @@ resource "google_cloud_run_v2_service" "market_streamer" {
   location = var.region
 
   template {
-    service_account = google_service_account.runtime_sa.email
+    service_account = data.google_service_account.runtime_sa.email
     containers {
       image = local.img.market_streamer
       resources {
@@ -95,7 +95,7 @@ resource "google_cloud_run_v2_service" "news_collector" {
   location = var.region
 
   template {
-    service_account = google_service_account.runtime_sa.email
+    service_account = data.google_service_account.runtime_sa.email
     containers {
       image = local.img.news_collector
       env {
@@ -115,7 +115,7 @@ resource "google_cloud_run_v2_service" "quote_normalizer" {
   location = var.region
 
   template {
-    service_account = google_service_account.runtime_sa.email
+    service_account = data.google_service_account.runtime_sa.email
     containers {
       image = local.img.quote_normalizer
       env {
@@ -139,7 +139,7 @@ resource "google_cloud_run_v2_service" "social_worker" {
   location = var.region
 
   template {
-    service_account = google_service_account.runtime_sa.email
+    service_account = data.google_service_account.runtime_sa.email
     containers {
       image = local.img.social_worker
       env {
@@ -159,7 +159,7 @@ resource "google_cloud_run_v2_service" "social_dispatcher" {
   location = var.region
 
   template {
-    service_account = google_service_account.runtime_sa.email
+    service_account = data.google_service_account.runtime_sa.email
     containers {
       image = local.img.social_dispatcher
       env {
@@ -168,7 +168,7 @@ resource "google_cloud_run_v2_service" "social_dispatcher" {
       }
       env {
         name  = "SOCIAL_TASK_QUEUE"
-        value = google_cloud_tasks_queue.social_collect.name
+        value = local.social_task_queue_name
       }
       env {
         name  = "SOCIAL_WORKER_URL"
@@ -183,7 +183,7 @@ resource "google_cloud_run_v2_service" "fusion_engine" {
   location = var.region
 
   template {
-    service_account = google_service_account.runtime_sa.email
+    service_account = data.google_service_account.runtime_sa.email
     containers {
       image = local.img.fusion_engine
       resources {
@@ -210,7 +210,7 @@ resource "google_cloud_run_v2_service" "alert_engine" {
   location = var.region
 
   template {
-    service_account = google_service_account.runtime_sa.email
+    service_account = data.google_service_account.runtime_sa.email
     containers {
       image = local.img.alert_engine
       env {
@@ -242,7 +242,7 @@ resource "google_cloud_run_v2_service" "trade_planner" {
   location = var.region
 
   template {
-    service_account = google_service_account.runtime_sa.email
+    service_account = data.google_service_account.runtime_sa.email
     containers {
       image = local.img.trade_planner
       env {
@@ -266,7 +266,7 @@ resource "google_cloud_run_v2_service" "telegram_bot" {
   location = var.region
 
   template {
-    service_account = google_service_account.runtime_sa.email
+    service_account = data.google_service_account.runtime_sa.email
     containers {
       image = local.img.telegram_bot
       ports {
