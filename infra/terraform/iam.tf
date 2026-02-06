@@ -1,8 +1,5 @@
-# Import existing service account into Terraform state
-import {
-  id = "projects/xxt-agent/serviceAccounts/ai-me-runtime-prod@xxt-agent.iam.gserviceaccount.com"
-  to = google_service_account.runtime_sa
-}
+# Runtime Service Account for Cloud Run services
+# Import block removed - causes CI/CD conflicts without persistent state
 
 resource "google_service_account" "runtime_sa" {
   account_id   = "ai-me-runtime-prod" # Fixed to match existing

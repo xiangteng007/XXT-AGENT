@@ -1,8 +1,5 @@
-# Import existing queue into Terraform state
-import {
-  id = "projects/xxt-agent/locations/asia-east1/queues/social-collect-queue"
-  to = google_cloud_tasks_queue.social_collect
-}
+# Cloud Tasks Queue for Social Collection
+# Import block removed - causes CI/CD conflicts without persistent state
 
 resource "google_cloud_tasks_queue" "social_collect" {
   name     = "social-collect-queue"
