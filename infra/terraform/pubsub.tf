@@ -1,33 +1,14 @@
-# Reference existing Pub/Sub topics (already created in GCP Console)
-data "google_pubsub_topic" "raw_market" {
-  name = "raw.market"
-}
-data "google_pubsub_topic" "raw_news" {
-  name = "raw.news"
-}
-data "google_pubsub_topic" "raw_social" {
-  name = "raw.social"
-}
-data "google_pubsub_topic" "fused_event" {
-  name = "fused.event"
-}
-data "google_pubsub_topic" "events_dlq" {
-  name = "events.dlq"
-}
-
-# Reference existing Pub/Sub subscriptions
-data "google_pubsub_subscription" "raw_market_fuser" {
-  name = "raw-market-fuser"
-}
-
-data "google_pubsub_subscription" "raw_news_fuser" {
-  name = "raw-news-fuser"
-}
-
-data "google_pubsub_subscription" "raw_social_fuser" {
-  name = "raw-social-fuser"
-}
-
-data "google_pubsub_subscription" "fused_event_notifier" {
-  name = "fused-event-notifier"
-}
+# Pub/Sub Topics and Subscriptions - Deprecated
+#
+# This file previously referenced Pub/Sub resources for the AI ME pipeline.
+# These resources may or may not exist in the current project.
+#
+# The topics/subscriptions were designed for:
+# - raw.market: Market data stream
+# - raw.news: News feed stream
+# - raw.social: Social media stream
+# - fused.event: Combined event stream
+# - events.dlq: Dead letter queue
+#
+# If you need to manage Pub/Sub via Terraform, ensure the resources exist
+# or create them first before using data sources.
