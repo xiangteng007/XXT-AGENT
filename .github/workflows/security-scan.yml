@@ -38,7 +38,7 @@ jobs:
 
             # Dashboard audit
             - name: Install Dashboard dependencies
-              run: npm ci
+              run: npm ci --legacy-peer-deps
               working-directory: apps/dashboard
 
             - name: Run npm audit (Dashboard)
