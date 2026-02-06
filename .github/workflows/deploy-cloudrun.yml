@@ -1,53 +1,62 @@
 name: Deploy Cloud Run Always-on Services + Terraform
 
-# This workflow is currently a placeholder as Cloud Run services
-# have been migrated to Firebase Functions or are not deployed.
-#
-# Re-enable Docker builds and Terraform when Cloud Run services are needed.
-
+# DISABLED: Terraform import issues need resolution
+# To re-enable, uncomment the push trigger below
 on:
-  workflow_dispatch:  # Manual trigger only for now
-  push:
-    branches: ["main"]
-    paths:
-      - "services/**"
-      - "infra/terraform/**"
-      - ".github/workflows/deploy-cloudrun.yml"
+  workflow_dispatch: # Manual trigger only
+  # push:
+  #   branches: ["main"]
+  #   paths:
+  #     - "services/**"
+  #     - "infra/terraform/**"
+  #     - ".github/workflows/deploy-cloudrun.yml"
 
 env:
   REGION: asia-east1
   AR_REPO: ai-me-services
 
 jobs:
-  check-status:
+  build-push-terraform:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+      id-token: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cloud Run Status Check
+      - name: Auth to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker auth
         run: |
-          echo "=========================================="
-          echo "Cloud Run Deployment - Status Check"
-          echo "=========================================="
-          echo ""
-          echo "This workflow is currently in maintenance mode."
-          echo ""
-          echo "Cloud Run services defined in this repo have been:"
-          echo "  - Migrated to Firebase Functions (news-collector)"
-          echo "  - Not yet deployed (other services)"
-          echo ""
-          echo "To deploy Cloud Run services:"
-          echo "  1. Update infra/terraform/*.tf with valid resource definitions"
-          echo "  2. Ensure GCP project (xxt-agent) has required APIs enabled"
-          echo "  3. Build and push Docker images to Artifact Registry"
-          echo "  4. Run terraform apply"
-          echo ""
-          echo "Active deployment workflows:"
-          echo "  - Deploy to Firebase (apps/functions)"
-          echo "  - Deploy to Vercel (apps/dashboard)"
-          echo ""
-          echo "=========================================="
-          echo "Workflow completed successfully (no-op)"
-          echo "=========================================="
+          gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+
+      - name: Build & Push images
+        run: |
+          PROJECT_ID=$(gcloud config get-value project)
+          for svc in market-streamer news-collector social-dispatcher social-worker event-fusion-engine alert-engine ai-gateway trade-planner-worker telegram-command-bot quote-normalizer; do
+            echo "Building $svc..."
+            docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest services/$svc
+            docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest
+          done
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init/Apply
+        working-directory: infra/terraform
+        env:
+          TF_VAR_project_id: ${{ secrets.FIREBASE_PROJECT_ID }}
+          TF_VAR_gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          TF_VAR_telegram_bot_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TF_VAR_telegram_chat_id: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          terraform init
+          terraform apply -auto-approve
