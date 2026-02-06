@@ -135,7 +135,7 @@ const mainNav: NavItem[] = [
 
 const adminNav: NavItem[] = [
     { href: '/tenants', label: '租戶管理', icon: <UsersIcon /> },
-    { href: '/team', label: '團隊成員', icon: <UsersIcon /> },
+    { href: '/team/members', label: '團隊成員', icon: <UsersIcon /> },
     { href: '/rules', label: '規則設定', icon: <RulesIcon /> },
     { href: '/mappings', label: '關鍵字對應', icon: <MapIcon /> },
     { href: '/jobs', label: '排程任務', icon: <ListIcon /> },

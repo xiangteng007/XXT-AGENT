@@ -6,6 +6,9 @@ import '@/styles/animations.css';
 export const metadata = {
     title: 'XXT Personal Butler',
     description: '個人生活管理助理儀表板',
+    icons: {
+        icon: '/favicon.svg',
+    },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

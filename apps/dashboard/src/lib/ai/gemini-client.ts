@@ -93,6 +93,17 @@ const DEFAULT_MODELS: AIModelInfo[] = [
  * Get available models from backend (with fallback)
  */
 export async function getAvailableModels(): Promise<AIModelInfo[]> {
+    // In production without AI Gateway configured, silently use defaults
+    const gatewayUrl = config.baseUrl || '';
+    const isLocalhost = gatewayUrl.includes('localhost') || gatewayUrl.includes('127.0.0.1');
+    const isProduction = typeof window !== 'undefined' && 
+        window.location.hostname !== 'localhost';
+    
+    // Skip network request in production when using localhost fallback
+    if (isProduction && isLocalhost) {
+        return DEFAULT_MODELS;
+    }
+    
     try {
         const response = await fetch(`${config.baseUrl}/ai/models`);
         if (!response.ok) {
@@ -113,7 +124,10 @@ export async function getAvailableModels(): Promise<AIModelInfo[]> {
         }
         return models;
     } catch (error) {
-        console.error('Failed to fetch models, using defaults:', error);
+        // Only log in development
+        if (!isProduction) {
+            console.error('Failed to fetch models, using defaults:', error);
+        }
         return DEFAULT_MODELS;
     }
 }
