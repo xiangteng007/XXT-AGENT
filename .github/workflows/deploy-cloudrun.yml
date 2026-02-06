@@ -1,13 +1,15 @@
 name: Deploy Cloud Run Always-on Services + Terraform
 
+# DISABLED: Terraform import issues need resolution
+# To re-enable, uncomment the push trigger below
 on:
-  workflow_dispatch:
-  push:
-    branches: ["main"]
-    paths:
-      - "services/**"
-      - "infra/terraform/**"
-      - ".github/workflows/deploy-cloudrun.yml"
+  workflow_dispatch: # Manual trigger only
+  # push:
+  #   branches: ["main"]
+  #   paths:
+  #     - "services/**"
+  #     - "infra/terraform/**"
+  #     - ".github/workflows/deploy-cloudrun.yml"
 
 env:
   REGION: asia-east1
