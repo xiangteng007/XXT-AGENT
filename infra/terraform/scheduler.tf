@@ -1,3 +1,19 @@
+# Import blocks for Cloud Scheduler jobs (first run to populate state)
+import {
+  id = "projects/xxt-agent/locations/asia-east1/jobs/social-poll-tick"
+  to = google_cloud_scheduler_job.social_poll_tick
+}
+
+import {
+  id = "projects/xxt-agent/locations/asia-east1/jobs/market-poll-tick"
+  to = google_cloud_scheduler_job.market_poll_tick
+}
+
+import {
+  id = "projects/xxt-agent/locations/asia-east1/jobs/news-poll-tick"
+  to = google_cloud_scheduler_job.news_poll_tick
+}
+
 resource "google_cloud_scheduler_job" "social_poll_tick" {
   name        = "social-poll-tick"
   description = "Trigger social-dispatcher every minute"
