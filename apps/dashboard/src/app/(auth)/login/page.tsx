@@ -29,8 +29,8 @@ export default function LoginPage() {
     return (
         <div className={styles.container}>
             <div className={styles.card}>
-                <h1 className={styles.title}>LINE-Notion Dashboard</h1>
-                <p className={styles.subtitle}>多租戶管理平台</p>
+                <h1 className={styles.title}>XXT Personal Butler</h1>
+                <p className={styles.subtitle}>個人生活管理助理</p>
 
                 <button
                     className={styles.googleBtn}

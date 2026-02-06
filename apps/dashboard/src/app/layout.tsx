@@ -4,8 +4,8 @@ import '@/styles/globals.css';
 import '@/styles/animations.css';
 
 export const metadata = {
-    title: 'LINE-Notion Dashboard',
-    description: 'Admin dashboard for LINE to Notion multi-tenant platform',
+    title: 'XXT Personal Butler',
+    description: '個人生活管理助理儀表板',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
