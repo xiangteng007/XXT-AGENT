@@ -155,3 +155,36 @@ export { handleWebhook, handleWorker, handleCleanup, handleButlerApi, handleButl
 // To re-enable: uncomment and ensure Firebase Auth is enabled in the GCP project
 // export { onUserCreated } from './triggers/auth.trigger';
 
+/**
+ * News Collector - Scheduled RSS Feed Aggregation
+ * Runs every 10 minutes to collect news from RSS feeds
+ * and store in Firestore for dashboard display.
+ */
+import { handleNewsCollector } from './handlers/news-collector.handler';
+
+export const newsCollectorScheduled = onSchedule(
+    {
+        schedule: 'every 10 minutes',
+        timeZone: 'Asia/Taipei',
+        memory: '512MiB',
+        timeoutSeconds: 120,
+    },
+    async () => {
+        const result = await handleNewsCollector();
+        console.log('[News Collector Scheduled]', result);
+    }
+);
+
+// Manual trigger endpoint for news collector (for testing)
+export const newsCollector = onRequest(
+    {
+        cors: false,
+        invoker: 'public',
+        memory: '512MiB',
+        timeoutSeconds: 120,
+    },
+    async (req, res) => {
+        const result = await handleNewsCollector();
+        res.json(result);
+    }
+);

@@ -4,7 +4,7 @@
  * Firebase Cloud Functions Entry Point
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.handleTelegramWebhook = exports.handleButlerWebhook = exports.handleButlerApi = exports.handleCleanup = exports.handleWorker = exports.handleWebhook = exports.telegramWebhook = exports.butlerWebhook = exports.butlerApi = exports.lineCleanupScheduled = exports.lineCleanup = exports.lineWorkerScheduled = exports.lineWorker = exports.lineWebhook = void 0;
+exports.newsCollector = exports.newsCollectorScheduled = exports.handleTelegramWebhook = exports.handleButlerWebhook = exports.handleButlerApi = exports.handleCleanup = exports.handleWorker = exports.handleWebhook = exports.telegramWebhook = exports.butlerWebhook = exports.butlerApi = exports.lineCleanupScheduled = exports.lineCleanup = exports.lineWorkerScheduled = exports.lineWorker = exports.lineWebhook = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const v2_1 = require("firebase-functions/v2");
@@ -119,4 +119,29 @@ exports.telegramWebhook = (0, https_1.onRequest)({
 // Auth triggers - temporarily disabled until Firebase Auth is enabled in project
 // To re-enable: uncomment and ensure Firebase Auth is enabled in the GCP project
 // export { onUserCreated } from './triggers/auth.trigger';
+/**
+ * News Collector - Scheduled RSS Feed Aggregation
+ * Runs every 10 minutes to collect news from RSS feeds
+ * and store in Firestore for dashboard display.
+ */
+const news_collector_handler_1 = require("./handlers/news-collector.handler");
+exports.newsCollectorScheduled = (0, scheduler_1.onSchedule)({
+    schedule: 'every 10 minutes',
+    timeZone: 'Asia/Taipei',
+    memory: '512MiB',
+    timeoutSeconds: 120,
+}, async () => {
+    const result = await (0, news_collector_handler_1.handleNewsCollector)();
+    console.log('[News Collector Scheduled]', result);
+});
+// Manual trigger endpoint for news collector (for testing)
+exports.newsCollector = (0, https_1.onRequest)({
+    cors: false,
+    invoker: 'public',
+    memory: '512MiB',
+    timeoutSeconds: 120,
+}, async (req, res) => {
+    const result = await (0, news_collector_handler_1.handleNewsCollector)();
+    res.json(result);
+});
 //# sourceMappingURL=index.js.map
