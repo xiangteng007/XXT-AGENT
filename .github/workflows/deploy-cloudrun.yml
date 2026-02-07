@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Auth to Google Cloud
         uses: google-github-actions/auth@v2
@@ -36,14 +38,36 @@ jobs:
         run: |
           gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
 
-      - name: Build & Push images
+      - name: Build & Push changed services
         run: |
           PROJECT_ID=$(gcloud config get-value project)
-          for svc in market-streamer news-collector social-dispatcher social-worker event-fusion-engine alert-engine ai-gateway trade-planner-worker telegram-command-bot quote-normalizer; do
-            echo "Building $svc..."
-            docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest services/$svc
-            docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest
-          done
+          SERVICES="market-streamer news-collector social-dispatcher social-worker event-fusion-engine alert-engine ai-gateway trade-planner-worker telegram-command-bot quote-normalizer"
+          BUILT=0
+
+          # On workflow_dispatch, build all; on push, build only changed
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual trigger - building ALL services"
+            for svc in $SERVICES; do
+              echo "🔨 Building $svc..."
+              docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest services/$svc
+              docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest
+              BUILT=$((BUILT + 1))
+            done
+          else
+            CHANGED=$(git diff --name-only HEAD~1 HEAD)
+            for svc in $SERVICES; do
+              if echo "$CHANGED" | grep -q "services/$svc"; then
+                echo "🔨 Building $svc (changed)..."
+                docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest services/$svc
+                docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest
+                BUILT=$((BUILT + 1))
+              else
+                echo "⏭️ Skipping $svc (no changes)"
+              fi
+            done
+          fi
+
+          echo "✅ Built $BUILT service(s)"
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3

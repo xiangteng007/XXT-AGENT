@@ -427,6 +427,14 @@ ${batchItems.map((item: { id: string; content: string }, i: number) =>
     }
 });
 
+// API Versioning: /v1/ai/* forwards to /ai/*
+// Allows future /v2/ai/* with breaking changes
+app.use('/v1', (req: Request, res: Response, next: NextFunction) => {
+    // Forward /v1/ai/* requests to /ai/* routes
+    req.url = req.url; // URL is already correct after /v1 prefix strip
+    next();
+});
+
 // Error handler
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     console.error(JSON.stringify({

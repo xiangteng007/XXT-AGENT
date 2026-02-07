@@ -27,6 +27,9 @@ resource "google_cloud_run_v2_service" "ai_gateway" {
         cpu_idle          = true
         startup_cpu_boost = true
       }
+      ports {
+        container_port = 8080
+      }
       env {
         name  = "GCP_PROJECT_ID"
         value = var.project_id
@@ -39,9 +42,23 @@ resource "google_cloud_run_v2_service" "ai_gateway" {
         name  = "GEMINI_SECRET_ID"
         value = "gemini-api-key"
       }
+      startup_probe {
+        http_get {
+          path = "/health"
+          port = 8080
+        }
+        initial_delay_seconds = 3
+        timeout_seconds       = 5
+        period_seconds        = 10
+        failure_threshold     = 5
+      }
+    }
+    scaling {
+      min_instance_count = 1
     }
   }
 }
+
 
 resource "google_cloud_run_v2_service" "market_streamer" {
   name     = "market-streamer"
