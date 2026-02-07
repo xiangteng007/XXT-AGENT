@@ -9,6 +9,7 @@
 
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 
@@ -53,12 +54,21 @@ const modelCache = new Map<string, GenerativeModel>();
 app.use(cors({
     origin: [
         'http://localhost:3000',
-        'https://xxt-frontend.vercel.app',
+        'https://xxt-agent-dashboard.vercel.app',
         /\.vercel\.app$/
     ],
     credentials: true
 }));
 app.use(express.json({ limit: '1mb' }));
+
+// Rate limiting: 30 requests per minute per IP
+app.use('/ai/', rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: '請求過於頻繁，請稍後再試' }
+}));
 
 // Request logging
 app.use((req: Request, _res: Response, next: NextFunction) => {
