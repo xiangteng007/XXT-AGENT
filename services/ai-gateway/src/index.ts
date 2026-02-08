@@ -17,28 +17,43 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || 'xxt-agent';
 const SECRET_ID = process.env.GEMINI_SECRET_ID || 'gemini-api-key';
-const DEFAULT_MODEL = 'gemini-1.5-flash';
+const DEFAULT_MODEL = 'gemini-2.0-flash';
 
 // Supported Models with descriptions
 const SUPPORTED_MODELS = {
     'gemini-2.0-flash': {
         name: 'Gemini 2.0 Flash',
-        description: '最新一代 AI 模型，更強的推理與多模態能力',
+        description: '最新一代 AI 模型，更強的推理與多模態能力（預設）',
         tier: 'latest',
+    },
+    'gemini-2.0-flash-lite': {
+        name: 'Gemini 2.0 Flash-Lite',
+        description: '超低延遲輕量模型，適合高頻即時互動',
+        tier: 'economy',
+    },
+    'gemini-2.0-pro-exp-02-05': {
+        name: 'Gemini 2.0 Pro (實驗)',
+        description: '最強推理能力，適合複雜金融分析與研究',
+        tier: 'premium',
+    },
+    'gemini-2.0-flash-thinking-exp-01-21': {
+        name: 'Gemini 2.0 Flash Thinking',
+        description: '深度思考模型，適合多步驟推理與策略規劃',
+        tier: 'premium',
     },
     'gemini-1.5-pro': {
         name: 'Gemini 1.5 Pro',
-        description: '強大的推理能力，適合複雜分析與長文本',
-        tier: 'premium',
+        description: '100萬 token 上下文，適合長文檔分析',
+        tier: 'standard',
     },
     'gemini-1.5-flash': {
         name: 'Gemini 1.5 Flash',
-        description: '快速回應、低成本，適合日常任務（預設）',
+        description: '快速回應、低成本，適合日常任務',
         tier: 'standard',
     },
     'gemini-1.5-flash-8b': {
         name: 'Gemini 1.5 Flash-8B',
-        description: '超低延遲，適合高頻交互場景',
+        description: '超低成本，適合大量批次處理',
         tier: 'economy',
     },
 } as const;
@@ -424,6 +439,74 @@ ${batchItems.map((item: { id: string; content: string }, i: number) =>
     } catch (error) {
         console.error('Batch sentiment error:', error);
         res.status(500).json({ error: 'Failed to analyze batch sentiment' });
+    }
+});
+
+// Butler context-enriched chat endpoint
+// Accepts user data context (health, finance, vehicle, calendar) for personalized responses
+app.post('/ai/butler/chat', async (req: Request, res: Response) => {
+    try {
+        await initializeGemini();
+        const { message, model, context, conversationHistory } = req.body;
+
+        if (!message) {
+            return res.status(400).json({ error: 'Missing message' });
+        }
+
+        const geminiModel = getOrCreateModel(model);
+        if (!geminiModel) {
+            return res.status(503).json({ error: 'AI service not available' });
+        }
+
+        // Build context-enriched system prompt
+        const contextSections: string[] = [];
+
+        if (context?.health) {
+            contextSections.push(`## 用戶健康數據\n${JSON.stringify(context.health, null, 2)}`);
+        }
+        if (context?.finance) {
+            contextSections.push(`## 用戶財務摘要\n${JSON.stringify(context.finance, null, 2)}`);
+        }
+        if (context?.vehicle) {
+            contextSections.push(`## 用戶車輛資訊\n${JSON.stringify(context.vehicle, null, 2)}`);
+        }
+        if (context?.calendar) {
+            contextSections.push(`## 用戶行事曆\n${JSON.stringify(context.calendar, null, 2)}`);
+        }
+
+        const systemPrompt = `你是「小秘書」，專業的個人智能管家助理。
+友善、專業、高效。針對用戶問題提供精準回答。
+
+${contextSections.length > 0 ? '# 用戶個人數據（請基於這些數據回答相關問題）\n' + contextSections.join('\n\n') : ''}
+
+## 回應規則
+- 使用繁體中文回應
+- 回答要簡潔明瞭
+- 涉及數據時引用實際數字
+- 如果數據不足，坦誠告知並建議記錄`;
+
+        // Build conversation for multi-turn
+        const parts: string[] = [];
+        if (conversationHistory?.length) {
+            for (const msg of conversationHistory.slice(-6)) {
+                parts.push(`${msg.role === 'user' ? '用戶' : '助理'}: ${msg.content}`);
+            }
+        }
+        parts.push(`用戶: ${message}`);
+
+        const fullPrompt = `${systemPrompt}\n\n${parts.join('\n')}`;
+
+        const result = await geminiModel.generateContent(fullPrompt);
+        const response = await result.response;
+
+        res.json({
+            response: response.text(),
+            model: model || DEFAULT_MODEL,
+            hasContext: contextSections.length > 0,
+        });
+    } catch (error) {
+        console.error('Butler chat error:', error);
+        res.status(500).json({ error: 'Failed to generate butler response' });
     }
 });
 

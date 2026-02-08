@@ -20,7 +20,7 @@ interface AIClientConfig {
 let config: AIClientConfig = {
     baseUrl: AI_GATEWAY_URL,
     timeout: 30000,
-    model: 'gemini-1.5-flash'
+    model: 'gemini-2.0-flash'
 };
 
 /**
@@ -41,7 +41,7 @@ export function setActiveModel(modelId: string): void {
  * Get the current model
  */
 export function getActiveModel(): string {
-    return config.model || 'gemini-1.5-flash';
+    return config.model || 'gemini-2.0-flash';
 }
 
 /**
