@@ -33,6 +33,14 @@ import {
     Zap,
     Crown,
     Timer,
+    Copy,
+    Download,
+    BookOpen,
+    Target,
+    Shield,
+    Globe,
+    Activity,
+    PieChart,
 } from 'lucide-react';
 
 // Tier badge styling
@@ -82,6 +90,89 @@ export default function AIAssistantPage() {
         '如何設定停損點？',
     ];
 
+    // Prompt template categories
+    const [activeTemplateTab, setActiveTemplateTab] = useState('investment');
+
+    const promptTemplates: Record<string, { icon: React.ReactNode; label: string; prompts: string[] }> = {
+        investment: {
+            icon: <TrendingUp className="h-3.5 w-3.5" />,
+            label: '投資分析',
+            prompts: [
+                '分析 TSMC (2330.TW) 的基本面和技術面',
+                '比較台積電和聯發科的投資價值',
+                '美股科技股目前有什麼好的進場機會？',
+            ],
+        },
+        risk: {
+            icon: <Shield className="h-3.5 w-3.5" />,
+            label: '風險管理',
+            prompts: [
+                '我的持倉集中在科技股，如何分散風險？',
+                '如何設計一個攻守兼備的投資組合？',
+                '在升息環境下，應該如何調整債券配置？',
+            ],
+        },
+        research: {
+            icon: <Globe className="h-3.5 w-3.5" />,
+            label: '市場研究',
+            prompts: [
+                '2026 年半導體產業的展望如何？',
+                '電動車供應鏈有哪些值得關注的個股？',
+                'AI 產業鏈中，哪些公司被低估了？',
+            ],
+        },
+        portfolio: {
+            icon: <PieChart className="h-3.5 w-3.5" />,
+            label: '組合優化',
+            prompts: [
+                '幫我設計一個穩健型的 ETF 組合',
+                '如何用股債平衡策略降低波動？',
+                '退休金組合應該如何配置？',
+            ],
+        },
+        technical: {
+            icon: <Activity className="h-3.5 w-3.5" />,
+            label: '技術分析',
+            prompts: [
+                '解釋均線死亡交叉和黃金交叉的意義',
+                'RSI 超買時該如何操作？',
+                '如何判斷支撐和壓力位？',
+            ],
+        },
+        macro: {
+            icon: <Target className="h-3.5 w-3.5" />,
+            label: '總經觀點',
+            prompts: [
+                '美國聯準會升息對台股的影響？',
+                '日圓走弱對亞洲股市的風險',
+                '全球通膨趨勢下，哪些資產可以避險？',
+            ],
+        },
+    };
+
+    // Export chat
+    const exportChat = () => {
+        if (messages.length === 0) return;
+        const text = messages.map(m =>
+            `[${m.timestamp.toLocaleString('zh-TW')}] ${m.role === 'user' ? '我' : 'AI'}:\n${m.content}`
+        ).join('\n\n---\n\n');
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ai-chat-${new Date().toISOString().slice(0, 10)}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const copyChat = async () => {
+        if (messages.length === 0) return;
+        const text = messages.map(m =>
+            `${m.role === 'user' ? '我' : 'AI'}：${m.content}`
+        ).join('\n\n');
+        await navigator.clipboard.writeText(text);
+    };
+
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -119,10 +210,18 @@ export default function AIAssistantPage() {
                         </Select>
                     </div>
                     {messages.length > 0 && (
-                        <Button variant="outline" size="sm" onClick={clearMessages}>
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            清除對話
-                        </Button>
+                        <div className="flex items-center gap-1">
+                            <Button variant="outline" size="sm" onClick={copyChat} title="複製對話">
+                                <Copy className="h-4 w-4" />
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={exportChat} title="下載對話">
+                                <Download className="h-4 w-4" />
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={clearMessages}>
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                清除
+                            </Button>
+                        </div>
                     )}
                 </div>
             </div>
@@ -256,8 +355,49 @@ export default function AIAssistantPage() {
                     </Card>
                 </div>
 
-                {/* Quick Actions */}
+                {/* Prompt Templates */}
                 <div className="space-y-4">
+                    <Card>
+                        <CardHeader className="pb-3">
+                            <CardTitle className="text-base flex items-center gap-2">
+                                <BookOpen className="h-4 w-4" />
+                                提示詞模板
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {/* Template Tabs */}
+                            <div className="flex flex-wrap gap-1">
+                                {Object.entries(promptTemplates).map(([key, cat]) => (
+                                    <Button
+                                        key={key}
+                                        variant={activeTemplateTab === key ? 'default' : 'ghost'}
+                                        size="sm"
+                                        className="text-xs h-7 px-2"
+                                        onClick={() => setActiveTemplateTab(key)}
+                                    >
+                                        {cat.icon}
+                                        <span className="ml-1">{cat.label}</span>
+                                    </Button>
+                                ))}
+                            </div>
+                            {/* Template List */}
+                            <div className="space-y-1.5">
+                                {promptTemplates[activeTemplateTab]?.prompts.map((prompt, i) => (
+                                    <button
+                                        key={i}
+                                        className="w-full text-left text-sm p-2.5 rounded-md hover:bg-muted transition-colors border border-transparent hover:border-border"
+                                        onClick={() => {
+                                            setInputValue(prompt);
+                                        }}
+                                    >
+                                        {prompt}
+                                    </button>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Quick Actions */}
                     <Card>
                         <CardHeader className="pb-3">
                             <CardTitle className="text-base flex items-center gap-2">
@@ -296,30 +436,6 @@ export default function AIAssistantPage() {
                         </CardContent>
                     </Card>
 
-                    <Card>
-                        <CardHeader className="pb-3">
-                            <CardTitle className="text-base">常見問題</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-2 text-sm">
-                            {[
-                                '如何判斷買入時機？',
-                                '什麼是合理的持倉比例？',
-                                '如何分散投資風險？',
-                                '短線與長線策略差異？',
-                            ].map((q, i) => (
-                                <button
-                                    key={i}
-                                    className="w-full text-left p-2 rounded hover:bg-muted transition-colors"
-                                    onClick={() => {
-                                        setInputValue(q);
-                                    }}
-                                >
-                                    {q}
-                                </button>
-                            ))}
-                        </CardContent>
-                    </Card>
-
                     {/* AI Status */}
                     <Card>
                         <CardContent className="pt-4">
@@ -329,6 +445,12 @@ export default function AIAssistantPage() {
                                     {models.find(m => m.id === selectedModel)?.name || selectedModel}
                                 </Badge>
                             </div>
+                            {messages.length > 0 && (
+                                <div className="flex items-center justify-between mt-2">
+                                    <span className="text-sm text-muted-foreground">對話記錄</span>
+                                    <Badge variant="outline">{messages.length} 則</Badge>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 </div>
