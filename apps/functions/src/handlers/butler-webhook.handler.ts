@@ -3,11 +3,21 @@
  * 
  * Handles incoming LINE webhook events for the 小秘書 (Personal Butler) bot.
  * Responds to user messages with Butler AI capabilities.
+ * Supports Flex Message cards for finance, health, vehicle, and schedule domains.
  */
 
 import { Request, Response } from 'express';
 import * as crypto from 'crypto';
 import { generateAIResponse } from '../services/butler-ai.service';
+import {
+    detectDomain,
+    buildFinanceSummaryCard,
+    buildHealthSummaryCard,
+    buildVehicleStatusCard,
+    buildScheduleCard,
+    buildQuickReplyButtons,
+    FlexMessage,
+} from '../services/butler-flex.service';
 
 // LINE Channel Secret for signature verification
 // SECURITY: These MUST be set via environment variables - no fallback values allowed
@@ -137,14 +147,22 @@ async function handleMessageEvent(event: LineEvent): Promise<void> {
 
     console.log(`[Butler] Message from ${userId}: ${messageText}`);
 
-    // Generate AI response (with fallback to keyword matching)
-    const response = await generateAIResponse(messageText, userId);
+    // Detect domain for Flex Message reply
+    const domain = detectDomain(messageText);
+    console.log(`[Butler] Detected domain: ${domain}`);
 
-    // Send reply
-    await replyMessage(event.replyToken, [{
-        type: 'text',
-        text: response,
-    }]);
+    // Try Flex Message for specific domains
+    const flexCard = await buildFlexReply(domain, messageText, userId);
+    if (flexCard) {
+        await replyMessage(event.replyToken, [flexCard]);
+        return;
+    }
+
+    // Fallback to AI text response for general queries
+    const response = await generateAIResponse(messageText, userId);
+    await replyMessage(event.replyToken, [
+        { type: 'text', text: response, quickReply: buildQuickReplyButtons() },
+    ]);
 }
 
 async function handlePostbackEvent(event: LineEvent): Promise<void> {
@@ -192,12 +210,66 @@ async function handleFollowEvent(event: LineEvent): Promise<void> {
 }
 
 
+// ================================
+// Flex Message Reply Builder
+// ================================
+
+async function buildFlexReply(
+    domain: string,
+    _messageText: string,
+    _userId?: string
+): Promise<FlexMessage | null> {
+    try {
+        switch (domain) {
+            case 'finance':
+                // TODO: fetch real data from Firestore
+                return buildFinanceSummaryCard({
+                    monthLabel: new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long' }),
+                    totalExpense: 0,
+                    totalIncome: 0,
+                    topCategories: [],
+                    trend: 'flat',
+                });
+            case 'health':
+                return buildHealthSummaryCard({
+                    date: new Date().toLocaleDateString('zh-TW'),
+                    steps: 0,
+                    stepsGoal: 8000,
+                    activeMinutes: 0,
+                    calories: 0,
+                    sleepHours: 0,
+                });
+            case 'vehicle':
+                return buildVehicleStatusCard({
+                    make: 'Suzuki',
+                    model: 'Jimny',
+                    variant: 'JB74',
+                    licensePlate: '---',
+                    mileage: 0,
+                    nextServiceMileage: 5000,
+                    insuranceExpiry: '---',
+                    inspectionExpiry: '---',
+                });
+            case 'schedule':
+                return buildScheduleCard({
+                    date: new Date().toLocaleDateString('zh-TW', { weekday: 'long', month: 'long', day: 'numeric' }),
+                    events: [],
+                });
+            default:
+                return null;
+        }
+    } catch (err) {
+        console.error(`[Butler] Flex build failed for ${domain}:`, err);
+        return null;
+    }
+}
 
 // ================================
 // LINE API Helpers
 // ================================
 
-async function replyMessage(replyToken: string, messages: Array<{ type: string; text: string }>): Promise<void> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function replyMessage(replyToken: string, messages: Array<Record<string, any>>): Promise<void> {
     try {
         const response = await fetch(`${LINE_API_BASE}/message/reply`, {
             method: 'POST',
