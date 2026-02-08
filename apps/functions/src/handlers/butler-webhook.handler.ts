@@ -18,6 +18,11 @@ import {
     buildQuickReplyButtons,
     FlexMessage,
 } from '../services/butler-flex.service';
+import {
+    appendMessage,
+    getPreviousMessages,
+    clearSession,
+} from '../services/butler/conversation-session.service';
 
 // LINE Channel Secret for signature verification
 // SECURITY: These MUST be set via environment variables - no fallback values allowed
@@ -147,6 +152,15 @@ async function handleMessageEvent(event: LineEvent): Promise<void> {
 
     console.log(`[Butler] Message from ${userId}: ${messageText}`);
 
+    // Handle special commands
+    if (messageText === '清除對話' || messageText === '重新開始') {
+        if (userId) await clearSession(userId);
+        await replyMessage(event.replyToken, [
+            { type: 'text', text: '🔄 對話已重置，有什麼我可以幫您的嗎？', quickReply: buildQuickReplyButtons() },
+        ]);
+        return;
+    }
+
     // Detect domain for Flex Message reply
     const domain = detectDomain(messageText);
     console.log(`[Butler] Detected domain: ${domain}`);
@@ -158,8 +172,25 @@ async function handleMessageEvent(event: LineEvent): Promise<void> {
         return;
     }
 
-    // Fallback to AI text response for general queries
-    const response = await generateAIResponse(messageText, userId);
+    // Multi-turn: save user message and get history
+    if (userId) {
+        await appendMessage(userId, 'user', messageText);
+    }
+
+    // Get conversation history for context
+    const history = userId ? await getPreviousMessages(userId) : [];
+    const contextPrefix = history.length > 1
+        ? `以下是之前的對話紀錄：\n${history.slice(0, -1).join('\n')}\n\n用戶最新問題：${messageText}`
+        : messageText;
+
+    // AI text response with conversation context
+    const response = await generateAIResponse(contextPrefix, userId);
+
+    // Save assistant response to session
+    if (userId) {
+        await appendMessage(userId, 'assistant', response);
+    }
+
     await replyMessage(event.replyToken, [
         { type: 'text', text: response, quickReply: buildQuickReplyButtons() },
     ]);
@@ -175,12 +206,36 @@ async function handlePostbackEvent(event: LineEvent): Promise<void> {
 
     console.log(`[Butler] Postback from ${userId}: ${postbackData}`);
 
-    // Use AI response for postback data
+    // Parse action from postback data
+    const params = new URLSearchParams(postbackData);
+    const action = params.get('action');
+
+    switch (action) {
+        case 'ai_chat':
+            await replyMessage(event.replyToken, [{
+                type: 'text',
+                text: '🤖 AI 助理已準備好，請直接輸入您的問題！',
+                quickReply: buildQuickReplyButtons(),
+            }]);
+            return;
+        case 'clear_session':
+            if (userId) await clearSession(userId);
+            await replyMessage(event.replyToken, [{
+                type: 'text',
+                text: '🔄 對話已重置，有什麼我可以幫您的嗎？',
+            }]);
+            return;
+        default:
+            break;
+    }
+
+    // Default: use AI response for postback data
     const response = await generateAIResponse(postbackData, userId);
 
     await replyMessage(event.replyToken, [{
         type: 'text',
         text: response,
+        quickReply: buildQuickReplyButtons(),
     }]);
 }
 
