@@ -23,6 +23,11 @@ import {
     getPreviousMessages,
     clearSession,
 } from '../services/butler/conversation-session.service';
+import { financeService } from '../services/finance.service';
+import { healthService } from '../services/health.service';
+import { vehicleService } from '../services/vehicle.service';
+import { scheduleService } from '../services/schedule.service';
+import { parseCommand, executeCommand } from '../services/butler/butler-commands.service';
 
 // LINE Channel Secret for signature verification
 // SECURITY: These MUST be set via environment variables - no fallback values allowed
@@ -161,6 +166,20 @@ async function handleMessageEvent(event: LineEvent): Promise<void> {
         return;
     }
 
+    // Quick-record commands: 記帳/體重/加油/行程 etc.
+    const command = parseCommand(messageText);
+    if (command && userId) {
+        console.log(`[Butler] Command detected: ${command.action} (${command.confidence})`);
+        const result = await executeCommand(userId, command);
+        // Save to session for potential undo
+        await appendMessage(userId, 'user', messageText);
+        await appendMessage(userId, 'assistant', result);
+        await replyMessage(event.replyToken, [
+            { type: 'text', text: result, quickReply: buildQuickReplyButtons() },
+        ]);
+        return;
+    }
+
     // Detect domain for Flex Message reply
     const domain = detectDomain(messageText);
     console.log(`[Butler] Detected domain: ${domain}`);
@@ -272,44 +291,76 @@ async function handleFollowEvent(event: LineEvent): Promise<void> {
 async function buildFlexReply(
     domain: string,
     _messageText: string,
-    _userId?: string
+    userId?: string
 ): Promise<FlexMessage | null> {
     try {
+        const now = new Date();
+
         switch (domain) {
-            case 'finance':
-                // TODO: fetch real data from Firestore
+            case 'finance': {
+                const summary = userId
+                    ? await financeService.getMonthlySummary(userId, now.getFullYear(), now.getMonth() + 1)
+                    : null;
+                const categoryEntries = summary?.expensesByCategory
+                    ? Object.entries(summary.expensesByCategory)
+                        .sort(([, a], [, b]) => (b as number) - (a as number))
+                        .slice(0, 3)
+                        .map(([name, amount]) => ({ name, amount: amount as number, emoji: '💳' }))
+                    : [];
                 return buildFinanceSummaryCard({
-                    monthLabel: new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long' }),
-                    totalExpense: 0,
-                    totalIncome: 0,
-                    topCategories: [],
-                    trend: 'flat',
+                    monthLabel: now.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long' }),
+                    totalExpense: summary?.totalExpenses ?? 0,
+                    totalIncome: summary?.totalIncome ?? 0,
+                    topCategories: categoryEntries,
+                    trend: (summary?.netSavings ?? 0) > 0 ? 'up' : (summary?.netSavings ?? 0) < 0 ? 'down' : 'flat',
                 });
-            case 'health':
+            }
+            case 'health': {
+                const todayHealth = userId
+                    ? await healthService.getTodayHealth(userId)
+                    : null;
                 return buildHealthSummaryCard({
-                    date: new Date().toLocaleDateString('zh-TW'),
-                    steps: 0,
+                    date: now.toLocaleDateString('zh-TW'),
+                    steps: todayHealth?.steps ?? 0,
                     stepsGoal: 8000,
-                    activeMinutes: 0,
-                    calories: 0,
-                    sleepHours: 0,
+                    activeMinutes: todayHealth?.activeMinutes ?? 0,
+                    calories: todayHealth?.caloriesBurned ?? 0,
+                    sleepHours: todayHealth?.sleepHours ?? 0,
                 });
-            case 'vehicle':
+            }
+            case 'vehicle': {
+                // Get first vehicle for the user
+                const dashboard = userId
+                    ? await vehicleService.getDashboard(userId, 'default').catch(() => null)
+                    : null;
                 return buildVehicleStatusCard({
-                    make: 'Suzuki',
-                    model: 'Jimny',
-                    variant: 'JB74',
-                    licensePlate: '---',
-                    mileage: 0,
-                    nextServiceMileage: 5000,
+                    make: dashboard?.vehicle?.make ?? 'Suzuki',
+                    model: dashboard?.vehicle?.model ?? 'Jimny',
+                    variant: dashboard?.vehicle?.variant ?? 'JB74',
+                    licensePlate: dashboard?.vehicle?.licensePlate ?? '---',
+                    mileage: dashboard?.vehicle?.currentMileage ?? 0,
+                    nextServiceMileage: dashboard?.urgentReminders?.[0]?.dueMileage ?? 5000,
                     insuranceExpiry: '---',
                     inspectionExpiry: '---',
                 });
-            case 'schedule':
+            }
+            case 'schedule': {
+                const dailySchedule = userId
+                    ? await scheduleService.getTodaySchedule(userId)
+                    : null;
+                const events = dailySchedule?.events?.map(e => ({
+                    time: typeof e.start === 'string'
+                        ? e.start
+                        : (e.start as Date).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }),
+                    title: e.title,
+                    location: e.location,
+                    emoji: e.category === 'work' ? '💼' : e.category === 'health' ? '🏃' : '📌',
+                })) ?? [];
                 return buildScheduleCard({
-                    date: new Date().toLocaleDateString('zh-TW', { weekday: 'long', month: 'long', day: 'numeric' }),
-                    events: [],
+                    date: now.toLocaleDateString('zh-TW', { weekday: 'long', month: 'long', day: 'numeric' }),
+                    events,
                 });
+            }
             default:
                 return null;
         }
