@@ -302,3 +302,137 @@ export async function isAIAvailable(model?: AIModel): Promise<boolean> {
 export function getAvailableModels(): AIModel[] {
     return ['gemini-1.5-flash', 'gemini-1.5-pro', 'gpt-4o', 'gpt-4o-mini'];
 }
+
+// ================================
+// Gemini Function Calling (Tool Use)
+// ================================
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { SchemaType } from '@google/generative-ai';
+
+/**
+ * Tool definitions for Gemini function calling.
+ * These allow the AI to autonomously determine when to execute actions.
+ */
+const BUTLER_TOOLS = [
+    {
+        functionDeclarations: [
+            {
+                name: 'record_expense',
+                description: '記錄一筆支出到用戶的財務記錄',
+                parameters: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                        amount: { type: SchemaType.NUMBER, description: '金額' },
+                        description: { type: SchemaType.STRING, description: '描述（例如午餐、加油）' },
+                        category: { type: SchemaType.STRING, description: '分類：餐飲/交通/購物/醫療/娛樂/日用品/其他' },
+                    },
+                    required: ['amount', 'description'],
+                },
+            },
+            {
+                name: 'record_weight',
+                description: '記錄用戶的體重',
+                parameters: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                        weight: { type: SchemaType.NUMBER, description: '體重（公斤）' },
+                    },
+                    required: ['weight'],
+                },
+            },
+            {
+                name: 'add_event',
+                description: '新增一個行程到日曆',
+                parameters: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                        title: { type: SchemaType.STRING, description: '事件標題' },
+                        date: { type: SchemaType.STRING, description: '日期（YYYY-MM-DD）' },
+                        time: { type: SchemaType.STRING, description: '時間（HH:mm）' },
+                    },
+                    required: ['title', 'date'],
+                },
+            },
+            {
+                name: 'get_schedule',
+                description: '查詢用戶的行程',
+                parameters: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                        date: { type: SchemaType.STRING, description: '要查詢的日期（YYYY-MM-DD），空白表示今天' },
+                    },
+                },
+            },
+            {
+                name: 'get_spending',
+                description: '查詢用戶的支出摘要',
+                parameters: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                        month: { type: SchemaType.NUMBER, description: '月份（1-12），空白表示本月' },
+                    },
+                },
+            },
+            {
+                name: 'record_fuel',
+                description: '記錄車輛加油',
+                parameters: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                        liters: { type: SchemaType.NUMBER, description: '公升數' },
+                        price_per_liter: { type: SchemaType.NUMBER, description: '每公升價格' },
+                    },
+                    required: ['liters'],
+                },
+            },
+        ],
+    },
+];
+
+/**
+ * Generate AI response with function calling capability.
+ * The AI can autonomously trigger tool calls to perform actions.
+ */
+export async function generateAIResponseWithTools(
+    userMessage: string,
+    userId: string,
+    contextPrompt: string
+): Promise<{ text: string; toolCalls?: Array<{ name: string; args: Record<string, unknown> }> }> {
+    try {
+        const client = await getGeminiClient();
+        const model = client.getGenerativeModel({
+            model: 'gemini-1.5-flash',
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            tools: BUTLER_TOOLS as any,
+        });
+
+        const result = await model.generateContent([
+            { text: BUTLER_SYSTEM_PROMPT + contextPrompt + '\n\n當用戶想要記錄數據或查詢資訊時，使用提供的工具函數來執行操作。' },
+            { text: `用戶訊息：${userMessage}` },
+        ]);
+
+        const response = result.response;
+        const candidate = response.candidates?.[0];
+        if (!candidate?.content?.parts) {
+            return { text: response.text() };
+        }
+
+        // Check for function calls
+        const functionCalls = candidate.content.parts
+            .filter(part => 'functionCall' in part)
+            .map(part => ({
+                name: (part as { functionCall: { name: string; args: Record<string, unknown> } }).functionCall.name,
+                args: (part as { functionCall: { name: string; args: Record<string, unknown> } }).functionCall.args,
+            }));
+
+        if (functionCalls.length > 0) {
+            return { text: response.text() || '', toolCalls: functionCalls };
+        }
+
+        return { text: response.text() };
+    } catch (err) {
+        console.error('[Butler AI] Function Calling failed:', err);
+        return { text: generateFallbackResponse(userMessage) };
+    }
+}
