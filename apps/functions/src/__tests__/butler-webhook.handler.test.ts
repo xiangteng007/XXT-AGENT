@@ -39,6 +39,7 @@ describe('Butler Webhook Handler', () => {
             mockReq.body = { events: [] };
             
             // Import after mocks are set up
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
             const { handleButlerWebhook } = require('../handlers/butler-webhook.handler');
             await handleButlerWebhook(mockReq as Request, mockRes as Response);
             
@@ -94,6 +95,7 @@ describe('Butler Webhook Handler', () => {
 
     describe('Message Processing', () => {
         it('should process text messages', async () => {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
             const { generateAIResponse } = require('../services/butler-ai.service');
             
             await generateAIResponse('今天行程', 'test-user');
