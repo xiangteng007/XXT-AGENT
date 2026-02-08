@@ -35,12 +35,26 @@ resource "google_cloud_run_v2_service" "ai_gateway" {
         value = var.project_id
       }
       env {
-        name  = "GEMINI_API_KEY"
-        value = var.gemini_api_key
+        name = "GEMINI_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = "gemini-api-key"
+            version = "latest"
+          }
+        }
       }
       env {
         name  = "GEMINI_SECRET_ID"
         value = "gemini-api-key"
+      }
+      env {
+        name = "AI_GATEWAY_API_KEYS"
+        value_source {
+          secret_key_ref {
+            secret  = "AI_GATEWAY_API_KEYS"
+            version = "latest"
+          }
+        }
       }
       startup_probe {
         http_get {
@@ -115,6 +129,9 @@ resource "google_cloud_run_v2_service" "news_collector" {
     service_account = google_service_account.runtime_sa.email
     containers {
       image = local.img.news_collector
+      ports {
+        container_port = 8080
+      }
       env {
         name  = "GCP_PROJECT_ID"
         value = var.project_id
@@ -122,6 +139,15 @@ resource "google_cloud_run_v2_service" "news_collector" {
       env {
         name  = "TOPIC_RAW_NEWS"
         value = data.google_pubsub_topic.raw_news.name
+      }
+      startup_probe {
+        tcp_socket {
+          port = 8080
+        }
+        initial_delay_seconds = 3
+        timeout_seconds       = 5
+        period_seconds        = 10
+        failure_threshold     = 5
       }
     }
   }
@@ -135,6 +161,9 @@ resource "google_cloud_run_v2_service" "quote_normalizer" {
     service_account = google_service_account.runtime_sa.email
     containers {
       image = local.img.quote_normalizer
+      ports {
+        container_port = 8080
+      }
       env {
         name  = "GCP_PROJECT_ID"
         value = var.project_id
@@ -146,6 +175,15 @@ resource "google_cloud_run_v2_service" "quote_normalizer" {
       env {
         name  = "TOPIC_EVENTS_NORMALIZED"
         value = data.google_pubsub_topic.raw_market.name # Reusing same bus for simplicity
+      }
+      startup_probe {
+        tcp_socket {
+          port = 8080
+        }
+        initial_delay_seconds = 3
+        timeout_seconds       = 5
+        period_seconds        = 10
+        failure_threshold     = 5
       }
     }
   }
@@ -159,6 +197,9 @@ resource "google_cloud_run_v2_service" "social_worker" {
     service_account = google_service_account.runtime_sa.email
     containers {
       image = local.img.social_worker
+      ports {
+        container_port = 8080
+      }
       env {
         name  = "GCP_PROJECT_ID"
         value = var.project_id
@@ -166,6 +207,15 @@ resource "google_cloud_run_v2_service" "social_worker" {
       env {
         name  = "TOPIC_RAW_SOCIAL"
         value = data.google_pubsub_topic.raw_social.name
+      }
+      startup_probe {
+        tcp_socket {
+          port = 8080
+        }
+        initial_delay_seconds = 3
+        timeout_seconds       = 5
+        period_seconds        = 10
+        failure_threshold     = 5
       }
     }
   }
@@ -179,6 +229,9 @@ resource "google_cloud_run_v2_service" "social_dispatcher" {
     service_account = google_service_account.runtime_sa.email
     containers {
       image = local.img.social_dispatcher
+      ports {
+        container_port = 8080
+      }
       env {
         name  = "GCP_PROJECT_ID"
         value = var.project_id
@@ -190,6 +243,15 @@ resource "google_cloud_run_v2_service" "social_dispatcher" {
       env {
         name  = "SOCIAL_WORKER_URL"
         value = google_cloud_run_v2_service.social_worker.uri
+      }
+      startup_probe {
+        tcp_socket {
+          port = 8080
+        }
+        initial_delay_seconds = 3
+        timeout_seconds       = 5
+        period_seconds        = 10
+        failure_threshold     = 5
       }
     }
   }
@@ -218,6 +280,15 @@ resource "google_cloud_run_v2_service" "fusion_engine" {
         name  = "REDIS_HOST"
         value = data.google_redis_instance.cache.host
       }
+      startup_probe {
+        tcp_socket {
+          port = 8080
+        }
+        initial_delay_seconds = 3
+        timeout_seconds       = 5
+        period_seconds        = 10
+        failure_threshold     = 5
+      }
     }
   }
 }
@@ -239,16 +310,35 @@ resource "google_cloud_run_v2_service" "alert_engine" {
         value = data.google_redis_instance.cache.host
       }
       env {
-        name  = "TELEGRAM_BOT_TOKEN"
-        value = var.telegram_bot_token
+        name = "TELEGRAM_BOT_TOKEN"
+        value_source {
+          secret_key_ref {
+            secret  = "telegram-bot-token"
+            version = "latest"
+          }
+        }
       }
       env {
         name  = "USE_LLM_ALERT_OPERATOR"
         value = "true"
       }
       env {
-        name  = "GEMINI_API_KEY"
-        value = var.gemini_api_key
+        name = "GEMINI_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = "gemini-api-key"
+            version = "latest"
+          }
+        }
+      }
+      startup_probe {
+        tcp_socket {
+          port = 8080
+        }
+        initial_delay_seconds = 3
+        timeout_seconds       = 5
+        period_seconds        = 10
+        failure_threshold     = 5
       }
     }
   }
@@ -262,17 +352,34 @@ resource "google_cloud_run_v2_service" "trade_planner" {
     service_account = google_service_account.runtime_sa.email
     containers {
       image = local.img.trade_planner
+      ports {
+        container_port = 8080
+      }
       env {
         name  = "GCP_PROJECT_ID"
         value = var.project_id
       }
       env {
-        name  = "GEMINI_API_KEY"
-        value = var.gemini_api_key
+        name = "GEMINI_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = "gemini-api-key"
+            version = "latest"
+          }
+        }
       }
       env {
         name  = "REDIS_HOST"
         value = data.google_redis_instance.cache.host
+      }
+      startup_probe {
+        tcp_socket {
+          port = 8080
+        }
+        initial_delay_seconds = 3
+        timeout_seconds       = 5
+        period_seconds        = 10
+        failure_threshold     = 5
       }
     }
   }
@@ -294,8 +401,13 @@ resource "google_cloud_run_v2_service" "telegram_bot" {
         value = var.project_id
       }
       env {
-        name  = "TELEGRAM_BOT_TOKEN"
-        value = var.telegram_bot_token
+        name = "TELEGRAM_BOT_TOKEN"
+        value_source {
+          secret_key_ref {
+            secret  = "telegram-bot-token"
+            version = "latest"
+          }
+        }
       }
       env {
         name  = "TRADE_PLANNER_URL"

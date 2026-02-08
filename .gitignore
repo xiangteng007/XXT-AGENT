@@ -52,3 +52,5 @@ coverage/
 gcp-sa-key*.json
 **/gcp-*.json
 **/sa-key*.json
+# Secret keys reference
+.env.keys

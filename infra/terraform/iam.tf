@@ -1,9 +1,5 @@
 # Runtime Service Account for Cloud Run services
-# Import block to bring existing SA into Terraform state (first run)
-import {
-  id = "projects/xxt-agent/serviceAccounts/ai-me-runtime-prod@xxt-agent.iam.gserviceaccount.com"
-  to = google_service_account.runtime_sa
-}
+# Note: Originally imported via import block, now managed by Terraform state
 
 resource "google_service_account" "runtime_sa" {
   account_id   = "ai-me-runtime-prod"

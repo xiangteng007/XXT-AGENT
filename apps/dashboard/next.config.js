@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    // SSR-friendly output for Vercel deployment
-    output: 'standalone',
-
     reactStrictMode: true,
 
     experimental: {
@@ -19,8 +16,8 @@ const nextConfig = {
     },
 
     eslint: {
-        // Allow production builds with lint warnings
-        ignoreDuringBuilds: true,
+        // Enforce linting during production builds
+        ignoreDuringBuilds: false,
     },
 
     // Security headers
@@ -52,6 +49,10 @@ const nextConfig = {
                     {
                         key: 'Permissions-Policy',
                         value: 'camera=(), microphone=(), geolocation=()',
+                    },
+                    {
+                        key: 'Content-Security-Policy',
+                        value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://o4510736967991296.ingest.us.sentry.io https://*.firebaseio.com https://*.googleapis.com wss://*.firebaseio.com;",
                     },
                 ],
             },

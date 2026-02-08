@@ -8,13 +8,81 @@ on:
       - "services/**"
       - "infra/terraform/**"
       - ".github/workflows/deploy-cloudrun.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/deploy-cloudrun.yml"
 
 env:
   REGION: asia-east1
   AR_REPO: ai-me-services
 
 jobs:
+  # ── Terraform Plan (PR only) ──────────────────────────────
+  terraform-plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Auth to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: infra/terraform
+        env:
+          TF_VAR_project_id: ${{ secrets.FIREBASE_PROJECT_ID }}
+          TF_VAR_gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          TF_VAR_telegram_bot_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TF_VAR_telegram_chat_id: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: terraform init
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: infra/terraform
+        env:
+          TF_VAR_project_id: ${{ secrets.FIREBASE_PROJECT_ID }}
+          TF_VAR_gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          TF_VAR_telegram_bot_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TF_VAR_telegram_chat_id: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          terraform plan -no-color -out=tfplan 2>&1 | tee plan_output.txt
+        continue-on-error: true
+
+      - name: Comment Plan on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('infra/terraform/plan_output.txt', 'utf8');
+            const truncated = plan.length > 60000 ? plan.substring(0, 60000) + '\n... (truncated)' : plan;
+            const body = `### 🏗️ Terraform Plan
+            \`\`\`
+            ${truncated}
+            \`\`\`
+            *Plan outcome: ${{ steps.plan.outcome }}*`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  # ── Build, Push & Terraform Apply (main push / manual) ────
   build-push-terraform:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -44,13 +112,18 @@ jobs:
           SERVICES="market-streamer news-collector social-dispatcher social-worker event-fusion-engine alert-engine ai-gateway trade-planner-worker telegram-command-bot quote-normalizer"
           BUILT=0
 
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+
           # On workflow_dispatch, build all; on push, build only changed
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "Manual trigger - building ALL services"
             for svc in $SERVICES; do
               echo "🔨 Building $svc..."
-              docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest services/$svc
+              docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest \
+                           -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA \
+                           services/$svc
               docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest
+              docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA
               BUILT=$((BUILT + 1))
             done
           else
@@ -58,8 +131,11 @@ jobs:
             for svc in $SERVICES; do
               if echo "$CHANGED" | grep -q "services/$svc"; then
                 echo "🔨 Building $svc (changed)..."
-                docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest services/$svc
+                docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest \
+                             -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA \
+                             services/$svc
                 docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest
+                docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA
                 BUILT=$((BUILT + 1))
               else
                 echo "⏭️ Skipping $svc (no changes)"
@@ -72,7 +148,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Init/Apply
+      - name: Terraform Init & Apply
         working-directory: infra/terraform
         env:
           TF_VAR_project_id: ${{ secrets.FIREBASE_PROJECT_ID }}

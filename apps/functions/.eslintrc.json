@@ -1,0 +1,29 @@
+{
+    "root": true,
+    "env": {
+        "es2021": true,
+        "node": true
+    },
+    "parser": "@typescript-eslint/parser",
+    "parserOptions": {
+        "project": "./tsconfig.eslint.json",
+        "sourceType": "module"
+    },
+    "plugins": ["@typescript-eslint", "import"],
+    "extends": [
+        "eslint:recommended",
+        "plugin:@typescript-eslint/recommended",
+        "plugin:import/typescript",
+        "prettier"
+    ],
+    "rules": {
+        "no-console": ["warn", { "allow": ["warn", "error"] }],
+        "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+        "@typescript-eslint/no-explicit-any": "warn",
+        "import/order": ["warn", {
+            "groups": ["builtin", "external", "internal", "parent", "sibling"],
+            "newlines-between": "always"
+        }]
+    },
+    "ignorePatterns": ["lib/", "node_modules/", "**/*.js"]
+}

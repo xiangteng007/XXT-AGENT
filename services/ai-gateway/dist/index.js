@@ -7,17 +7,60 @@
  * - Provides unified REST endpoints for AI operations
  * - Rate limiting and request validation
  */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
+const helmet_1 = __importDefault(require("helmet"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
+const Sentry = __importStar(require("@sentry/node"));
 const generative_ai_1 = require("@google/generative-ai");
 const secret_manager_1 = require("@google-cloud/secret-manager");
 const openai_1 = __importDefault(require("openai"));
 const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
+// Initialize Sentry for error tracking
+if (process.env.SENTRY_DSN) {
+    Sentry.init({
+        dsn: process.env.SENTRY_DSN,
+        tracesSampleRate: 0.2,
+        environment: process.env.NODE_ENV || 'production',
+    });
+}
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 8080;
 const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || 'xxt-agent';
@@ -25,11 +68,24 @@ const SECRET_ID = process.env.GEMINI_SECRET_ID || 'gemini-api-key';
 const DEFAULT_MODEL = 'gemini-2.0-flash';
 // Supported Models - Multi-provider (Gemini + OpenAI + Anthropic)
 const SUPPORTED_MODELS = {
-    // === Google Gemini ===
+    // === Google Gemini 2.5 ===
+    'gemini-2.5-pro-preview-06-05': {
+        name: 'Gemini 2.5 Pro',
+        description: '最新旗艦模型，頂級推理與多模態能力',
+        tier: 'premium',
+        provider: 'google',
+    },
+    'gemini-2.5-flash-preview-05-20': {
+        name: 'Gemini 2.5 Flash',
+        description: '新一代快速模型，平衡速度與智能',
+        tier: 'latest',
+        provider: 'google',
+    },
+    // === Google Gemini 2.0 ===
     'gemini-2.0-flash': {
         name: 'Gemini 2.0 Flash',
-        description: '最新一代 AI 模型，更強的推理與多模態能力（預設）',
-        tier: 'latest',
+        description: '穩定版快速模型，推理與多模態能力（預設）',
+        tier: 'standard',
         provider: 'google',
     },
     'gemini-2.0-flash-lite': {
@@ -38,18 +94,7 @@ const SUPPORTED_MODELS = {
         tier: 'economy',
         provider: 'google',
     },
-    'gemini-2.0-pro-exp-02-05': {
-        name: 'Gemini 2.0 Pro (實驗)',
-        description: '最強推理能力，適合複雜金融分析與研究',
-        tier: 'premium',
-        provider: 'google',
-    },
-    'gemini-2.0-flash-thinking-exp-01-21': {
-        name: 'Gemini 2.0 Flash Thinking',
-        description: '深度思考模型，適合多步驟推理與策略規劃',
-        tier: 'premium',
-        provider: 'google',
-    },
+    // === Google Gemini 1.5 ===
     'gemini-1.5-pro': {
         name: 'Gemini 1.5 Pro',
         description: '100萬 token 上下文，適合長文檔分析',
@@ -59,12 +104,6 @@ const SUPPORTED_MODELS = {
     'gemini-1.5-flash': {
         name: 'Gemini 1.5 Flash',
         description: '快速回應、低成本，適合日常任務',
-        tier: 'standard',
-        provider: 'google',
-    },
-    'gemini-1.5-flash-8b': {
-        name: 'Gemini 1.5 Flash-8B',
-        description: '超低成本，適合大量批次處理',
         tier: 'economy',
         provider: 'google',
     },
@@ -117,6 +156,20 @@ app.use((0, cors_1.default)({
     credentials: true
 }));
 app.use(express_1.default.json({ limit: '1mb' }));
+// HTTP security headers
+app.use((0, helmet_1.default)());
+// API Key validation for AI endpoints
+const API_KEYS = (process.env.AI_GATEWAY_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
+console.log(JSON.stringify({ severity: 'INFO', message: `API Key auth: ${API_KEYS.length} key(s) configured` }));
+app.use('/ai/', (req, res, next) => {
+    if (API_KEYS.length === 0)
+        return next(); // Skip if no keys configured
+    const key = (req.headers['x-api-key'] || '').trim();
+    if (!key || !API_KEYS.includes(key)) {
+        return res.status(401).json({ error: '未授權：請提供有效的 API Key' });
+    }
+    next();
+});
 // Rate limiting: 30 requests per minute per IP
 app.use('/ai/', (0, express_rate_limit_1.default)({
     windowMs: 60 * 1000,
@@ -493,6 +546,10 @@ app.use('/v1', (req, res, next) => {
     req.url = req.url; // URL is already correct after /v1 prefix strip
     next();
 });
+// Sentry error handler (must be before custom error handler)
+if (process.env.SENTRY_DSN) {
+    Sentry.setupExpressErrorHandler(app);
+}
 // Error handler
 app.use((err, _req, res, _next) => {
     console.error(JSON.stringify({

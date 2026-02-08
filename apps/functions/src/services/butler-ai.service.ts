@@ -8,6 +8,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
+import { getButlerContext } from './butler-data.service';
 
 const secretManager = new SecretManagerServiceClient();
 let geminiClient: GoogleGenerativeAI | null = null;
@@ -146,6 +147,27 @@ export async function generateAIResponse(
         let contextPrompt = '';
         if (context?.previousMessages?.length) {
             contextPrompt = '\n\n最近的對話：\n' + context.previousMessages.slice(-3).join('\n');
+        }
+
+        // Fetch personalized data from Firestore
+        if (userId) {
+            try {
+                const personalData = await getButlerContext(userId);
+                if (personalData.health) {
+                    contextPrompt += `\n\n## 用戶健康數據\n${JSON.stringify(personalData.health, null, 2)}`;
+                }
+                if (personalData.finance) {
+                    contextPrompt += `\n\n## 用戶財務摘要\n${JSON.stringify(personalData.finance, null, 2)}`;
+                }
+                if (personalData.vehicle) {
+                    contextPrompt += `\n\n## 用戶車輛資訊\n${JSON.stringify(personalData.vehicle, null, 2)}`;
+                }
+                if (personalData.calendar) {
+                    contextPrompt += `\n\n## 用戶今日行程\n${JSON.stringify(personalData.calendar, null, 2)}`;
+                }
+            } catch (dataErr) {
+                console.warn('[Butler AI] Failed to fetch personal data, proceeding without:', dataErr);
+            }
         }
 
         let response: string;

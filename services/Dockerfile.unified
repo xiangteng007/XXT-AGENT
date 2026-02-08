@@ -5,7 +5,7 @@
 ARG SERVICE=market-streamer
 
 # Stage 1: Build and pack common module
-FROM node:18-alpine AS common-builder
+FROM node:20-alpine AS common-builder
 WORKDIR /build
 COPY common ./
 RUN npm install
@@ -13,7 +13,7 @@ RUN npm run build
 RUN npm pack
 
 # Stage 2: Build service
-FROM node:18-alpine AS service-builder
+FROM node:20-alpine AS service-builder
 ARG SERVICE
 WORKDIR /app
 
@@ -33,7 +33,7 @@ COPY ${SERVICE}/src ./src
 RUN npx tsc -p tsconfig.json
 
 # Stage 3: Production image
-FROM node:18-alpine
+FROM node:20-alpine
 WORKDIR /app
 
 # Copy built artifacts

@@ -151,10 +151,35 @@ service cloud.firestore {
       // Users can only access their own data
       allow read, write: if isAuthenticated() && request.auth.uid == userId;
       
-      // Butler profile and subcollections
+      // Butler profile and legacy subcollections
       match /butler/{document=**} {
         allow read: if isAuthenticated() && request.auth.uid == userId;
         allow write: if isAuthenticated() && request.auth.uid == userId;
+      }
+      
+      // Health records
+      match /health_records/{recordId} {
+        allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      }
+      
+      // Finance transactions
+      match /finance_transactions/{txId} {
+        allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      }
+      
+      // Vehicle records
+      match /vehicle_records/{recordId} {
+        allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      }
+      
+      // Calendar events
+      match /calendar_events/{eventId} {
+        allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      }
+      
+      // Butler preferences
+      match /butler_preferences/{docId} {
+        allow read, write: if isAuthenticated() && request.auth.uid == userId;
       }
     }
     

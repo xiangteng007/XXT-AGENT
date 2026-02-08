@@ -45,3 +45,7 @@ export type {
     ProjectTimelineItem,
     BusinessDashboard, 
 } from '../business.service';
+
+// Butler Data Aggregation
+export { getButlerContext } from '../butler-data.service';
+export type { ButlerContext } from '../butler-data.service';
