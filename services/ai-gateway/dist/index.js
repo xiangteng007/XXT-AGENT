@@ -177,7 +177,7 @@ async function initializeProviders() {
     }
     // OpenAI
     try {
-        const openaiKey = await loadSecret('OPENAI_API_KEY', 'openai-api-key');
+        const openaiKey = await loadSecret('OPENAI_API_KEY', 'OPENAI_API_KEY');
         if (openaiKey) {
             openaiClient = new openai_1.default({ apiKey: openaiKey });
             providerReady.openai = true;
