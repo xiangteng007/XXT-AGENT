@@ -17,6 +17,7 @@ import {
     Bell,
     ArrowRight,
     Sparkles,
+    Settings,
 } from 'lucide-react';
 
 // Mock data for overview
@@ -64,12 +65,20 @@ export default function ButlerDashboardPage() {
                         <p className="text-muted-foreground">您的智能生活助理</p>
                     </div>
                 </div>
-                <Button asChild>
-                    <Link href="/butler/chat">
-                        <MessageSquare className="h-4 w-4 mr-2" />
-                        AI 對話
-                    </Link>
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" asChild>
+                        <Link href="/butler/admin">
+                            <Settings className="h-4 w-4 mr-2" />
+                            管理面板
+                        </Link>
+                    </Button>
+                    <Button asChild>
+                        <Link href="/butler/chat">
+                            <MessageSquare className="h-4 w-4 mr-2" />
+                            AI 對話
+                        </Link>
+                    </Button>
+                </div>
             </div>
 
             {/* Quick Stats */}
