@@ -141,6 +141,7 @@ const adminNav: NavItem[] = [
     { href: '/jobs', label: '排程任務', icon: <ListIcon /> },
     { href: '/logs', label: '系統日誌', icon: <LogIcon /> },
     { href: '/metrics', label: '系統指標', icon: <ChartIcon /> },
+    { href: '/system', label: '系統健康', icon: <BellIcon /> },
 ];
 
 const settingsNav: NavItem[] = [
