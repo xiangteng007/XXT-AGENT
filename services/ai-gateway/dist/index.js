@@ -2,9 +2,9 @@
 /**
  * AI Gateway Service
  *
- * Secure gateway for Gemini AI API calls.
- * - Loads API key from Secret Manager (not exposed to frontend)
- * - Provides REST endpoints for AI operations
+ * Multi-provider AI gateway supporting Gemini, OpenAI GPT, and Anthropic Claude.
+ * - Loads API keys from Secret Manager (not exposed to frontend)
+ * - Provides unified REST endpoints for AI operations
  * - Rate limiting and request validation
  */
 var __importDefault = (this && this.__importDefault) || function (mod) {
@@ -13,25 +13,118 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
+const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const generative_ai_1 = require("@google/generative-ai");
 const secret_manager_1 = require("@google-cloud/secret-manager");
+const openai_1 = __importDefault(require("openai"));
+const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 8080;
 const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || 'xxt-agent';
 const SECRET_ID = process.env.GEMINI_SECRET_ID || 'gemini-api-key';
-// State
-let geminiModel = null;
+const DEFAULT_MODEL = 'gemini-2.0-flash';
+// Supported Models - Multi-provider (Gemini + OpenAI + Anthropic)
+const SUPPORTED_MODELS = {
+    // === Google Gemini ===
+    'gemini-2.0-flash': {
+        name: 'Gemini 2.0 Flash',
+        description: '最新一代 AI 模型，更強的推理與多模態能力（預設）',
+        tier: 'latest',
+        provider: 'google',
+    },
+    'gemini-2.0-flash-lite': {
+        name: 'Gemini 2.0 Flash-Lite',
+        description: '超低延遲輕量模型，適合高頻即時互動',
+        tier: 'economy',
+        provider: 'google',
+    },
+    'gemini-2.0-pro-exp-02-05': {
+        name: 'Gemini 2.0 Pro (實驗)',
+        description: '最強推理能力，適合複雜金融分析與研究',
+        tier: 'premium',
+        provider: 'google',
+    },
+    'gemini-2.0-flash-thinking-exp-01-21': {
+        name: 'Gemini 2.0 Flash Thinking',
+        description: '深度思考模型，適合多步驟推理與策略規劃',
+        tier: 'premium',
+        provider: 'google',
+    },
+    'gemini-1.5-pro': {
+        name: 'Gemini 1.5 Pro',
+        description: '100萬 token 上下文，適合長文檔分析',
+        tier: 'standard',
+        provider: 'google',
+    },
+    'gemini-1.5-flash': {
+        name: 'Gemini 1.5 Flash',
+        description: '快速回應、低成本，適合日常任務',
+        tier: 'standard',
+        provider: 'google',
+    },
+    'gemini-1.5-flash-8b': {
+        name: 'Gemini 1.5 Flash-8B',
+        description: '超低成本，適合大量批次處理',
+        tier: 'economy',
+        provider: 'google',
+    },
+    // === OpenAI GPT ===
+    'gpt-4o': {
+        name: 'GPT-4o',
+        description: 'OpenAI 最強多模態模型，推理與創意兼備',
+        tier: 'premium',
+        provider: 'openai',
+    },
+    'gpt-4o-mini': {
+        name: 'GPT-4o Mini',
+        description: 'OpenAI 高性價比模型，適合日常任務',
+        tier: 'standard',
+        provider: 'openai',
+    },
+    // === Anthropic Claude ===
+    'claude-sonnet-4-20250514': {
+        name: 'Claude Sonnet 4',
+        description: 'Anthropic 最新模型，優秀的指令遵循與分析能力',
+        tier: 'premium',
+        provider: 'anthropic',
+    },
+    'claude-haiku-3-5-20241022': {
+        name: 'Claude Haiku 3.5',
+        description: 'Anthropic 快速模型，低成本高效率',
+        tier: 'standard',
+        provider: 'anthropic',
+    },
+};
+// Provider state
+let genAI = null;
+let openaiClient = null;
+let anthropicClient = null;
 let isInitialized = false;
+const modelCache = new Map();
+// Provider readiness flags
+const providerReady = {
+    google: false,
+    openai: false,
+    anthropic: false,
+};
 // Middleware
 app.use((0, cors_1.default)({
     origin: [
         'http://localhost:3000',
-        'https://xxt-frontend.vercel.app',
+        'https://xxt-agent-dashboard.vercel.app',
         /\.vercel\.app$/
     ],
     credentials: true
 }));
 app.use(express_1.default.json({ limit: '1mb' }));
+// Rate limiting: 30 requests per minute per IP
+app.use('/ai/', (0, express_rate_limit_1.default)({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: '請求過於頻繁，請稍後再試' }
+}));
 // Request logging
 app.use((req, _res, next) => {
     console.log(JSON.stringify({
@@ -42,58 +135,123 @@ app.use((req, _res, next) => {
     next();
 });
 /**
- * Load Gemini API key from Secret Manager
+ * Load API key from env or Secret Manager
  */
-async function loadGeminiKey() {
-    // In development, use environment variable
-    if (process.env.GEMINI_API_KEY) {
-        return process.env.GEMINI_API_KEY;
+async function loadSecret(envKey, secretId) {
+    if (process.env[envKey]) {
+        return process.env[envKey];
     }
-    // In production, use Secret Manager
+    if (!secretId)
+        return null;
     try {
         const client = new secret_manager_1.SecretManagerServiceClient();
-        const name = `projects/${PROJECT_ID}/secrets/${SECRET_ID}/versions/latest`;
+        const name = `projects/${PROJECT_ID}/secrets/${secretId}/versions/latest`;
         const [response] = await client.accessSecretVersion({ name });
         const payload = response.payload?.data;
-        if (!payload) {
-            throw new Error('Empty secret payload');
-        }
-        if (typeof payload === 'string') {
-            return payload;
-        }
-        return new TextDecoder('utf-8').decode(payload);
+        if (!payload)
+            return null;
+        return typeof payload === 'string' ? payload : new TextDecoder('utf-8').decode(payload);
     }
     catch (error) {
-        console.error(JSON.stringify({
-            severity: 'ERROR',
-            message: 'Failed to load Gemini API key from Secret Manager',
-            error: String(error)
-        }));
-        throw error;
+        console.log(JSON.stringify({ severity: 'WARNING', message: `Secret ${secretId} not available`, error: String(error) }));
+        return null;
     }
 }
 /**
- * Initialize Gemini client
+ * Initialize all AI providers
  */
-async function initializeGemini() {
+async function initializeProviders() {
     if (isInitialized)
         return;
+    // Google Gemini
     try {
-        const apiKey = await loadGeminiKey();
-        const genAI = new generative_ai_1.GoogleGenerativeAI(apiKey);
-        geminiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-        isInitialized = true;
-        console.log(JSON.stringify({
-            severity: 'INFO',
-            message: 'Gemini client initialized successfully'
-        }));
+        const geminiKey = await loadSecret('GEMINI_API_KEY', SECRET_ID);
+        if (geminiKey) {
+            genAI = new generative_ai_1.GoogleGenerativeAI(geminiKey);
+            providerReady.google = true;
+            console.log(JSON.stringify({ severity: 'INFO', message: 'Gemini initialized' }));
+        }
     }
-    catch (error) {
-        console.error(JSON.stringify({
-            severity: 'ERROR',
-            message: 'Failed to initialize Gemini',
-            error: String(error)
-        }));
+    catch (e) {
+        console.error(JSON.stringify({ severity: 'ERROR', message: 'Gemini init failed', error: String(e) }));
+    }
+    // OpenAI
+    try {
+        const openaiKey = await loadSecret('OPENAI_API_KEY', 'openai-api-key');
+        if (openaiKey) {
+            openaiClient = new openai_1.default({ apiKey: openaiKey });
+            providerReady.openai = true;
+            console.log(JSON.stringify({ severity: 'INFO', message: 'OpenAI initialized' }));
+        }
+    }
+    catch (e) {
+        console.log(JSON.stringify({ severity: 'WARNING', message: 'OpenAI not configured', error: String(e) }));
+    }
+    // Anthropic
+    try {
+        const anthropicKey = await loadSecret('ANTHROPIC_API_KEY', 'anthropic-api-key');
+        if (anthropicKey) {
+            anthropicClient = new sdk_1.default({ apiKey: anthropicKey });
+            providerReady.anthropic = true;
+            console.log(JSON.stringify({ severity: 'INFO', message: 'Anthropic initialized' }));
+        }
+    }
+    catch (e) {
+        console.log(JSON.stringify({ severity: 'WARNING', message: 'Anthropic not configured', error: String(e) }));
+    }
+    isInitialized = true;
+}
+/**
+ * Get or create a Gemini model instance
+ */
+function getOrCreateModel(modelId = DEFAULT_MODEL) {
+    if (!genAI)
+        return null;
+    const validModelId = modelId in SUPPORTED_MODELS ? modelId : DEFAULT_MODEL;
+    if (!modelCache.has(validModelId)) {
+        const model = genAI.getGenerativeModel({ model: validModelId });
+        modelCache.set(validModelId, model);
+    }
+    return modelCache.get(validModelId) || null;
+}
+/**
+ * Unified text generation - routes to correct provider based on model ID
+ */
+async function generateText(prompt, modelId = DEFAULT_MODEL) {
+    const model = SUPPORTED_MODELS[modelId];
+    const provider = model?.provider || 'google';
+    const resolvedModelId = model ? modelId : DEFAULT_MODEL;
+    switch (provider) {
+        case 'openai': {
+            if (!openaiClient)
+                throw new Error('OpenAI 未配置。請設定 OPENAI_API_KEY。');
+            const completion = await openaiClient.chat.completions.create({
+                model: resolvedModelId,
+                messages: [{ role: 'user', content: prompt }],
+                max_tokens: 4096,
+            });
+            return completion.choices[0]?.message?.content || '';
+        }
+        case 'anthropic': {
+            if (!anthropicClient)
+                throw new Error('Anthropic 未配置。請設定 ANTHROPIC_API_KEY。');
+            const message = await anthropicClient.messages.create({
+                model: resolvedModelId,
+                max_tokens: 4096,
+                messages: [{ role: 'user', content: prompt }],
+            });
+            const block = message.content[0];
+            return block.type === 'text' ? block.text : '';
+        }
+        case 'google':
+        default: {
+            const geminiModel = getOrCreateModel(resolvedModelId);
+            if (!geminiModel)
+                throw new Error('Gemini 未配置。請設定 GEMINI_API_KEY。');
+            const result = await geminiModel.generateContent(prompt);
+            const response = await result.response;
+            return response.text();
+        }
     }
 }
 // Health check
@@ -101,9 +259,30 @@ app.get('/health', (_req, res) => {
     res.json({
         status: 'healthy',
         service: 'ai-gateway',
-        geminiReady: isInitialized,
+        providers: providerReady,
+        defaultModel: DEFAULT_MODEL,
         timestamp: new Date().toISOString()
     });
+});
+// Model info endpoint - shows only models whose provider is ready
+app.get('/ai/models', (_req, res) => {
+    const models = Object.entries(SUPPORTED_MODELS)
+        .filter(([, info]) => providerReady[info.provider])
+        .map(([id, info]) => ({
+        id,
+        ...info,
+        isDefault: id === DEFAULT_MODEL,
+    }));
+    // Also include unavailable providers marked as such
+    const unavailable = Object.entries(SUPPORTED_MODELS)
+        .filter(([, info]) => !providerReady[info.provider])
+        .map(([id, info]) => ({
+        id,
+        ...info,
+        isDefault: false,
+        available: false,
+    }));
+    res.json({ models, unavailable, defaultModel: DEFAULT_MODEL, providers: providerReady });
 });
 // ============ AI Endpoints ============
 /**
@@ -112,20 +291,13 @@ app.get('/health', (_req, res) => {
  */
 app.post('/ai/summarize', async (req, res) => {
     try {
-        if (!geminiModel) {
-            await initializeGemini();
-        }
-        if (!geminiModel) {
-            return res.status(503).json({ error: 'AI service unavailable' });
-        }
-        const { text, maxLength = 200, language = 'zh-TW' } = req.body;
+        await initializeProviders();
+        const { text, maxLength = 200, language = 'zh-TW', model: modelId } = req.body;
         if (!text) {
             return res.status(400).json({ error: 'Missing required field: text' });
         }
         const prompt = `請用${language}簡潔摘要以下內容，最多${maxLength}字：\n\n${text}`;
-        const result = await geminiModel.generateContent(prompt);
-        const response = await result.response;
-        const summary = response.text();
+        const summary = await generateText(prompt, modelId);
         res.json({ summary });
     }
     catch (error) {
@@ -139,13 +311,8 @@ app.post('/ai/summarize', async (req, res) => {
  */
 app.post('/ai/sentiment', async (req, res) => {
     try {
-        if (!geminiModel) {
-            await initializeGemini();
-        }
-        if (!geminiModel) {
-            return res.status(503).json({ error: 'AI service unavailable' });
-        }
-        const { text, context } = req.body;
+        await initializeProviders();
+        const { text, context, model: modelId } = req.body;
         if (!text) {
             return res.status(400).json({ error: 'Missing required field: text' });
         }
@@ -168,14 +335,8 @@ ${context ? `背景：${context}\n` : ''}
 文字：${text}
 
 只回應 JSON，不要其他文字。`;
-        const result = await geminiModel.generateContent(prompt);
-        const response = await result.response;
-        const responseText = response.text();
-        // Parse JSON response
-        const cleanJson = responseText
-            .replace(/```json\n?/g, '')
-            .replace(/```\n?/g, '')
-            .trim();
+        const responseText = await generateText(prompt, modelId);
+        const cleanJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const sentiment = JSON.parse(cleanJson);
         res.json(sentiment);
     }
@@ -190,30 +351,21 @@ ${context ? `背景：${context}\n` : ''}
  */
 app.post('/ai/impact', async (req, res) => {
     try {
-        if (!geminiModel) {
-            await initializeGemini();
-        }
-        if (!geminiModel) {
-            return res.status(503).json({ error: 'AI service unavailable' });
-        }
-        const { title, content, symbols = [], newsType } = req.body;
+        await initializeProviders();
+        const { title, content, symbols = [], newsType, model: modelId } = req.body;
         if (!title) {
             return res.status(400).json({ error: 'Missing required field: title' });
         }
         const prompt = `評估以下新聞對市場的影響，以 JSON 格式回應：
 {
-  "severity": 0-100 (影響嚴重程度),
-  "confidence": 0-1 (信心度),
+  "severity": 0-100,
+  "confidence": 0-1,
   "direction": "bullish" | "bearish" | "neutral" | "mixed",
   "timeframe": "immediate" | "short_term" | "long_term",
-  "affectedSectors": ["科技", "金融", ...],
-  "affectedSymbols": ["AAPL", "TSLA", ...],
-  "explanation": "簡短解釋",
-  "scores": {
-    "market": 0-100,
-    "news": 0-100,
-    "social": 0-100
-  }
+  "affectedSectors": [],
+  "affectedSymbols": [],
+  "explanation": "",
+  "scores": { "market": 0-100, "news": 0-100, "social": 0-100 }
 }
 
 新聞標題：${title}
@@ -222,13 +374,8 @@ ${symbols.length > 0 ? `相關標的：${symbols.join(', ')}` : ''}
 ${newsType ? `類型：${newsType}` : ''}
 
 只回應 JSON，不要其他文字。`;
-        const result = await geminiModel.generateContent(prompt);
-        const response = await result.response;
-        const responseText = response.text();
-        const cleanJson = responseText
-            .replace(/```json\n?/g, '')
-            .replace(/```\n?/g, '')
-            .trim();
+        const responseText = await generateText(prompt, modelId);
+        const cleanJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const impact = JSON.parse(cleanJson);
         res.json(impact);
     }
@@ -243,13 +390,8 @@ ${newsType ? `類型：${newsType}` : ''}
  */
 app.post('/ai/chat', async (req, res) => {
     try {
-        if (!geminiModel) {
-            await initializeGemini();
-        }
-        if (!geminiModel) {
-            return res.status(503).json({ error: 'AI service unavailable' });
-        }
-        const { message, context, systemPrompt } = req.body;
+        await initializeProviders();
+        const { message, context, systemPrompt, model: modelId } = req.body;
         if (!message) {
             return res.status(400).json({ error: 'Missing required field: message' });
         }
@@ -258,9 +400,7 @@ app.post('/ai/chat', async (req, res) => {
             context ? `背景資訊：${context}` : '',
             `用戶問題：${message}`
         ].filter(Boolean).join('\n\n');
-        const result = await geminiModel.generateContent(fullPrompt);
-        const response = await result.response;
-        const reply = response.text();
+        const reply = await generateText(fullPrompt, modelId);
         res.json({ reply });
     }
     catch (error) {
@@ -274,17 +414,11 @@ app.post('/ai/chat', async (req, res) => {
  */
 app.post('/ai/batch-sentiment', async (req, res) => {
     try {
-        if (!geminiModel) {
-            await initializeGemini();
-        }
-        if (!geminiModel) {
-            return res.status(503).json({ error: 'AI service unavailable' });
-        }
-        const { items } = req.body;
+        await initializeProviders();
+        const { items, model: modelId } = req.body;
         if (!items || !Array.isArray(items) || items.length === 0) {
             return res.status(400).json({ error: 'Missing or invalid items array' });
         }
-        // Limit batch size
         const batchItems = items.slice(0, 20);
         const prompt = `分析以下多則文字的情緒，以 JSON 陣列格式回應。
 每個項目需要：id, label (positive/negative/neutral/mixed), score (-1到1), confidence (0到1)
@@ -294,13 +428,8 @@ ${batchItems.map((item, i) => `${i + 1}. [ID: ${item.id}] ${item.content.substri
 
 只回應 JSON 陣列，格式如：
 [{"id": "xxx", "label": "positive", "score": 0.8, "confidence": 0.9}, ...]`;
-        const result = await geminiModel.generateContent(prompt);
-        const response = await result.response;
-        const responseText = response.text();
-        const cleanJson = responseText
-            .replace(/```json\n?/g, '')
-            .replace(/```\n?/g, '')
-            .trim();
+        const responseText = await generateText(prompt, modelId);
+        const cleanJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const results = JSON.parse(cleanJson);
         res.json({ results });
     }
@@ -308,6 +437,61 @@ ${batchItems.map((item, i) => `${i + 1}. [ID: ${item.id}] ${item.content.substri
         console.error('Batch sentiment error:', error);
         res.status(500).json({ error: 'Failed to analyze batch sentiment' });
     }
+});
+// Butler context-enriched chat endpoint
+// Accepts user data context (health, finance, vehicle, calendar) for personalized responses
+app.post('/ai/butler/chat', async (req, res) => {
+    try {
+        await initializeProviders();
+        const { message, model: modelId, context, conversationHistory } = req.body;
+        if (!message) {
+            return res.status(400).json({ error: 'Missing message' });
+        }
+        const contextSections = [];
+        if (context?.health)
+            contextSections.push(`## 用戶健康數據\n${JSON.stringify(context.health, null, 2)}`);
+        if (context?.finance)
+            contextSections.push(`## 用戶財務摘要\n${JSON.stringify(context.finance, null, 2)}`);
+        if (context?.vehicle)
+            contextSections.push(`## 用戶車輛資訊\n${JSON.stringify(context.vehicle, null, 2)}`);
+        if (context?.calendar)
+            contextSections.push(`## 用戶行事曆\n${JSON.stringify(context.calendar, null, 2)}`);
+        const systemPrompt = `你是「小秘書」，專業的個人智能管家助理。
+友善、專業、高效。針對用戶問題提供精準回答。
+
+${contextSections.length > 0 ? '# 用戶個人數據\n' + contextSections.join('\n\n') : ''}
+
+## 回應規則
+- 使用繁體中文回應
+- 回答要簡潔明瞭
+- 涉及數據時引用實際數字
+- 如果數據不足，坦誠告知並建議記錄`;
+        const parts = [];
+        if (conversationHistory?.length) {
+            for (const msg of conversationHistory.slice(-6)) {
+                parts.push(`${msg.role === 'user' ? '用戶' : '助理'}: ${msg.content}`);
+            }
+        }
+        parts.push(`用戶: ${message}`);
+        const fullPrompt = `${systemPrompt}\n\n${parts.join('\n')}`;
+        const reply = await generateText(fullPrompt, modelId);
+        res.json({
+            response: reply,
+            model: modelId || DEFAULT_MODEL,
+            hasContext: contextSections.length > 0,
+        });
+    }
+    catch (error) {
+        console.error('Butler chat error:', error);
+        res.status(500).json({ error: 'Failed to generate butler response' });
+    }
+});
+// API Versioning: /v1/ai/* forwards to /ai/*
+// Allows future /v2/ai/* with breaking changes
+app.use('/v1', (req, res, next) => {
+    // Forward /v1/ai/* requests to /ai/* routes
+    req.url = req.url; // URL is already correct after /v1 prefix strip
+    next();
 });
 // Error handler
 app.use((err, _req, res, _next) => {
@@ -324,7 +508,7 @@ app.listen(PORT, async () => {
         severity: 'INFO',
         message: `AI Gateway listening on port ${PORT}`
     }));
-    // Pre-initialize Gemini
-    await initializeGemini();
+    // Pre-initialize all AI providers
+    await initializeProviders();
 });
 exports.default = app;

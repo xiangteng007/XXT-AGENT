@@ -1,9 +1,9 @@
 /**
  * AI Gateway Service
  * 
- * Secure gateway for Gemini AI API calls.
- * - Loads API key from Secret Manager (not exposed to frontend)
- * - Provides REST endpoints for AI operations
+ * Multi-provider AI gateway supporting Gemini, OpenAI GPT, and Anthropic Claude.
+ * - Loads API keys from Secret Manager (not exposed to frontend)
+ * - Provides unified REST endpoints for AI operations
  * - Rate limiting and request validation
  */
 
@@ -12,6 +12,8 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
+import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -19,51 +21,92 @@ const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || 'xxt-agent';
 const SECRET_ID = process.env.GEMINI_SECRET_ID || 'gemini-api-key';
 const DEFAULT_MODEL = 'gemini-2.0-flash';
 
-// Supported Models with descriptions
-const SUPPORTED_MODELS = {
+// Supported Models - Multi-provider (Gemini + OpenAI + Anthropic)
+const SUPPORTED_MODELS: Record<string, { name: string; description: string; tier: string; provider: string }> = {
+    // === Google Gemini ===
     'gemini-2.0-flash': {
         name: 'Gemini 2.0 Flash',
         description: '最新一代 AI 模型，更強的推理與多模態能力（預設）',
         tier: 'latest',
+        provider: 'google',
     },
     'gemini-2.0-flash-lite': {
         name: 'Gemini 2.0 Flash-Lite',
         description: '超低延遲輕量模型，適合高頻即時互動',
         tier: 'economy',
+        provider: 'google',
     },
     'gemini-2.0-pro-exp-02-05': {
         name: 'Gemini 2.0 Pro (實驗)',
         description: '最強推理能力，適合複雜金融分析與研究',
         tier: 'premium',
+        provider: 'google',
     },
     'gemini-2.0-flash-thinking-exp-01-21': {
         name: 'Gemini 2.0 Flash Thinking',
         description: '深度思考模型，適合多步驟推理與策略規劃',
         tier: 'premium',
+        provider: 'google',
     },
     'gemini-1.5-pro': {
         name: 'Gemini 1.5 Pro',
         description: '100萬 token 上下文，適合長文檔分析',
         tier: 'standard',
+        provider: 'google',
     },
     'gemini-1.5-flash': {
         name: 'Gemini 1.5 Flash',
         description: '快速回應、低成本，適合日常任務',
         tier: 'standard',
+        provider: 'google',
     },
     'gemini-1.5-flash-8b': {
         name: 'Gemini 1.5 Flash-8B',
         description: '超低成本，適合大量批次處理',
         tier: 'economy',
+        provider: 'google',
     },
-} as const;
+    // === OpenAI GPT ===
+    'gpt-4o': {
+        name: 'GPT-4o',
+        description: 'OpenAI 最強多模態模型，推理與創意兼備',
+        tier: 'premium',
+        provider: 'openai',
+    },
+    'gpt-4o-mini': {
+        name: 'GPT-4o Mini',
+        description: 'OpenAI 高性價比模型，適合日常任務',
+        tier: 'standard',
+        provider: 'openai',
+    },
+    // === Anthropic Claude ===
+    'claude-sonnet-4-20250514': {
+        name: 'Claude Sonnet 4',
+        description: 'Anthropic 最新模型，優秀的指令遵循與分析能力',
+        tier: 'premium',
+        provider: 'anthropic',
+    },
+    'claude-haiku-3-5-20241022': {
+        name: 'Claude Haiku 3.5',
+        description: 'Anthropic 快速模型，低成本高效率',
+        tier: 'standard',
+        provider: 'anthropic',
+    },
+};
 
-type ModelId = keyof typeof SUPPORTED_MODELS;
-
-// State
+// Provider state
 let genAI: GoogleGenerativeAI | null = null;
+let openaiClient: OpenAI | null = null;
+let anthropicClient: Anthropic | null = null;
 let isInitialized = false;
 const modelCache = new Map<string, GenerativeModel>();
+
+// Provider readiness flags
+const providerReady: Record<string, boolean> = {
+    google: false,
+    openai: false,
+    anthropic: false,
+};
 
 // Middleware
 app.use(cors({
@@ -96,78 +139,123 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 });
 
 /**
- * Load Gemini API key from Secret Manager
+ * Load API key from env or Secret Manager
  */
-async function loadGeminiKey(): Promise<string> {
-    // In development, use environment variable
-    if (process.env.GEMINI_API_KEY) {
-        return process.env.GEMINI_API_KEY;
+async function loadSecret(envKey: string, secretId?: string): Promise<string | null> {
+    if (process.env[envKey]) {
+        return process.env[envKey]!;
     }
 
-    // In production, use Secret Manager
+    if (!secretId) return null;
+
     try {
         const client = new SecretManagerServiceClient();
-        const name = `projects/${PROJECT_ID}/secrets/${SECRET_ID}/versions/latest`;
+        const name = `projects/${PROJECT_ID}/secrets/${secretId}/versions/latest`;
         const [response] = await client.accessSecretVersion({ name });
         const payload = response.payload?.data;
-
-        if (!payload) {
-            throw new Error('Empty secret payload');
-        }
-
-        if (typeof payload === 'string') {
-            return payload;
-        }
-
-        return new TextDecoder('utf-8').decode(payload as Uint8Array);
+        if (!payload) return null;
+        return typeof payload === 'string' ? payload : new TextDecoder('utf-8').decode(payload as Uint8Array);
     } catch (error) {
-        console.error(JSON.stringify({
-            severity: 'ERROR',
-            message: 'Failed to load Gemini API key from Secret Manager',
-            error: String(error)
-        }));
-        throw error;
+        console.log(JSON.stringify({ severity: 'WARNING', message: `Secret ${secretId} not available`, error: String(error) }));
+        return null;
     }
 }
 
 /**
- * Initialize Gemini client
+ * Initialize all AI providers
  */
-async function initializeGemini(): Promise<void> {
+async function initializeProviders(): Promise<void> {
     if (isInitialized) return;
 
+    // Google Gemini
     try {
-        const apiKey = await loadGeminiKey();
-        genAI = new GoogleGenerativeAI(apiKey);
-        isInitialized = true;
-        console.log(JSON.stringify({
-            severity: 'INFO',
-            message: 'Gemini client initialized successfully'
-        }));
-    } catch (error) {
-        console.error(JSON.stringify({
-            severity: 'ERROR',
-            message: 'Failed to initialize Gemini',
-            error: String(error)
-        }));
+        const geminiKey = await loadSecret('GEMINI_API_KEY', SECRET_ID);
+        if (geminiKey) {
+            genAI = new GoogleGenerativeAI(geminiKey);
+            providerReady.google = true;
+            console.log(JSON.stringify({ severity: 'INFO', message: 'Gemini initialized' }));
+        }
+    } catch (e) {
+        console.error(JSON.stringify({ severity: 'ERROR', message: 'Gemini init failed', error: String(e) }));
     }
+
+    // OpenAI
+    try {
+        const openaiKey = await loadSecret('OPENAI_API_KEY', 'openai-api-key');
+        if (openaiKey) {
+            openaiClient = new OpenAI({ apiKey: openaiKey });
+            providerReady.openai = true;
+            console.log(JSON.stringify({ severity: 'INFO', message: 'OpenAI initialized' }));
+        }
+    } catch (e) {
+        console.log(JSON.stringify({ severity: 'WARNING', message: 'OpenAI not configured', error: String(e) }));
+    }
+
+    // Anthropic
+    try {
+        const anthropicKey = await loadSecret('ANTHROPIC_API_KEY', 'anthropic-api-key');
+        if (anthropicKey) {
+            anthropicClient = new Anthropic({ apiKey: anthropicKey });
+            providerReady.anthropic = true;
+            console.log(JSON.stringify({ severity: 'INFO', message: 'Anthropic initialized' }));
+        }
+    } catch (e) {
+        console.log(JSON.stringify({ severity: 'WARNING', message: 'Anthropic not configured', error: String(e) }));
+    }
+
+    isInitialized = true;
 }
 
 /**
- * Get or create a model instance
+ * Get or create a Gemini model instance
  */
 function getOrCreateModel(modelId: string = DEFAULT_MODEL): GenerativeModel | null {
     if (!genAI) return null;
-
-    // Validate model ID
     const validModelId = modelId in SUPPORTED_MODELS ? modelId : DEFAULT_MODEL;
-
     if (!modelCache.has(validModelId)) {
         const model = genAI.getGenerativeModel({ model: validModelId });
         modelCache.set(validModelId, model);
     }
-
     return modelCache.get(validModelId) || null;
+}
+
+/**
+ * Unified text generation - routes to correct provider based on model ID
+ */
+async function generateText(prompt: string, modelId: string = DEFAULT_MODEL): Promise<string> {
+    const model = SUPPORTED_MODELS[modelId];
+    const provider = model?.provider || 'google';
+    const resolvedModelId = model ? modelId : DEFAULT_MODEL;
+
+    switch (provider) {
+        case 'openai': {
+            if (!openaiClient) throw new Error('OpenAI 未配置。請設定 OPENAI_API_KEY。');
+            const completion = await openaiClient.chat.completions.create({
+                model: resolvedModelId,
+                messages: [{ role: 'user', content: prompt }],
+                max_tokens: 4096,
+            });
+            return completion.choices[0]?.message?.content || '';
+        }
+        case 'anthropic': {
+            if (!anthropicClient) throw new Error('Anthropic 未配置。請設定 ANTHROPIC_API_KEY。');
+            const message = await anthropicClient.messages.create({
+                model: resolvedModelId,
+                max_tokens: 4096,
+                messages: [{ role: 'user', content: prompt }],
+            });
+            const block = message.content[0];
+            return block.type === 'text' ? block.text : '';
+        }
+        case 'google':
+        default: {
+            const geminiModel = getOrCreateModel(resolvedModelId);
+            if (!geminiModel) throw new Error('Gemini 未配置。請設定 GEMINI_API_KEY。');
+            const result = await geminiModel.generateContent(prompt);
+            const response = await result.response;
+            return response.text();
+        }
+    }
 }
 
 // Health check
@@ -175,20 +263,33 @@ app.get('/health', (_req: Request, res: Response) => {
     res.json({
         status: 'healthy',
         service: 'ai-gateway',
-        geminiReady: isInitialized,
+        providers: providerReady,
         defaultModel: DEFAULT_MODEL,
         timestamp: new Date().toISOString()
     });
 });
 
-// Model info endpoint
+// Model info endpoint - shows only models whose provider is ready
 app.get('/ai/models', (_req: Request, res: Response) => {
-    const models = Object.entries(SUPPORTED_MODELS).map(([id, info]) => ({
-        id,
-        ...info,
-        isDefault: id === DEFAULT_MODEL,
-    }));
-    res.json({ models, defaultModel: DEFAULT_MODEL });
+    const models = Object.entries(SUPPORTED_MODELS)
+        .filter(([, info]) => providerReady[info.provider])
+        .map(([id, info]) => ({
+            id,
+            ...info,
+            isDefault: id === DEFAULT_MODEL,
+        }));
+    
+    // Also include unavailable providers marked as such
+    const unavailable = Object.entries(SUPPORTED_MODELS)
+        .filter(([, info]) => !providerReady[info.provider])
+        .map(([id, info]) => ({
+            id,
+            ...info,
+            isDefault: false,
+            available: false,
+        }));
+
+    res.json({ models, unavailable, defaultModel: DEFAULT_MODEL, providers: providerReady });
 });
 
 // ============ AI Endpoints ============
@@ -199,28 +300,15 @@ app.get('/ai/models', (_req: Request, res: Response) => {
  */
 app.post('/ai/summarize', async (req: Request, res: Response) => {
     try {
-        if (!genAI) {
-            await initializeGemini();
-        }
-
-        const { model: modelId } = req.body;
-        const geminiModel = getOrCreateModel(modelId);
-        if (!geminiModel) {
-            return res.status(503).json({ error: 'AI service unavailable' });
-        }
-
-        const { text, maxLength = 200, language = 'zh-TW' } = req.body;
+        await initializeProviders();
+        const { text, maxLength = 200, language = 'zh-TW', model: modelId } = req.body;
 
         if (!text) {
             return res.status(400).json({ error: 'Missing required field: text' });
         }
 
         const prompt = `請用${language}簡潔摘要以下內容，最多${maxLength}字：\n\n${text}`;
-
-        const result = await geminiModel.generateContent(prompt);
-        const response = await result.response;
-        const summary = response.text();
-
+        const summary = await generateText(prompt, modelId);
         res.json({ summary });
     } catch (error) {
         console.error('Summarize error:', error);
@@ -234,17 +322,8 @@ app.post('/ai/summarize', async (req: Request, res: Response) => {
  */
 app.post('/ai/sentiment', async (req: Request, res: Response) => {
     try {
-        if (!genAI) {
-            await initializeGemini();
-        }
-
-        const { model: modelId } = req.body;
-        const geminiModel = getOrCreateModel(modelId);
-        if (!geminiModel) {
-            return res.status(503).json({ error: 'AI service unavailable' });
-        }
-
-        const { text, context } = req.body;
+        await initializeProviders();
+        const { text, context, model: modelId } = req.body;
 
         if (!text) {
             return res.status(400).json({ error: 'Missing required field: text' });
@@ -270,16 +349,8 @@ ${context ? `背景：${context}\n` : ''}
 
 只回應 JSON，不要其他文字。`;
 
-        const result = await geminiModel.generateContent(prompt);
-        const response = await result.response;
-        const responseText = response.text();
-
-        // Parse JSON response
-        const cleanJson = responseText
-            .replace(/```json\n?/g, '')
-            .replace(/```\n?/g, '')
-            .trim();
-
+        const responseText = await generateText(prompt, modelId);
+        const cleanJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const sentiment = JSON.parse(cleanJson);
         res.json(sentiment);
     } catch (error) {
@@ -294,17 +365,8 @@ ${context ? `背景：${context}\n` : ''}
  */
 app.post('/ai/impact', async (req: Request, res: Response) => {
     try {
-        if (!genAI) {
-            await initializeGemini();
-        }
-
-        const { model: modelId } = req.body;
-        const geminiModel = getOrCreateModel(modelId);
-        if (!geminiModel) {
-            return res.status(503).json({ error: 'AI service unavailable' });
-        }
-
-        const { title, content, symbols = [], newsType } = req.body;
+        await initializeProviders();
+        const { title, content, symbols = [], newsType, model: modelId } = req.body;
 
         if (!title) {
             return res.status(400).json({ error: 'Missing required field: title' });
@@ -312,18 +374,14 @@ app.post('/ai/impact', async (req: Request, res: Response) => {
 
         const prompt = `評估以下新聞對市場的影響，以 JSON 格式回應：
 {
-  "severity": 0-100 (影響嚴重程度),
-  "confidence": 0-1 (信心度),
+  "severity": 0-100,
+  "confidence": 0-1,
   "direction": "bullish" | "bearish" | "neutral" | "mixed",
   "timeframe": "immediate" | "short_term" | "long_term",
-  "affectedSectors": ["科技", "金融", ...],
-  "affectedSymbols": ["AAPL", "TSLA", ...],
-  "explanation": "簡短解釋",
-  "scores": {
-    "market": 0-100,
-    "news": 0-100,
-    "social": 0-100
-  }
+  "affectedSectors": [],
+  "affectedSymbols": [],
+  "explanation": "",
+  "scores": { "market": 0-100, "news": 0-100, "social": 0-100 }
 }
 
 新聞標題：${title}
@@ -333,15 +391,8 @@ ${newsType ? `類型：${newsType}` : ''}
 
 只回應 JSON，不要其他文字。`;
 
-        const result = await geminiModel.generateContent(prompt);
-        const response = await result.response;
-        const responseText = response.text();
-
-        const cleanJson = responseText
-            .replace(/```json\n?/g, '')
-            .replace(/```\n?/g, '')
-            .trim();
-
+        const responseText = await generateText(prompt, modelId);
+        const cleanJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const impact = JSON.parse(cleanJson);
         res.json(impact);
     } catch (error) {
@@ -356,17 +407,8 @@ ${newsType ? `類型：${newsType}` : ''}
  */
 app.post('/ai/chat', async (req: Request, res: Response) => {
     try {
-        if (!genAI) {
-            await initializeGemini();
-        }
-
-        const { model: modelId } = req.body;
-        const geminiModel = getOrCreateModel(modelId);
-        if (!geminiModel) {
-            return res.status(503).json({ error: 'AI service unavailable' });
-        }
-
-        const { message, context, systemPrompt } = req.body;
+        await initializeProviders();
+        const { message, context, systemPrompt, model: modelId } = req.body;
 
         if (!message) {
             return res.status(400).json({ error: 'Missing required field: message' });
@@ -378,10 +420,7 @@ app.post('/ai/chat', async (req: Request, res: Response) => {
             `用戶問題：${message}`
         ].filter(Boolean).join('\n\n');
 
-        const result = await geminiModel.generateContent(fullPrompt);
-        const response = await result.response;
-        const reply = response.text();
-
+        const reply = await generateText(fullPrompt, modelId);
         res.json({ reply });
     } catch (error) {
         console.error('Chat error:', error);
@@ -395,25 +434,14 @@ app.post('/ai/chat', async (req: Request, res: Response) => {
  */
 app.post('/ai/batch-sentiment', async (req: Request, res: Response) => {
     try {
-        if (!genAI) {
-            await initializeGemini();
-        }
-
-        const { model: modelId } = req.body;
-        const geminiModel = getOrCreateModel(modelId);
-        if (!geminiModel) {
-            return res.status(503).json({ error: 'AI service unavailable' });
-        }
-
-        const { items } = req.body;
+        await initializeProviders();
+        const { items, model: modelId } = req.body;
 
         if (!items || !Array.isArray(items) || items.length === 0) {
             return res.status(400).json({ error: 'Missing or invalid items array' });
         }
 
-        // Limit batch size
         const batchItems = items.slice(0, 20);
-
         const prompt = `分析以下多則文字的情緒，以 JSON 陣列格式回應。
 每個項目需要：id, label (positive/negative/neutral/mixed), score (-1到1), confidence (0到1)
 
@@ -425,15 +453,8 @@ ${batchItems.map((item: { id: string; content: string }, i: number) =>
 只回應 JSON 陣列，格式如：
 [{"id": "xxx", "label": "positive", "score": 0.8, "confidence": 0.9}, ...]`;
 
-        const result = await geminiModel.generateContent(prompt);
-        const response = await result.response;
-        const responseText = response.text();
-
-        const cleanJson = responseText
-            .replace(/```json\n?/g, '')
-            .replace(/```\n?/g, '')
-            .trim();
-
+        const responseText = await generateText(prompt, modelId);
+        const cleanJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const results = JSON.parse(cleanJson);
         res.json({ results });
     } catch (error) {
@@ -446,38 +467,23 @@ ${batchItems.map((item: { id: string; content: string }, i: number) =>
 // Accepts user data context (health, finance, vehicle, calendar) for personalized responses
 app.post('/ai/butler/chat', async (req: Request, res: Response) => {
     try {
-        await initializeGemini();
-        const { message, model, context, conversationHistory } = req.body;
+        await initializeProviders();
+        const { message, model: modelId, context, conversationHistory } = req.body;
 
         if (!message) {
             return res.status(400).json({ error: 'Missing message' });
         }
 
-        const geminiModel = getOrCreateModel(model);
-        if (!geminiModel) {
-            return res.status(503).json({ error: 'AI service not available' });
-        }
-
-        // Build context-enriched system prompt
         const contextSections: string[] = [];
-
-        if (context?.health) {
-            contextSections.push(`## 用戶健康數據\n${JSON.stringify(context.health, null, 2)}`);
-        }
-        if (context?.finance) {
-            contextSections.push(`## 用戶財務摘要\n${JSON.stringify(context.finance, null, 2)}`);
-        }
-        if (context?.vehicle) {
-            contextSections.push(`## 用戶車輛資訊\n${JSON.stringify(context.vehicle, null, 2)}`);
-        }
-        if (context?.calendar) {
-            contextSections.push(`## 用戶行事曆\n${JSON.stringify(context.calendar, null, 2)}`);
-        }
+        if (context?.health) contextSections.push(`## 用戶健康數據\n${JSON.stringify(context.health, null, 2)}`);
+        if (context?.finance) contextSections.push(`## 用戶財務摘要\n${JSON.stringify(context.finance, null, 2)}`);
+        if (context?.vehicle) contextSections.push(`## 用戶車輛資訊\n${JSON.stringify(context.vehicle, null, 2)}`);
+        if (context?.calendar) contextSections.push(`## 用戶行事曆\n${JSON.stringify(context.calendar, null, 2)}`);
 
         const systemPrompt = `你是「小秘書」，專業的個人智能管家助理。
 友善、專業、高效。針對用戶問題提供精準回答。
 
-${contextSections.length > 0 ? '# 用戶個人數據（請基於這些數據回答相關問題）\n' + contextSections.join('\n\n') : ''}
+${contextSections.length > 0 ? '# 用戶個人數據\n' + contextSections.join('\n\n') : ''}
 
 ## 回應規則
 - 使用繁體中文回應
@@ -485,7 +491,6 @@ ${contextSections.length > 0 ? '# 用戶個人數據（請基於這些數據回�
 - 涉及數據時引用實際數字
 - 如果數據不足，坦誠告知並建議記錄`;
 
-        // Build conversation for multi-turn
         const parts: string[] = [];
         if (conversationHistory?.length) {
             for (const msg of conversationHistory.slice(-6)) {
@@ -495,13 +500,11 @@ ${contextSections.length > 0 ? '# 用戶個人數據（請基於這些數據回�
         parts.push(`用戶: ${message}`);
 
         const fullPrompt = `${systemPrompt}\n\n${parts.join('\n')}`;
-
-        const result = await geminiModel.generateContent(fullPrompt);
-        const response = await result.response;
+        const reply = await generateText(fullPrompt, modelId);
 
         res.json({
-            response: response.text(),
-            model: model || DEFAULT_MODEL,
+            response: reply,
+            model: modelId || DEFAULT_MODEL,
             hasContext: contextSections.length > 0,
         });
     } catch (error) {
@@ -535,8 +538,8 @@ app.listen(PORT, async () => {
         message: `AI Gateway listening on port ${PORT}`
     }));
 
-    // Pre-initialize Gemini
-    await initializeGemini();
+    // Pre-initialize all AI providers
+    await initializeProviders();
 });
 
 export default app;
