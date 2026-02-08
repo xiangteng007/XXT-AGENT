@@ -8,7 +8,8 @@
 
 import { Request, Response } from 'express';
 import * as crypto from 'crypto';
-import { generateAIResponse } from '../services/butler-ai.service';
+import { generateAIResponse, generateAIResponseWithTools } from '../services/butler-ai.service';
+import { processReceiptImage } from '../services/butler/receipt-ocr.service';
 import {
     detectDomain,
     buildFinanceSummaryCard,
@@ -153,8 +154,19 @@ async function handleMessageEvent(event: LineEvent): Promise<void> {
     }
 
     const userId = event.source.userId;
-    const messageText = event.message.text || '';
 
+    // Handle image messages → Receipt OCR
+    if (event.message.type === 'image' && userId) {
+        console.log(`[Butler] Image from ${userId}, processing receipt OCR`);
+        const imageUrl = `https://api-data.line.me/v2/bot/message/${event.message.id}/content`;
+        const result = await processReceiptImage(userId, imageUrl, CHANNEL_ACCESS_TOKEN!);
+        await replyMessage(event.replyToken, [
+            { type: 'text', text: result, quickReply: buildQuickReplyButtons() },
+        ]);
+        return;
+    }
+
+    const messageText = event.message.text || '';
     console.log(`[Butler] Message from ${userId}: ${messageText}`);
 
     // Handle special commands
@@ -202,7 +214,25 @@ async function handleMessageEvent(event: LineEvent): Promise<void> {
         ? `以下是之前的對話紀錄：\n${history.slice(0, -1).join('\n')}\n\n用戶最新問題：${messageText}`
         : messageText;
 
-    // AI text response with conversation context
+    // Try AI with function calling first (allows autonomous actions)
+    if (userId) {
+        try {
+            const aiResult = await generateAIResponseWithTools(messageText, userId, '');
+            if (aiResult.toolCalls && aiResult.toolCalls.length > 0) {
+                const toolResults = await executeToolCalls(userId, aiResult.toolCalls);
+                const combinedResponse = toolResults.join('\n\n');
+                await appendMessage(userId, 'assistant', combinedResponse);
+                await replyMessage(event.replyToken, [
+                    { type: 'text', text: combinedResponse, quickReply: buildQuickReplyButtons() },
+                ]);
+                return;
+            }
+        } catch (toolErr) {
+            console.warn('[Butler] Function calling failed, falling back to standard AI:', toolErr);
+        }
+    }
+
+    // Standard AI text response with conversation context
     const response = await generateAIResponse(contextPrefix, userId);
 
     // Save assistant response to session
@@ -213,6 +243,110 @@ async function handleMessageEvent(event: LineEvent): Promise<void> {
     await replyMessage(event.replyToken, [
         { type: 'text', text: response, quickReply: buildQuickReplyButtons() },
     ]);
+}
+
+// ================================
+// Function Calling Executor
+// ================================
+
+async function executeToolCalls(
+    userId: string,
+    toolCalls: Array<{ name: string; args: Record<string, unknown> }>
+): Promise<string[]> {
+    const results: string[] = [];
+
+    for (const call of toolCalls) {
+        try {
+            switch (call.name) {
+                case 'record_expense': {
+                    const { amount, description, category } = call.args as {
+                        amount: number; description: string; category?: string;
+                    };
+                    await financeService.recordTransaction(userId, {
+                        type: 'expense',
+                        amount,
+                        description: description || '支出',
+                        category: category || '其他',
+                        date: new Date().toISOString().split('T')[0],
+                        bankAccountId: '',
+                        source: 'manual' as const,
+                    });
+                    results.push(`✅ 已記錄支出：$${amount} (${description || category || '其他'})`);
+                    break;
+                }
+                case 'record_weight': {
+                    const { weight } = call.args as { weight: number };
+                    await healthService.recordWeight(userId, weight);
+                    results.push(`✅ 已記錄體重：${weight} kg`);
+                    break;
+                }
+                case 'add_event': {
+                    const { title, date, startTime, location } = call.args as {
+                        title: string; date: string; startTime?: string; location?: string;
+                    };
+                    const startStr = startTime ? `${date}T${startTime}:00` : date;
+                    const endStr = startTime ? `${date}T${String(Number(startTime.split(':')[0]) + 1).padStart(2, '0')}:${startTime.split(':')[1]}:00` : date;
+                    await scheduleService.addEvent(userId, {
+                        title,
+                        start: startStr,
+                        end: endStr,
+                        allDay: !startTime,
+                        location: location || '',
+                        category: 'personal',
+                        reminders: [],
+                        source: 'line',
+                    });
+                    results.push(`✅ 已新增行程：${title} (${date}${startTime ? ' ' + startTime : ''})`);
+                    break;
+                }
+                case 'get_schedule': {
+                    const schedule = await scheduleService.getTodaySchedule(userId);
+                    if (schedule && schedule.events && schedule.events.length > 0) {
+                        const list = schedule.events.map((e) =>
+                            `• ${typeof e.start === 'string' ? e.start.split('T')[1]?.slice(0, 5) || '全天' : '全天'} ${e.title}`
+                        ).join('\n');
+                        results.push(`📅 今日行程：\n${list}`);
+                    } else {
+                        results.push('📅 今日沒有排定的行程');
+                    }
+                    break;
+                }
+                case 'get_spending': {
+                    const { period } = call.args as { period?: string };
+                    const now = new Date();
+                    const summary = await financeService.getMonthlySummary(userId, now.getFullYear(), now.getMonth() + 1);
+                    if (summary) {
+                        results.push(`💰 ${period || '本月'}花費：$${(summary.totalExpenses || 0).toLocaleString()}`);
+                    } else {
+                        results.push('💰 目前沒有消費記錄');
+                    }
+                    break;
+                }
+                case 'record_fuel': {
+                    const { liters, price_per_liter, mileage } = call.args as {
+                        liters: number; price_per_liter: number; mileage?: number;
+                    };
+                    // Use default vehicleId — user's primary vehicle
+                    const vehicleId = 'default';
+                    await vehicleService.recordFuel(userId, vehicleId, {
+                        liters,
+                        pricePerLiter: price_per_liter,
+                        mileage: mileage || 0,
+                        isFull: true,
+                    });
+                    results.push(`⛽ 已記錄加油：${liters}L × $${price_per_liter}/L = $${(liters * price_per_liter).toFixed(0)}`);
+                    break;
+                }
+                default:
+                    results.push(`⚠️ 未支援的操作：${call.name}`);
+            }
+        } catch (err) {
+            console.error(`[Butler] Tool call ${call.name} failed:`, err);
+            results.push(`❌ ${call.name} 執行失敗，請稍後再試`);
+        }
+    }
+
+    return results;
 }
 
 async function handlePostbackEvent(event: LineEvent): Promise<void> {

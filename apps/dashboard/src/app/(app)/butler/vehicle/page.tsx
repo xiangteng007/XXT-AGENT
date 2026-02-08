@@ -1,218 +1,216 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
     Car,
+    ArrowLeft,
     Fuel,
     Wrench,
-    Calendar,
-    Plus,
-    ArrowLeft,
     Gauge,
+    Loader2,
+    CheckCircle2,
     AlertTriangle,
 } from 'lucide-react';
 
-// Mock vehicle data
-const vehicleData = {
-    info: {
-        name: 'Suzuki Jimny JB74',
-        year: 2023,
-        plate: 'ABC-1234',
-        color: '叢林綠',
-    },
-    stats: {
-        totalKm: 15680,
-        avgFuelConsumption: 8.2,
-        lastRefuelDate: '2026-01-28',
-        nextMaintenanceKm: 20000,
-        nextMaintenanceDate: '2026-03-15',
-    },
-    fuelLog: [
-        { date: '2026-01-28', liters: 35.5, cost: 1243, km: 15680, pricePerLiter: 35.0 },
-        { date: '2026-01-15', liters: 38.2, cost: 1337, km: 15250, pricePerLiter: 35.0 },
-        { date: '2026-01-02', liters: 36.8, cost: 1288, km: 14820, pricePerLiter: 35.0 },
-    ],
-    maintenanceLog: [
-        { date: '2025-12-01', type: '定期保養', km: 10000, cost: 3500, description: '機油更換、輪胎調校' },
-        { date: '2025-06-15', type: '定期保養', km: 5000, cost: 2800, description: '機油更換、空氣濾芯' },
-    ],
-};
+interface VehicleData {
+    vehicle: {
+        make: string;
+        model: string;
+        variant: string;
+        year: number;
+        licensePlate: string;
+        currentMileage: number;
+    } | null;
+    fuelLogs: Array<{
+        id: string;
+        date: string;
+        liters: number;
+        pricePerLiter: number;
+        totalCost: number;
+        mileage: number;
+        kmPerLiter: number;
+    }>;
+    maintenance: Array<{
+        id: string;
+        type: string;
+        description: string;
+        dueDate: string;
+        dueMileage: number;
+        completed: boolean;
+    }>;
+    avgKmPerLiter: number | null;
+}
 
 export default function VehiclePage() {
-    const remainingKm = vehicleData.stats.nextMaintenanceKm - vehicleData.stats.totalKm;
-    const maintenanceDue = remainingKm < 1000;
+    const [data, setData] = useState<VehicleData | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        fetch('/api/butler/vehicle')
+            .then(r => r.json())
+            .then(setData)
+            .catch(console.error)
+            .finally(() => setLoading(false));
+    }, []);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
+            </div>
+        );
+    }
+
+    const v = data?.vehicle;
 
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                    <Button variant="ghost" size="icon" asChild>
-                        <Link href="/butler">
-                            <ArrowLeft className="h-5 w-5" />
-                        </Link>
-                    </Button>
-                    <div className="p-2 rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-500/5 border border-blue-500/20">
-                        <Car className="h-6 w-6 text-blue-400" />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold">車輛管理</h1>
-                        <p className="text-muted-foreground">{vehicleData.info.name}</p>
-                    </div>
-                </div>
-                <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    記錄加油
+            <div className="flex items-center gap-3">
+                <Button variant="ghost" size="icon" asChild>
+                    <Link href="/butler">
+                        <ArrowLeft className="h-5 w-5" />
+                    </Link>
                 </Button>
+                <div className="p-2 rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-500/5 border border-blue-500/20">
+                    <Car className="h-6 w-6 text-blue-400" />
+                </div>
+                <div>
+                    <h1 className="text-2xl font-bold">車輛管理</h1>
+                    <p className="text-muted-foreground">
+                        {v ? `${v.make} ${v.model} ${v.variant}` : '尚未設定車輛'}
+                    </p>
+                </div>
             </div>
 
-            {/* Vehicle Info Card */}
-            <Card className="border-blue-500/30 bg-gradient-to-br from-blue-500/5 to-transparent">
-                <CardContent className="pt-6">
-                    <div className="flex items-center gap-6">
-                        <div className="p-4 rounded-2xl bg-blue-500/20">
-                            <Car className="h-12 w-12 text-blue-400" />
-                        </div>
-                        <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div>
-                                <p className="text-sm text-muted-foreground">車型</p>
-                                <p className="font-bold">{vehicleData.info.name}</p>
+            {/* Vehicle Stats */}
+            {v && (
+                <div className="grid gap-4 md:grid-cols-3 animate-stagger">
+                    <Card className="bg-card border-blue-500/30 relative overflow-hidden card-glow card-lift">
+                        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent pointer-events-none" />
+                        <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">總里程</CardTitle>
+                            <Gauge className="h-4 w-4 text-blue-400" />
+                        </CardHeader>
+                        <CardContent className="relative">
+                            <div className="text-4xl font-bold text-blue-400">
+                                {v.currentMileage.toLocaleString()}
                             </div>
-                            <div>
-                                <p className="text-sm text-muted-foreground">年份</p>
-                                <p className="font-bold">{vehicleData.info.year}</p>
+                            <span className="text-xs text-muted-foreground">km</span>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-card border-emerald-500/30 relative overflow-hidden card-glow card-lift">
+                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent pointer-events-none" />
+                        <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">平均油耗</CardTitle>
+                            <Fuel className="h-4 w-4 text-emerald-400" />
+                        </CardHeader>
+                        <CardContent className="relative">
+                            <div className="text-4xl font-bold text-emerald-400">
+                                {data?.avgKmPerLiter ?? '—'}
                             </div>
-                            <div>
-                                <p className="text-sm text-muted-foreground">車牌</p>
-                                <p className="font-bold">{vehicleData.info.plate}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-muted-foreground">顏色</p>
-                                <p className="font-bold">{vehicleData.info.color}</p>
-                            </div>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
+                            <span className="text-xs text-muted-foreground">km/L</span>
+                        </CardContent>
+                    </Card>
 
-            {/* Stats */}
-            <div className="grid gap-4 md:grid-cols-4 animate-stagger">
-                <Card className="bg-card border-blue-500/30 relative overflow-hidden card-glow card-lift">
-                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent pointer-events-none" />
-                    <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">總里程</CardTitle>
-                        <Gauge className="h-4 w-4 text-blue-400" />
+                    <Card className="bg-card border-gold/30 relative overflow-hidden card-glow card-lift">
+                        <div className="absolute inset-0 bg-gradient-to-br from-gold/10 to-transparent pointer-events-none" />
+                        <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">車牌</CardTitle>
+                            <Car className="h-4 w-4 text-gold" />
+                        </CardHeader>
+                        <CardContent className="relative">
+                            <div className="text-2xl font-bold text-gold">{v.licensePlate}</div>
+                            <span className="text-xs text-muted-foreground">{v.year} 年式</span>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {/* Fuel Logs */}
+            {data?.fuelLogs && data.fuelLogs.length > 0 && (
+                <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Fuel className="h-5 w-5 text-emerald-400" />
+                            加油記錄
+                            <Badge variant="outline" className="ml-2">{data.fuelLogs.length}</Badge>
+                        </CardTitle>
                     </CardHeader>
-                    <CardContent className="relative">
-                        <div className="text-4xl font-bold">{vehicleData.stats.totalKm.toLocaleString()}</div>
-                        <span className="text-xs text-blue-400">公里</span>
-                    </CardContent>
-                </Card>
-
-                <Card className="bg-card border-gold/30 relative overflow-hidden card-glow card-lift">
-                    <div className="absolute inset-0 bg-gradient-to-br from-gold/10 to-transparent pointer-events-none" />
-                    <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">平均油耗</CardTitle>
-                        <Fuel className="h-4 w-4 text-gold" />
-                    </CardHeader>
-                    <CardContent className="relative">
-                        <div className="text-4xl font-bold">{vehicleData.stats.avgFuelConsumption}</div>
-                        <span className="text-xs text-gold">L/100km</span>
-                    </CardContent>
-                </Card>
-
-                <Card className={`bg-card relative overflow-hidden card-glow card-lift ${maintenanceDue ? 'border-red-500/30' : 'border-emerald-500/30'}`}>
-                    <div className={`absolute inset-0 bg-gradient-to-br ${maintenanceDue ? 'from-red-500/10' : 'from-emerald-500/10'} to-transparent pointer-events-none`} />
-                    <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">下次保養</CardTitle>
-                        <Wrench className={`h-4 w-4 ${maintenanceDue ? 'text-red-400' : 'text-emerald-400'}`} />
-                    </CardHeader>
-                    <CardContent className="relative">
-                        <div className="text-4xl font-bold">{remainingKm.toLocaleString()}</div>
-                        <span className={`text-xs ${maintenanceDue ? 'text-red-400' : 'text-emerald-400'}`}>
-                            公里後 · {vehicleData.stats.nextMaintenanceDate}
-                        </span>
-                    </CardContent>
-                </Card>
-
-                <Card className="bg-card border-purple-500/30 relative overflow-hidden card-glow card-lift">
-                    <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-transparent pointer-events-none" />
-                    <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">上次加油</CardTitle>
-                        <Calendar className="h-4 w-4 text-purple-400" />
-                    </CardHeader>
-                    <CardContent className="relative">
-                        <div className="text-2xl font-bold">{vehicleData.stats.lastRefuelDate}</div>
-                        <span className="text-xs text-purple-400">8 天前</span>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Fuel Log */}
-            <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Fuel className="h-5 w-5 text-gold" />
-                        加油記錄
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="space-y-3">
-                        {vehicleData.fuelLog.map((entry, i) => (
-                            <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-lg bg-gold/20">
-                                        <Fuel className="h-4 w-4 text-gold" />
-                                    </div>
+                    <CardContent>
+                        <div className="space-y-3">
+                            {data.fuelLogs.map((log) => (
+                                <div key={log.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                                     <div>
-                                        <p className="font-medium">{entry.liters} 公升</p>
-                                        <p className="text-sm text-muted-foreground">{entry.date} · {entry.km.toLocaleString()} km</p>
+                                        <p className="font-medium">{log.liters}L × ${log.pricePerLiter}/L</p>
+                                        <p className="text-sm text-muted-foreground">{log.date} · {log.mileage?.toLocaleString()} km</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="font-bold text-gold">${log.totalCost.toLocaleString()}</p>
+                                        {log.kmPerLiter > 0 && (
+                                            <p className="text-xs text-emerald-400">{log.kmPerLiter} km/L</p>
+                                        )}
                                     </div>
                                 </div>
-                                <div className="text-right">
-                                    <p className="font-bold">NT${entry.cost.toLocaleString()}</p>
-                                    <p className="text-xs text-muted-foreground">${entry.pricePerLiter}/L</p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </CardContent>
-            </Card>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
-            {/* Maintenance Log */}
-            <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Wrench className="h-5 w-5 text-blue-400" />
-                        保養記錄
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="space-y-3">
-                        {vehicleData.maintenanceLog.map((entry, i) => (
-                            <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-lg bg-blue-500/20">
-                                        <Wrench className="h-4 w-4 text-blue-400" />
+            {/* Maintenance Schedule */}
+            {data?.maintenance && data.maintenance.length > 0 && (
+                <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Wrench className="h-5 w-5 text-orange-400" />
+                            保養排程
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-3">
+                            {data.maintenance.map((m) => (
+                                <div key={m.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-lg ${m.completed ? 'bg-emerald-500/20' : 'bg-orange-500/20'}`}>
+                                            {m.completed ? (
+                                                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                                            ) : (
+                                                <AlertTriangle className="h-4 w-4 text-orange-400" />
+                                            )}
+                                        </div>
+                                        <div>
+                                            <p className="font-medium">{m.description || m.type}</p>
+                                            <p className="text-sm text-muted-foreground">
+                                                {m.dueDate}{m.dueMileage ? ` · ${m.dueMileage.toLocaleString()} km` : ''}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="font-medium">{entry.type}</p>
-                                        <p className="text-sm text-muted-foreground">{entry.date} · {entry.km.toLocaleString()} km</p>
-                                        <p className="text-xs text-muted-foreground">{entry.description}</p>
-                                    </div>
+                                    <Badge variant={m.completed ? 'secondary' : 'outline'} className={m.completed ? '' : 'border-orange-400/30 text-orange-400'}>
+                                        {m.completed ? '已完成' : '待保養'}
+                                    </Badge>
                                 </div>
-                                <Badge variant="outline" className="text-blue-400 border-blue-400/30">
-                                    NT${entry.cost.toLocaleString()}
-                                </Badge>
-                            </div>
-                        ))}
-                    </div>
-                </CardContent>
-            </Card>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Empty state */}
+            {!v && (
+                <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+                    <CardContent className="py-12 text-center">
+                        <Car className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                        <h3 className="text-lg font-medium mb-2">尚未設定車輛</h3>
+                        <p className="text-muted-foreground">透過 LINE 傳送「加油 45L 32.5」開始追蹤</p>
+                    </CardContent>
+                </Card>
+            )}
         </div>
     );
 }
