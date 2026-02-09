@@ -10,10 +10,11 @@ import { generateAIResponseWithTools } from '../services/butler-ai.service';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import { financeService } from '../services/finance.service';
-import { vehicleService } from '../services/vehicle.service';
-import { scheduleService } from '../services/schedule.service';
 import { investmentService } from '../services/butler/investment.service';
 import { loanService } from '../services/butler/loan.service';
+import { generateMonthlyInsights } from '../services/butler/monthly-insights.service';
+import { vehicleService } from '../services/vehicle.service';
+import { scheduleService } from '../services/schedule.service';
 import { taxService } from '../services/butler/tax.service';
 import { financialAdvisorService } from '../services/butler/financial-advisor.service';
 import { extractReceiptData } from '../services/butler/receipt-ocr.service';
@@ -427,6 +428,9 @@ async function handleCommand(chatId: number, telegramUserId: number, text: strin
         case '/price':
             await sendStockPrice(chatId, text);
             break;
+        case '/report':
+            await sendMonthlyReport(chatId, telegramUserId);
+            break;
         case '/link':
             await sendLinkInstructions(chatId, telegramUserId);
             break;
@@ -512,6 +516,7 @@ async function sendHelpMessage(chatId: number): Promise<void> {
 /tax - 稅務估算
 /advice - 理財顧問
 /price 2330 - 查股價
+/report - 月度報告
 /health - 健康快照
 /car - 車輛狀態
 /balance - 帳戶餘額
@@ -579,6 +584,45 @@ async function sendStockPrice(chatId: number, text: string): Promise<void> {
     } catch (error) {
         console.error('[Telegram] Stock price error:', error);
         await sendMessage(chatId, '❌ 股價查詢失敗，請稍後再試。');
+    }
+}
+
+async function sendMonthlyReport(chatId: number, telegramUserId: number): Promise<void> {
+    const linkedUid = await getLinkedFirebaseUid(telegramUserId);
+    if (!linkedUid) {
+        await sendMessage(chatId, '❌ 請先綁定帳號才能使用月報功能。\n\n使用 /link 開始綁定。');
+        return;
+    }
+
+    await sendChatAction(chatId, 'typing');
+    await sendMessage(chatId, '📊 正在生成月度報告...');
+
+    try {
+        const report = await generateMonthlyInsights(linkedUid);
+
+        let msg = `📊 **${report.month} 月度報告**\n\n`;
+
+        for (const section of report.sections) {
+            msg += `${section.icon} **${section.title}**\n`;
+            for (const item of section.items) {
+                msg += `  • ${item}\n`;
+            }
+            msg += '\n';
+        }
+
+        msg += `📝 ${report.summary}`;
+
+        await sendMessage(chatId, msg, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '💰 查看支出明細', callback_data: 'cmd_balance' }],
+                    [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+                ],
+            },
+        });
+    } catch (error) {
+        console.error('[Telegram] Monthly report error:', error);
+        await sendMessage(chatId, '❌ 月報生成失敗，請稍後再試。');
     }
 }
 

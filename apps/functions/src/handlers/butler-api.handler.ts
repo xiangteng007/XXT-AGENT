@@ -18,6 +18,7 @@ import { scheduleService } from '../services/schedule.service';
 import { businessService } from '../services/business.service';
 import { investmentService } from '../services/butler/investment.service';
 import { loanService } from '../services/butler/loan.service';
+import { generateMonthlyInsights } from '../services/butler/monthly-insights.service';
 
 // ================================
 // Authentication Helper
@@ -95,6 +96,9 @@ export async function handleButlerApi(req: Request, res: Response): Promise<void
                 break;
             case 'loan':
                 await handleLoan(req, res, uid);
+                break;
+            case 'insights':
+                await handleInsights(req, res, uid, action);
                 break;
             default:
                 res.status(404).json({ error: 'Not found', path });
@@ -310,6 +314,24 @@ async function handleLoan(req: Request, res: Response, uid: string): Promise<voi
     if (req.method !== 'GET') { res.status(405).json({ error: 'Method not allowed' }); return; }
     const summary = await loanService.getLoanSummary(uid);
     res.json(summary);
+}
+
+// ================================
+// Insights Handler
+// ================================
+
+async function handleInsights(req: Request, res: Response, uid: string, action: string): Promise<void> {
+    if (req.method !== 'GET') { res.status(405).json({ error: 'Method not allowed' }); return; }
+    switch (action) {
+        case 'monthly': {
+            const month = req.query.month as string | undefined;
+            const report = await generateMonthlyInsights(uid, month);
+            res.json(report);
+            break;
+        }
+        default:
+            res.status(404).json({ error: 'Insights endpoint not found' });
+    }
 }
 
 // ================================
