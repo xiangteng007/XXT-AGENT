@@ -424,6 +424,9 @@ async function handleCommand(chatId: number, telegramUserId: number, text: strin
         case '/advice':
             await sendFinancialAdvice(chatId, telegramUserId);
             break;
+        case '/price':
+            await sendStockPrice(chatId, text);
+            break;
         case '/link':
             await sendLinkInstructions(chatId, telegramUserId);
             break;
@@ -508,6 +511,7 @@ async function sendHelpMessage(chatId: number): Promise<void> {
 /loan - 貸款管理
 /tax - 稅務估算
 /advice - 理財顧問
+/price 2330 - 查股價
 /health - 健康快照
 /car - 車輛狀態
 /balance - 帳戶餘額
@@ -522,6 +526,60 @@ async function sendHelpMessage(chatId: number): Promise<void> {
 • 「這個月花了多少」`;
 
     await sendMessage(chatId, help);
+}
+
+async function sendStockPrice(chatId: number, text: string): Promise<void> {
+    const parts = text.trim().split(/\s+/);
+    const symbols = parts.slice(1).filter(s => s.length > 0);
+
+    if (symbols.length === 0) {
+        await sendMessage(chatId, '📈 用法：/price 2330 或 /price AAPL TSLA\n\n例如：\n• `/price 2330` — 台積電\n• `/price AAPL` — Apple\n• `/price 0050 2454` — 多檔查詢');
+        return;
+    }
+
+    await sendChatAction(chatId, 'typing');
+
+    try {
+        const results: string[] = [];
+        for (const sym of symbols.slice(0, 5)) {
+            const isTW = /^\d{4,6}$/.test(sym);
+            let msg = '';
+            if (isTW) {
+                const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_${sym}.tw`;
+                const resp = await fetch(url, { headers: { 'User-Agent': 'XXT-AGENT/1.0' } });
+                if (resp.ok) {
+                    const data = await resp.json() as { msgArray?: Array<{ c: string; n: string; z: string; y: string; o: string; h: string; l: string; v: string }> };
+                    const q = data.msgArray?.[0];
+                    if (q) {
+                        const price = parseFloat(q.z) || parseFloat(q.y) || 0;
+                        const prev = parseFloat(q.y) || 0;
+                        const change = price - prev;
+                        const pct = prev ? ((change / prev) * 100).toFixed(2) : '0.00';
+                        const arrow = change > 0 ? '🔴 ▲' : change < 0 ? '🟢 ▼' : '⚪';
+                        msg = `${arrow} **${q.n}** (${q.c})\n💰 $${price.toFixed(2)}  ${change > 0 ? '+' : ''}${change.toFixed(2)} (${pct}%)\n📊 成交量: ${parseInt(q.v).toLocaleString()} 張`;
+                    }
+                }
+            } else {
+                const url = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${sym.toUpperCase()}&range=1d&interval=1d`;
+                const resp = await fetch(url, { headers: { 'User-Agent': 'XXT-AGENT/1.0' } });
+                if (resp.ok) {
+                    const data = await resp.json() as { spark?: { result?: Array<{ symbol: string; response: Array<{ meta: { regularMarketPrice: number; previousClose: number; regularMarketVolume: number } }> }> } };
+                    const m = data.spark?.result?.[0]?.response?.[0]?.meta;
+                    if (m) {
+                        const change = m.regularMarketPrice - m.previousClose;
+                        const pct = ((change / m.previousClose) * 100).toFixed(2);
+                        const arrow = change > 0 ? '🔴 ▲' : change < 0 ? '🟢 ▼' : '⚪';
+                        msg = `${arrow} **${sym.toUpperCase()}**\n💰 $${m.regularMarketPrice.toFixed(2)}  ${change > 0 ? '+' : ''}${change.toFixed(2)} (${pct}%)\n📊 Volume: ${(m.regularMarketVolume || 0).toLocaleString()}`;
+                    }
+                }
+            }
+            results.push(msg || `❌ 查無 ${sym} 的股價資料`);
+        }
+        await sendMessage(chatId, results.join('\n\n'));
+    } catch (error) {
+        console.error('[Telegram] Stock price error:', error);
+        await sendMessage(chatId, '❌ 股價查詢失敗，請稍後再試。');
+    }
 }
 
 async function sendMainMenu(chatId: number): Promise<void> {
