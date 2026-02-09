@@ -28,6 +28,10 @@ import { financeService } from '../services/finance.service';
 import { healthService } from '../services/health.service';
 import { vehicleService } from '../services/vehicle.service';
 import { scheduleService } from '../services/schedule.service';
+import { investmentService } from '../services/butler/investment.service';
+import { loanService } from '../services/butler/loan.service';
+import { taxService } from '../services/butler/tax.service';
+import { financialAdvisorService } from '../services/butler/financial-advisor.service';
 import { parseCommand, executeCommand } from '../services/butler/butler-commands.service';
 
 // LINE Channel Secret for signature verification
@@ -335,6 +339,84 @@ async function executeToolCalls(
                         isFull: true,
                     });
                     results.push(`⛽ 已記錄加油：${liters}L × $${price_per_liter}/L = $${(liters * price_per_liter).toFixed(0)}`);
+                    break;
+                }
+                case 'add_investment': {
+                    const { symbol, action, shares, price } = call.args as {
+                        symbol: string; action: string; shares: number; price: number;
+                    };
+                    const tradeType = action === 'sell' ? 'sell' : 'buy';
+                    await investmentService.recordTrade(userId, {
+                        holdingId: '',
+                        type: tradeType,
+                        symbol: symbol.toUpperCase(),
+                        shares,
+                        price,
+                        totalAmount: shares * price,
+                        fee: 0,
+                        date: new Date().toISOString().split('T')[0],
+                    });
+                    results.push(`✅ 已記錄${tradeType === 'buy' ? '買入' : '賣出'}：${symbol} ${shares}股 × $${price}`);
+                    break;
+                }
+                case 'get_portfolio': {
+                    const portfolio = await investmentService.getPortfolioSummary(userId);
+                    if (portfolio.holdingCount > 0) {
+                        const holdingList = portfolio.holdings.slice(0, 5).map(h =>
+                            `• ${h.symbol} ${h.name}: ${h.shares}股, 均價$${h.avgCost}`
+                        ).join('\n');
+                        results.push(`📈 投資組合（${portfolio.holdingCount} 檔）\n` +
+                            `總市值：$${portfolio.totalMarketValue.toLocaleString()}\n` +
+                            `未實現損益：${portfolio.totalUnrealizedPnL >= 0 ? '+' : ''}$${portfolio.totalUnrealizedPnL.toLocaleString()} (${portfolio.returnRate}%)\n` +
+                            holdingList);
+                    } else {
+                        results.push('📈 尚未建立投資組合');
+                    }
+                    break;
+                }
+                case 'calculate_loan': {
+                    const { principal, annual_rate, term_months } = call.args as {
+                        principal: number; annual_rate: number; term_months: number;
+                    };
+                    const monthly = loanService.calculateMonthlyPayment(principal, annual_rate, term_months);
+                    const totalInterest = monthly * term_months - principal;
+                    results.push(`🏦 貸款試算\n` +
+                        `貸款金額：$${principal.toLocaleString()}\n` +
+                        `年利率：${annual_rate}%，期數：${term_months}個月\n` +
+                        `每月應繳：$${monthly.toLocaleString()}\n` +
+                        `總利息：$${totalInterest.toLocaleString()}`);
+                    break;
+                }
+                case 'estimate_tax': {
+                    const { annual_salary, investment_income, dependents } = call.args as {
+                        annual_salary: number; investment_income?: number; dependents?: number;
+                    };
+                    const estimation = taxService.estimateIncomeTax({
+                        annualSalary: annual_salary,
+                        investmentIncome: investment_income || 0,
+                        dependents: dependents || 0,
+                        filingStatus: 'single',
+                        deductions: [],
+                        year: new Date().getFullYear(),
+                    });
+                    let taxMsg = `📋 稅務估算 (${estimation.year})\n` +
+                        `綜合所得：$${estimation.grossIncome.toLocaleString()}\n` +
+                        `適用稅率：${estimation.taxBracketRate}%\n` +
+                        `預估應繳：$${estimation.estimatedTax.toLocaleString()}\n` +
+                        `有效稅率：${estimation.effectiveRate}%`;
+                    if (estimation.dividendAnalysis) {
+                        const da = estimation.dividendAnalysis;
+                        taxMsg += `\n股利節稅：建議「${da.recommendedMethod === 'combined' ? '合併計稅' : '分離課稅'}}」，省 $${da.savingsAmount.toLocaleString()}`;
+                    }
+                    results.push(taxMsg);
+                    break;
+                }
+                case 'get_financial_advice': {
+                    const { topic } = call.args as { topic?: string };
+                    const report = await financialAdvisorService.getFinancialAdvice(
+                        userId, (topic as 'comprehensive') || 'comprehensive'
+                    );
+                    results.push(financialAdvisorService.formatForLine(report));
                     break;
                 }
                 default:

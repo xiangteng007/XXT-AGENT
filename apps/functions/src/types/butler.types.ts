@@ -188,6 +188,74 @@ export interface Transaction {
   createdAt: FirebaseFirestore.Timestamp;
 }
 
+// Investment holding in portfolio
+export interface InvestmentHolding {
+  id: string;
+  symbol: string; // e.g., '2330', '0050', 'AAPL'
+  name: string;
+  type: 'tw_stock' | 'us_stock' | 'etf' | 'fund' | 'bond' | 'crypto';
+  shares: number;
+  avgCost: number;
+  currentPrice?: number;
+  marketValue?: number;
+  unrealizedPnL?: number;
+  currency: 'TWD' | 'USD';
+  brokerId?: string;
+  lastUpdated?: FirebaseFirestore.Timestamp;
+}
+
+// Investment transaction (buy/sell/dividend)
+export interface InvestmentTransaction {
+  id: string;
+  holdingId: string;
+  type: 'buy' | 'sell' | 'dividend' | 'split';
+  symbol: string;
+  shares: number;
+  price: number;
+  totalAmount: number;
+  fee: number;
+  date: string;
+  note?: string;
+  createdAt: FirebaseFirestore.Timestamp;
+}
+
+// Loan record
+export interface Loan {
+  id: string;
+  name: string;
+  type: 'mortgage' | 'car' | 'personal' | 'student' | 'credit';
+  lender: string;
+  principal: number;
+  interestRate: number; // annual %
+  termMonths: number;
+  startDate: string;
+  monthlyPayment: number;
+  remainingBalance: number;
+  totalPaid?: number;
+  nextPaymentDate?: string;
+  isActive: boolean;
+  createdAt: FirebaseFirestore.Timestamp;
+}
+
+// Tax profile for estimation
+export interface TaxProfile {
+  annualSalary?: number;
+  businessIncome?: number;
+  investmentIncome?: number;
+  rentalIncome?: number;
+  otherIncome?: number;
+  deductions: TaxDeduction[];
+  filingStatus: 'single' | 'married' | 'business';
+  dependents: number;
+  year: number;
+}
+
+export interface TaxDeduction {
+  type: 'insurance' | 'medical' | 'education' | 'charity' | 'mortgage_interest' | 'rental' | 'disability' | 'childcare' | 'elderly_care' | 'other';
+  amount: number;
+  description: string;
+}
+
 // ========================
 // D. Vehicle (Jimny JB74)
 // ========================
@@ -352,6 +420,10 @@ export const BUTLER_COLLECTIONS = {
   PROFILE: 'users/{uid}/butler/profile',
   HEALTH_DAILY: 'users/{uid}/butler/health/daily/{date}',
   TRANSACTIONS: 'users/{uid}/butler/finance/transactions',
+  INVESTMENTS: 'users/{uid}/butler/finance/investments',
+  INVESTMENT_TRADES: 'users/{uid}/butler/finance/investment_trades',
+  LOANS: 'users/{uid}/butler/finance/loans',
+  TAX_PROFILES: 'users/{uid}/butler/finance/tax',
   FUEL_LOGS: 'users/{uid}/butler/vehicles/{vehicleId}/fuel',
   MAINTENANCE: 'users/{uid}/butler/vehicles/{vehicleId}/maintenance',
   REMINDERS: 'users/{uid}/butler/reminders',

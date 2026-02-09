@@ -33,9 +33,13 @@ const BUTLER_SYSTEM_PROMPT = `你是「小秘書」，一個專業的個人智�
 ## 你能處理的領域
 1. 📋 行程管理 - 查詢/新增行程、設定提醒
 2. 💰 財務追蹤 - 支出統計、預算提醒
-3. 🚗 車輛管理 - Jimny JB74 保養、油耗追蹤
-4. 🏃 健康記錄 - 運動、睡眠、體重追蹤
-5. 🏢 工作管理 - 專案狀態、客戶追蹤
+3. 📈 投資理財 - 投資組合追蹤、買賣記錄、資產配置分析
+4. 🏦 貸款管理 - 貸款追蹤、還款試算、再融資建議
+5. 📋 稅務估算 - 所得稅試算、股利節稅、扣除項建議
+6. 🤖 理財顧問 - 綜合財務分析、退休規劃、個人化建議
+7. 🚗 車輛管理 - Jimny JB74 保養、油耗追蹤
+8. 🏃 健康記錄 - 運動、睡眠、體重追蹤
+9. 🏢 工作管理 - 專案狀態、客戶追蹤
 
 ## 回應格式
 - 對於查詢類請求，提供清晰的狀態摘要
@@ -384,6 +388,64 @@ const BUTLER_TOOLS = [
                         price_per_liter: { type: SchemaType.NUMBER, description: '每公升價格' },
                     },
                     required: ['liters'],
+                },
+            },
+            {
+                name: 'add_investment',
+                description: '記錄投資交易（買入/賣出股票、ETF）',
+                parameters: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                        symbol: { type: SchemaType.STRING, description: '股票代號（如 2330、0050、AAPL）' },
+                        action: { type: SchemaType.STRING, description: '操作：buy 或 sell' },
+                        shares: { type: SchemaType.NUMBER, description: '股數' },
+                        price: { type: SchemaType.NUMBER, description: '每股價格' },
+                    },
+                    required: ['symbol', 'action', 'shares', 'price'],
+                },
+            },
+            {
+                name: 'get_portfolio',
+                description: '查詢投資組合總覽（持倉、損益、配置）',
+                parameters: {
+                    type: SchemaType.OBJECT,
+                    properties: {},
+                },
+            },
+            {
+                name: 'calculate_loan',
+                description: '貸款月付試算（等額本息）',
+                parameters: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                        principal: { type: SchemaType.NUMBER, description: '貸款金額' },
+                        annual_rate: { type: SchemaType.NUMBER, description: '年利率（%）' },
+                        term_months: { type: SchemaType.NUMBER, description: '貸款期數（月）' },
+                    },
+                    required: ['principal', 'annual_rate', 'term_months'],
+                },
+            },
+            {
+                name: 'estimate_tax',
+                description: '估算年度所得稅（台灣綜合所得稅）',
+                parameters: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                        annual_salary: { type: SchemaType.NUMBER, description: '年薪' },
+                        investment_income: { type: SchemaType.NUMBER, description: '投資收入（股利等）' },
+                        dependents: { type: SchemaType.NUMBER, description: '受扶養人數' },
+                    },
+                    required: ['annual_salary'],
+                },
+            },
+            {
+                name: 'get_financial_advice',
+                description: '取得綜合理財建議報告（投資、負債、稅務、退休）',
+                parameters: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                        topic: { type: SchemaType.STRING, description: '主題：portfolio_review / debt_strategy / tax_optimization / retirement_planning / comprehensive' },
+                    },
                 },
             },
         ],
