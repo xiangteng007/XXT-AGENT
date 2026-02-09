@@ -151,9 +151,8 @@ export const telegramWebhook = onRequest(
 // Export handlers for testing
 export { handleWebhook, handleWorker, handleCleanup, handleButlerApi, handleButlerWebhook, handleTelegramWebhook };
 
-// Auth triggers - temporarily disabled until Firebase Auth is enabled in project
-// To re-enable: uncomment and ensure Firebase Auth is enabled in the GCP project
-// export { onUserCreated } from './triggers/auth.trigger';
+// Auth trigger - auto-creates user profile on sign-up
+export { onUserCreated } from './triggers/auth.trigger';
 
 /**
  * News Collector - Scheduled RSS Feed Aggregation
