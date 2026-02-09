@@ -236,3 +236,49 @@ export const reminderManual = onRequest(
         res.json(result);
     }
 );
+
+/**
+ * Fusion Engine — Correlates social + market + news events
+ * Runs every 5 minutes to find cross-domain signals.
+ */
+import { runFusionEngine } from './services/fusion-engine.service';
+
+export const fusionScheduled = onSchedule(
+    {
+        schedule: 'every 5 minutes',
+        timeZone: 'Asia/Taipei',
+        memory: '256MiB',
+        timeoutSeconds: 60,
+    },
+    async () => {
+        const result = await runFusionEngine();
+        console.log('[Fusion Scheduled]', result);
+    }
+);
+
+/**
+ * Market Streamer — Real-time TWSE + US stock monitoring
+ * Runs every minute during TW trading hours (Mon-Fri 9:00-13:30).
+ */
+import { runMarketStreamer } from './services/market-streamer.service';
+
+export const marketStreamerScheduled = onSchedule(
+    {
+        schedule: 'every 1 minutes',
+        timeZone: 'Asia/Taipei',
+        memory: '256MiB',
+        timeoutSeconds: 30,
+    },
+    async () => {
+        // Only run during TW trading hours (weekdays 9:00-13:30)
+        const now = new Date();
+        const hour = now.getUTCHours() + 8; // UTC+8
+        const day = now.getUTCDay();
+        if (day === 0 || day === 6 || hour < 9 || hour >= 14) {
+            return; // Skip weekends and off-hours
+        }
+        const result = await runMarketStreamer();
+        console.log('[Market Streamer Scheduled]', result);
+    }
+);
+
