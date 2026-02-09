@@ -188,3 +188,51 @@ export const newsCollector = onRequest(
         res.json(result);
     }
 );
+
+/**
+ * Proactive Reminder System
+ * Checks vehicle maintenance, bill payments, upcoming events,
+ * and health goals; pushes notifications via LINE + Telegram.
+ */
+import { processScheduledReminders, cleanupNotificationMarkers } from './services/proactive-reminders.service';
+
+export const reminderScheduled = onSchedule(
+    {
+        schedule: 'every 15 minutes',
+        timeZone: 'Asia/Taipei',
+        memory: '256MiB',
+        timeoutSeconds: 60,
+    },
+    async () => {
+        const result = await processScheduledReminders();
+        console.log('[Reminder Scheduled]', result);
+    }
+);
+
+// Weekly cleanup of old notification markers
+export const reminderCleanup = onSchedule(
+    {
+        schedule: 'every sunday 04:00',
+        timeZone: 'Asia/Taipei',
+        memory: '256MiB',
+        timeoutSeconds: 120,
+    },
+    async () => {
+        const cleaned = await cleanupNotificationMarkers();
+        console.log(`[Reminder Cleanup] Removed ${cleaned} old markers`);
+    }
+);
+
+// Manual trigger for testing reminders
+export const reminderManual = onRequest(
+    {
+        cors: false,
+        invoker: 'public',
+        memory: '256MiB',
+        timeoutSeconds: 60,
+    },
+    async (req, res) => {
+        const result = await processScheduledReminders();
+        res.json(result);
+    }
+);

@@ -16,6 +16,7 @@ import { investmentService } from '../services/butler/investment.service';
 import { loanService } from '../services/butler/loan.service';
 import { taxService } from '../services/butler/tax.service';
 import { financialAdvisorService } from '../services/butler/financial-advisor.service';
+import { extractReceiptData } from '../services/butler/receipt-ocr.service';
 import {
     appendMessage,
     getPreviousMessages,
@@ -173,48 +174,65 @@ async function handleVoiceMessage(chatId: number, telegramUserId: number, messag
     console.log(`[Telegram] Voice message received: duration=${voice.duration}s, file_id=${voice.file_id}`);
 
     await sendChatAction(chatId, 'typing');
-    
+
     try {
-        // Get bot token for API call
         const token = await getBotToken();
-        
+
         // Get file path from Telegram
         const fileResponse = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${voice.file_id}`);
         const fileData = await fileResponse.json() as { ok: boolean; result?: { file_path: string } };
-        
+
         if (!fileData.ok || !fileData.result?.file_path) {
             await sendMessage(chatId, '❌ 無法處理語音訊息，請稍後再試。');
             return;
         }
-        
-        // Download voice file URL
+
+        // Download voice file
         const voiceUrl = `https://api.telegram.org/file/bot${token}/${fileData.result.file_path}`;
-        
-        // For now, inform user about the feature status
-        // Full Speech-to-Text integration requires Google Cloud Speech API
-        await sendMessage(chatId, `🎤 **語音辨識**
+        const voiceResponse = await fetch(voiceUrl);
+        if (!voiceResponse.ok) {
+            await sendMessage(chatId, '❌ 無法下載語音檔案。');
+            return;
+        }
+        const audioBuffer = Buffer.from(await voiceResponse.arrayBuffer());
 
-已收到您的語音訊息 (${voice.duration} 秒)
+        // Use Gemini to transcribe audio
+        const { GoogleGenerativeAI } = await import('@google/generative-ai');
+        const apiKey = process.env.GOOGLE_AI_API_KEY;
+        if (!apiKey) {
+            await sendMessage(chatId, '❌ AI 服務未設定，無法處理語音。');
+            return;
+        }
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-⏳ 語音轉文字功能**開發中**
-
-目前請使用文字輸入，例如：
-• 「今天花了 150 元吃午餐」
-• 「新增下午 3 點開會」
-• 「查看本月支出」
-
-💡 *完整語音支援預計下一版本推出*`, {
-            reply_markup: {
-                inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
+        const audioPart = {
+            inlineData: {
+                data: audioBuffer.toString('base64'),
+                mimeType: 'audio/ogg',
             },
-        });
-        
-        // Log for future implementation
-        console.log(`[Telegram] Voice file URL: ${voiceUrl} (STT integration pending)`);
-        
+        };
+
+        const result = await model.generateContent([
+            '請將這段語音訊息轉成文字。只輸出語音的文字內容，不要加任何說明或標點符號以外的內容。如果聽不清楚，回傳「無法辨識」。',
+            audioPart,
+        ]);
+        const transcribed = result.response.text().trim();
+
+        console.log(`[Telegram] STT result: "${transcribed}"`);
+
+        if (!transcribed || transcribed === '無法辨識') {
+            await sendMessage(chatId, '🎤 無法辨識語音內容，請重新錄製或使用文字輸入。');
+            return;
+        }
+
+        // Show transcription then process as text
+        await sendMessage(chatId, `🎤 語音辨識：「${transcribed}」\n\n⏳ 處理中...`);
+        await handleNaturalLanguage(chatId, telegramUserId, transcribed);
+
     } catch (error) {
-        console.error('[Telegram] Voice message error:', error);
-        await sendMessage(chatId, '❌ 語音處理發生錯誤，請使用文字輸入。');
+        console.error('[Telegram] Voice STT error:', error);
+        await sendMessage(chatId, '❌ 語音辨識失敗，請使用文字輸入。');
     }
 }
 
@@ -282,61 +300,82 @@ async function handlePhotoMessage(chatId: number, telegramUserId: number, messag
     console.log(`[Telegram] Photo received: file_id=${photo.file_id}, caption="${caption}"`);
 
     const linkedUid = await getLinkedFirebaseUid(telegramUserId);
-    
+
     if (!linkedUid) {
         await sendMessage(chatId, '❌ 請先綁定帳號才能使用圖片功能。\n\n使用 /link 開始綁定。');
         return;
     }
 
     await sendChatAction(chatId, 'typing');
+    await sendMessage(chatId, '🔍 正在辨識收據...');
 
     try {
-        // Get bot token for API call
         const token = await getBotToken();
-        
+
         // Get file path from Telegram
         const fileResponse = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${photo.file_id}`);
         const fileData = await fileResponse.json() as { ok: boolean; result?: { file_path: string } };
-        
+
         if (!fileData.ok || !fileData.result?.file_path) {
             await sendMessage(chatId, '❌ 無法處理圖片，請稍後再試。');
             return;
         }
-        
-        // Get photo URL
-        const photoUrl = `https://api.telegram.org/file/bot${token}/${fileData.result.file_path}`;
-        console.log(`[Telegram] Photo URL: ${photoUrl}`);
 
-        // Store photo reference for processing
-        await db.collection(`users/${linkedUid}/butler/photos`).add({
-            telegramFileId: photo.file_id,
-            caption: caption,
-            source: 'telegram',
-            timestamp: Timestamp.now(),
-            processed: false,
-            type: 'receipt_pending',
+        // Download image from Telegram
+        const photoUrl = `https://api.telegram.org/file/bot${token}/${fileData.result.file_path}`;
+        const imgResponse = await fetch(photoUrl);
+        if (!imgResponse.ok) {
+            await sendMessage(chatId, '❌ 無法下載圖片。');
+            return;
+        }
+        const imageBuffer = Buffer.from(await imgResponse.arrayBuffer());
+        const contentType = imgResponse.headers.get('content-type') || 'image/jpeg';
+
+        // Extract receipt data via Gemini Vision OCR
+        const receipt = await extractReceiptData(imageBuffer, contentType);
+
+        // Record transaction automatically
+        await financeService.recordTransaction(linkedUid, {
+            type: 'expense',
+            amount: receipt.totalAmount,
+            description: `${receipt.storeName}${receipt.items.length > 0 ? ' - ' + receipt.items.map(i => i.name).join(', ') : ''}`,
+            category: receipt.category,
+            date: receipt.date,
+            source: 'manual' as const,
+            bankAccountId: '',
         });
 
-        // For now, provide manual entry option
-        // Full Vision API OCR integration would go here
-        await sendMessage(chatId, `📸 **圖片已接收**
+        // Format response
+        let msg = `📸 **收據辨識完成！**\n\n`;
+        msg += `🏪 ${receipt.storeName}\n`;
+        msg += `💰 $${receipt.totalAmount.toLocaleString()}\n`;
+        msg += `📁 ${receipt.category}\n`;
+        msg += `📅 ${receipt.date}\n`;
 
-${caption ? `說明: "${caption}"` : ''}
+        if (receipt.items.length > 0) {
+            msg += `\n📝 明細：\n`;
+            receipt.items.slice(0, 5).forEach(item => {
+                msg += `  • ${item.name} $${item.amount}${item.quantity && item.quantity > 1 ? ` ×${item.quantity}` : ''}\n`;
+            });
+            if (receipt.items.length > 5) {
+                msg += `  ... 共 ${receipt.items.length} 項\n`;
+            }
+        }
+        if (receipt.invoiceNumber) {
+            msg += `\n🧾 發票：${receipt.invoiceNumber}`;
+        }
+        msg += `\n\n✅ 已自動記帳`;
 
-🔍 **OCR 功能開發中**
-
-請選擇此圖片的用途：`, {
+        await sendMessage(chatId, msg, {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '🧾 發票記帳', callback_data: 'photo_receipt' }],
-                    [{ text: '💳 信用卡帳單', callback_data: 'photo_creditcard' }],
-                    [{ text: '📊 手動輸入金額', callback_data: 'photo_manual' }],
+                    [{ text: '💰 查看本月支出', callback_data: 'cmd_balance' }],
                     [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
                 ],
             },
         });
 
-        console.log('[Telegram] Photo saved and awaiting classification (Vision API pending)');
+        console.log(`[Telegram] Receipt OCR success: ${receipt.storeName} $${receipt.totalAmount}`);
 
     } catch (error) {
         console.error('[Telegram] Photo message error:', error);
