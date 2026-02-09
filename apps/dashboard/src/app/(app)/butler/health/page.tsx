@@ -157,14 +157,53 @@ export default function HealthPage() {
                                 </div>
                             )}
                         </div>
-                        <div className="space-y-2">
-                            {data.weights.map((w, i) => (
-                                <div key={i} className="flex justify-between p-2 rounded bg-muted/50 text-sm">
-                                    <span className="text-muted-foreground">{w.date}</span>
-                                    <span className="font-medium">{w.weight} kg</span>
-                                </div>
-                            ))}
-                        </div>
+                        {/* SVG Line Chart */}
+                        {data.weights.length >= 2 && (() => {
+                            const pts = [...data.weights].reverse();
+                            const vals = pts.map(w => w.weight);
+                            const minW = Math.min(...vals) - 0.5;
+                            const maxW = Math.max(...vals) + 0.5;
+                            const W = 400, H = 120, px = 30, py = 10;
+                            const xStep = (W - 2 * px) / (pts.length - 1);
+                            const points = pts.map((p, i) => ({
+                                x: px + i * xStep,
+                                y: py + (H - 2 * py) * (1 - (p.weight - minW) / (maxW - minW)),
+                                ...p,
+                            }));
+                            const line = points.map(p => `${p.x},${p.y}`).join(' ');
+                            return (
+                                <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-32 mb-4">
+                                    {/* Grid */}
+                                    <line x1={px} y1={py} x2={px} y2={H - py} stroke="currentColor" strokeOpacity="0.1" />
+                                    <line x1={px} y1={H - py} x2={W - px} y2={H - py} stroke="currentColor" strokeOpacity="0.1" />
+                                    {/* Area */}
+                                    <polygon
+                                        points={`${points[0].x},${H - py} ${line} ${points[points.length - 1].x},${H - py}`}
+                                        fill="url(#weightGrad)" opacity="0.3"
+                                    />
+                                    <defs>
+                                        <linearGradient id="weightGrad" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor="#34d399" />
+                                            <stop offset="100%" stopColor="#34d399" stopOpacity="0" />
+                                        </linearGradient>
+                                    </defs>
+                                    {/* Line */}
+                                    <polyline points={line} fill="none" stroke="#34d399" strokeWidth="2" />
+                                    {/* Dots + labels */}
+                                    {points.map((p, i) => (
+                                        <g key={i}>
+                                            <circle cx={p.x} cy={p.y} r="3" fill="#34d399" />
+                                            <text x={p.x} y={p.y - 8} textAnchor="middle" className="fill-muted-foreground" fontSize="8">{p.weight}</text>
+                                            {(i === 0 || i === points.length - 1 || i % Math.max(1, Math.floor(points.length / 5)) === 0) && (
+                                                <text x={p.x} y={H - py + 12} textAnchor="middle" className="fill-muted-foreground" fontSize="7">
+                                                    {p.date.split('-').slice(1).join('/')}
+                                                </text>
+                                            )}
+                                        </g>
+                                    ))}
+                                </svg>
+                            );
+                        })()}
                     </CardContent>
                 </Card>
             )}
@@ -179,26 +218,42 @@ export default function HealthPage() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="space-y-2">
-                            {data.trend.map((day, i) => (
-                                <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                                    <span className="text-sm text-muted-foreground w-24">{day.date}</span>
-                                    <div className="flex items-center gap-4 text-sm">
-                                        <span className="flex items-center gap-1">
-                                            <Footprints className="h-3 w-3 text-emerald-400" />
-                                            {day.steps.toLocaleString()}
-                                        </span>
-                                        <span className="flex items-center gap-1">
-                                            <Flame className="h-3 w-3 text-orange-400" />
-                                            {day.calories}
-                                        </span>
-                                        <span className="flex items-center gap-1">
-                                            <Moon className="h-3 w-3 text-indigo-400" />
-                                            {day.sleepHours}h
-                                        </span>
-                                    </div>
-                                </div>
-                            ))}
+                        {/* SVG Activity Bar Chart */}
+                        {(() => {
+                            const days = data.trend;
+                            const maxSteps = Math.max(...days.map(d => d.steps), 1);
+                            const W = 400, H = 140, px = 30, py = 15;
+                            const barW = (W - 2 * px) / days.length * 0.7;
+                            const gap = (W - 2 * px) / days.length;
+                            return (
+                                <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-36">
+                                    {/* Grid lines */}
+                                    <line x1={px} y1={H - py} x2={W - px} y2={H - py} stroke="currentColor" strokeOpacity="0.1" />
+                                    <line x1={px} y1={py} x2={W - px} y2={py} stroke="currentColor" strokeOpacity="0.05" />
+                                    {/* Bars */}
+                                    {days.map((day, i) => {
+                                        const x = px + i * gap + gap * 0.15;
+                                        const barH = ((H - 2 * py - 15) * day.steps) / maxSteps;
+                                        const y = H - py - barH;
+                                        return (
+                                            <g key={i}>
+                                                <rect x={x} y={y} width={barW} height={barH} rx="3" fill="#34d399" opacity="0.8" />
+                                                <text x={x + barW / 2} y={y - 4} textAnchor="middle" className="fill-muted-foreground" fontSize="7">
+                                                    {day.steps >= 1000 ? `${(day.steps / 1000).toFixed(1)}k` : day.steps}
+                                                </text>
+                                                <text x={x + barW / 2} y={H - py + 10} textAnchor="middle" className="fill-muted-foreground" fontSize="7">
+                                                    {day.date.split('-').slice(1).join('/')}
+                                                </text>
+                                            </g>
+                                        );
+                                    })}
+                                </svg>
+                            );
+                        })()}
+                        <div className="flex justify-center gap-4 text-xs text-muted-foreground mt-1">
+                            <span className="flex items-center gap-1"><Footprints className="h-3 w-3 text-emerald-400" /> 步數</span>
+                            <span className="flex items-center gap-1"><Flame className="h-3 w-3 text-orange-400" /> 卡路里</span>
+                            <span className="flex items-center gap-1"><Moon className="h-3 w-3 text-indigo-400" /> 睡眠</span>
                         </div>
                     </CardContent>
                 </Card>

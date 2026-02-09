@@ -16,6 +16,8 @@ import { financeService } from '../services/finance.service';
 import { vehicleService } from '../services/vehicle.service';
 import { scheduleService } from '../services/schedule.service';
 import { businessService } from '../services/business.service';
+import { investmentService } from '../services/butler/investment.service';
+import { loanService } from '../services/butler/loan.service';
 
 // ================================
 // Authentication Helper
@@ -84,6 +86,15 @@ export async function handleButlerApi(req: Request, res: Response): Promise<void
                 break;
             case 'business':
                 await handleBusiness(req, res, uid, action);
+                break;
+            case 'export':
+                await handleExport(req, res, uid, action);
+                break;
+            case 'investment':
+                await handleInvestment(req, res, uid, action);
+                break;
+            case 'loan':
+                await handleLoan(req, res, uid);
                 break;
             default:
                 res.status(404).json({ error: 'Not found', path });
@@ -242,6 +253,63 @@ async function handleFinance(
         default:
             res.status(404).json({ error: 'Finance endpoint not found' });
     }
+}
+
+// ================================
+// Export Handler (CSV)
+// ================================
+
+async function handleExport(req: Request, res: Response, uid: string, format: string): Promise<void> {
+    if (req.method !== 'GET') { res.status(405).json({ error: 'Method not allowed' }); return; }
+
+    const now = new Date();
+    const startDate = (req.query.start as string) || `${now.getFullYear()}-01-01`;
+    const endDate = (req.query.end as string) || now.toISOString().split('T')[0];
+
+    const transactions = await financeService.getTransactions(uid, startDate, endDate, {});
+
+    if (format === 'csv' || !format) {
+        // BOM for Excel UTF-8 compatibility
+        const BOM = '\uFEFF';
+        const header = '日期,類型,金額,分類,描述,來源';
+        const rows = transactions.map((tx: { date: string; type: string; amount: number; category: string; description: string; source?: string }) =>
+            `${tx.date},${tx.type === 'income' ? '收入' : '支出'},${tx.amount},${tx.category || ''},"${(tx.description || '').replace(/"/g, '""')}",${tx.source || ''}`
+        );
+        const csv = BOM + header + '\n' + rows.join('\n');
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="transactions_${startDate}_${endDate}.csv"`);
+        res.send(csv);
+    } else {
+        res.json(transactions);
+    }
+}
+
+// ================================
+// Investment Handler
+// ================================
+
+async function handleInvestment(req: Request, res: Response, uid: string, action: string): Promise<void> {
+    if (req.method !== 'GET') { res.status(405).json({ error: 'Method not allowed' }); return; }
+    switch (action) {
+        case 'portfolio': {
+            const summary = await investmentService.getPortfolioSummary(uid);
+            res.json(summary);
+            break;
+        }
+        default:
+            res.status(404).json({ error: 'Investment endpoint not found' });
+    }
+}
+
+// ================================
+// Loan Handler
+// ================================
+
+async function handleLoan(req: Request, res: Response, uid: string): Promise<void> {
+    if (req.method !== 'GET') { res.status(405).json({ error: 'Method not allowed' }); return; }
+    const summary = await loanService.getLoanSummary(uid);
+    res.json(summary);
 }
 
 // ================================

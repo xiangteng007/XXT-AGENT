@@ -131,6 +131,15 @@ function SpendingTab({ data }: { data: FinanceData | null }) {
                 <StatCard label="淨存款" value={`$${data.netSavings.toLocaleString()}`} color={data.netSavings >= 0 ? 'text-green-500' : 'text-red-500'} />
                 <StatCard label="儲蓄率" value={`${data.savingsRate}%`} color="text-blue-500" />
             </div>
+            {/* Donut Chart */}
+            {Object.keys(data.byCategory || {}).length > 0 && (
+                <Card>
+                    <CardHeader><CardTitle className="text-sm">📊 支出分佈</CardTitle></CardHeader>
+                    <CardContent>
+                        <DonutChart data={data.byCategory} total={data.monthlyExpenses} />
+                    </CardContent>
+                </Card>
+            )}
             <Card>
                 <CardHeader><CardTitle className="text-sm">分類支出</CardTitle></CardHeader>
                 <CardContent>
@@ -410,3 +419,52 @@ function EmptyState({ icon, msg, hint }: { icon: string; msg: string; hint: stri
         </Card>
     );
 }
+
+// ================================
+// SVG Donut Chart
+// ================================
+const CHART_COLORS = ['#22c55e', '#ef4444', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+
+function DonutChart({ data, total }: { data: Record<string, number>; total: number }) {
+    const entries = Object.entries(data).sort(([, a], [, b]) => b - a);
+    const r = 70, cx = 90, cy = 90, strokeWidth = 28;
+    const circumference = 2 * Math.PI * r;
+    let offset = 0;
+
+    return (
+        <div className="flex flex-col md:flex-row items-center gap-6">
+            <svg viewBox="0 0 180 180" className="w-40 h-40 shrink-0">
+                {entries.map(([cat, amt], i) => {
+                    const pct = amt / total;
+                    const dashArray = `${circumference * pct} ${circumference * (1 - pct)}`;
+                    const dashOffset = -circumference * offset;
+                    offset += pct;
+                    return (
+                        <circle
+                            key={cat}
+                            cx={cx} cy={cy} r={r}
+                            fill="none"
+                            stroke={CHART_COLORS[i % CHART_COLORS.length]}
+                            strokeWidth={strokeWidth}
+                            strokeDasharray={dashArray}
+                            strokeDashoffset={dashOffset}
+                            transform={`rotate(-90 ${cx} ${cy})`}
+                        />
+                    );
+                })}
+                <text x={cx} y={cy - 6} textAnchor="middle" className="fill-foreground text-xs">總支出</text>
+                <text x={cx} y={cy + 12} textAnchor="middle" className="fill-foreground text-sm font-bold">${total.toLocaleString()}</text>
+            </svg>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                {entries.map(([cat, amt], i) => (
+                    <div key={cat} className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} />
+                        <span className="text-muted-foreground">{cat}</span>
+                        <span className="font-mono ml-auto">{Math.round((amt / total) * 100)}%</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
