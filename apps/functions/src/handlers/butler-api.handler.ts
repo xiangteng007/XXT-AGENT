@@ -122,8 +122,9 @@ export async function handleButlerApi(req: Request, res: Response): Promise<void
     res.set('X-Request-Id', requestId);
     res.set('X-API-Version', '2.1.0');
 
-    // Health check (no auth required)
+    // Health check (no auth required) — edge cacheable (V3 #26)
     if (req.path === '/health' || req.path === '/') {
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=300');
         res.json({ status: 'ok', version: '2.1.0', timestamp: new Date().toISOString() });
         return;
     }

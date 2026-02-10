@@ -1,0 +1,43 @@
+name: Deploy Staging
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/functions/**'
+
+concurrency:
+  group: staging-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: apps/functions/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/functions
+        run: npm ci
+
+      - name: Lint
+        working-directory: apps/functions
+        run: npm run lint
+
+      - name: Type check
+        working-directory: apps/functions
+        run: npx tsc --noEmit
+
+      - name: Test
+        working-directory: apps/functions
+        run: npm test
+
+      - name: Build
+        working-directory: apps/functions
+        run: npm run build

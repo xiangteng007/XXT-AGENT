@@ -18,6 +18,24 @@ let openaiClient: OpenAI | null = null;
 // Available AI models
 export type AIModel = 'gemini-1.5-flash' | 'gemini-1.5-pro' | 'gpt-4o' | 'gpt-4o-mini';
 
+/**
+ * Pre-warm AI clients to reduce cold start latency (V3 #25)
+ * Call from health endpoint or global init to eagerly initialize.
+ */
+export async function preWarmAIClients(): Promise<{ gemini: boolean; openai: boolean }> {
+    const result = { gemini: false, openai: false };
+    try {
+        await getGeminiClient();
+        result.gemini = true;
+    } catch { /* silent */ }
+    try {
+        await getOpenAIClient();
+        result.openai = true;
+    } catch { /* silent */ }
+    logger.info('[Butler AI] Pre-warm complete', result);
+    return result;
+}
+
 // Butler persona and capabilities
 const BUTLER_SYSTEM_PROMPT = `你是「小秘書」，一個專業的個人智能管家助理。
 
