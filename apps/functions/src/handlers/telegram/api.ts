@@ -4,11 +4,11 @@
  */
 
 import { logger } from 'firebase-functions/v2';
-import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
+import { getSecret } from '../../config/secrets';
 import { getFirestore } from 'firebase-admin/firestore';
 import type { InlineKeyboardButton } from './types';
 
-// Lazy-loaded Bot Token from Secret Manager
+// Lazy-loaded Bot Token
 let cachedBotToken: string | null = null;
 
 export async function getBotToken(): Promise<string> {
@@ -20,15 +20,11 @@ export async function getBotToken(): Promise<string> {
     }
     
     try {
-        const client = new SecretManagerServiceClient();
-        const [version] = await client.accessSecretVersion({
-            name: 'projects/xxt-agent/secrets/TELEGRAM_BOT_TOKEN/versions/latest',
-        });
-        cachedBotToken = version.payload?.data?.toString() || '';
+        cachedBotToken = await getSecret('TELEGRAM_BOT_TOKEN');
         logger.info('[Telegram] Bot token loaded from Secret Manager');
         return cachedBotToken;
     } catch (error) {
-        logger.error('[Telegram] Failed to load token from Secret Manager:', error);
+        logger.error('[Telegram] Failed to load bot token:', error);
         throw new Error('TELEGRAM_BOT_TOKEN not available');
     }
 }
