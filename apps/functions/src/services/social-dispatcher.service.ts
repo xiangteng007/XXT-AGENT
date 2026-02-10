@@ -5,6 +5,7 @@
  * Reads enabled social_sources and fans out Cloud Tasks for each source.
  */
 
+import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 import { CloudTasksClient } from '@google-cloud/tasks';
 import { SocialSource, CollectJob } from '../types/social.types';
@@ -26,7 +27,7 @@ export async function dispatchSocialCollectJobs(): Promise<{
     skipped: number;
     errors: string[];
 }> {
-    console.log('[Social Dispatcher] Starting dispatch cycle...');
+    logger.info('[Social Dispatcher] Starting dispatch cycle...');
 
     const result = { dispatched: 0, skipped: 0, errors: [] as string[] };
 
@@ -36,7 +37,7 @@ export async function dispatchSocialCollectJobs(): Promise<{
             .where('enabled', '==', true)
             .get();
 
-        console.log(`[Social Dispatcher] Found ${sourcesSnapshot.size} enabled sources`);
+        logger.info(`[Social Dispatcher] Found ${sourcesSnapshot.size} enabled sources`);
 
         for (const doc of sourcesSnapshot.docs) {
             const source = { id: doc.id, ...doc.data() } as SocialSource;
@@ -51,16 +52,16 @@ export async function dispatchSocialCollectJobs(): Promise<{
                 await createCollectTask(source);
                 result.dispatched++;
             } catch (err: unknown) {
-                console.error(`[Social Dispatcher] Failed to create task for ${source.id}:`, err);
+                logger.error(`[Social Dispatcher] Failed to create task for ${source.id}:`, err);
                 result.errors.push(`${source.id}: ${getErrorMessage(err)}`);
             }
         }
 
-        console.log('[Social Dispatcher] Dispatch complete:', result);
+        logger.info('[Social Dispatcher] Dispatch complete:', result);
         return result;
 
     } catch (err: unknown) {
-        console.error('[Social Dispatcher] Fatal error:', err);
+        logger.error('[Social Dispatcher] Fatal error:', err);
         result.errors.push(getErrorMessage(err));
         return result;
     }
@@ -99,7 +100,7 @@ async function createCollectTask(source: SocialSource): Promise<void> {
     };
 
     await tasksClient.createTask({ parent, task });
-    console.log(`[Social Dispatcher] Created task for ${source.platform}:${source.id}`);
+    logger.info(`[Social Dispatcher] Created task for ${source.platform}:${source.id}`);
 }
 
 /**

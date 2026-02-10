@@ -13,6 +13,7 @@
  * Also generates AI-powered cross-domain insights.
  */
 
+import { logger } from 'firebase-functions/v2';
 import { financeService } from '../finance.service';
 import { healthService } from '../health.service';
 import { scheduleService } from '../schedule.service';
@@ -246,7 +247,7 @@ export async function sendWeeklyDigests(): Promise<{ sent: number; errors: strin
             }
         }
 
-        console.log(`[WeeklyDigest] Processing ${userIds.size} users`);
+        logger.info(`[WeeklyDigest] Processing ${userIds.size} users`);
 
         for (const uid of userIds) {
             try {
@@ -265,13 +266,13 @@ export async function sendWeeklyDigests(): Promise<{ sent: number; errors: strin
             } catch (err) {
                 const errorMsg = `User ${uid}: ${(err as Error).message}`;
                 result.errors.push(errorMsg);
-                console.error(`[WeeklyDigest] ${errorMsg}`);
+                logger.error(`[WeeklyDigest] ${errorMsg}`);
             }
         }
     } catch (err) {
         result.errors.push(`Global: ${(err as Error).message}`);
     }
 
-    console.log(`[WeeklyDigest] Sent: ${result.sent}, Errors: ${result.errors.length}`);
+    logger.info(`[WeeklyDigest] Sent: ${result.sent}, Errors: ${result.errors.length}`);
     return result;
 }

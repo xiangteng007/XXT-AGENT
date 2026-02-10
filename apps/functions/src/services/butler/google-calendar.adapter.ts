@@ -9,6 +9,7 @@
  *   - OAuth2 token management via Firestore
  */
 
+import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 
 const db = admin.firestore();
@@ -153,7 +154,7 @@ export async function pullEvents(userId: string, days: number = 14): Promise<num
     }
 
     if (count > 0) await batch.commit();
-    console.log(`[GoogleCalendar] Synced ${count} events for user ${userId}`);
+    logger.info(`[GoogleCalendar] Synced ${count} events for user ${userId}`);
     return count;
 }
 
@@ -204,7 +205,7 @@ export async function pushEvent(
     }
 
     const created = await response.json() as { id: string };
-    console.log(`[GoogleCalendar] Created event ${created.id} for user ${userId}`);
+    logger.info(`[GoogleCalendar] Created event ${created.id} for user ${userId}`);
     return created.id;
 }
 

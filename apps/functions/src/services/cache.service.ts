@@ -8,6 +8,7 @@
  * For Cloud Run (stateful), can use in-memory with TTL.
  */
 
+import { logger } from 'firebase-functions/v2';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
 // Cache configuration
@@ -66,7 +67,7 @@ export async function getFromCache<T>(key: string): Promise<T | null> {
 
         return data.value;
     } catch (error) {
-        console.warn('[Cache] Get error:', error);
+        logger.warn('[Cache] Get error:', error);
         return null;
     }
 }
@@ -97,7 +98,7 @@ export async function setInCache<T>(
 
         await db.collection(CACHE_COLLECTION).doc(sanitizeKey(key)).set(entry);
     } catch (error) {
-        console.warn('[Cache] Set error:', error);
+        logger.warn('[Cache] Set error:', error);
     }
 }
 
@@ -111,7 +112,7 @@ export async function deleteFromCache(key: string): Promise<void> {
         const db = getFirestore();
         await db.collection(CACHE_COLLECTION).doc(sanitizeKey(key)).delete();
     } catch (error) {
-        console.warn('[Cache] Delete error:', error);
+        logger.warn('[Cache] Delete error:', error);
     }
 }
 
@@ -144,7 +145,7 @@ export async function clearCacheByPrefix(prefix: string): Promise<number> {
         });
         await batch.commit();
     } catch (error) {
-        console.warn('[Cache] Clear by prefix error:', error);
+        logger.warn('[Cache] Clear by prefix error:', error);
     }
 
     return cleared;
@@ -171,10 +172,10 @@ export async function cleanupExpiredCache(): Promise<number> {
         snapshot.docs.forEach(doc => batch.delete(doc.ref));
         await batch.commit();
 
-        console.log(`[Cache] Cleaned up ${snapshot.size} expired entries`);
+        logger.info(`[Cache] Cleaned up ${snapshot.size} expired entries`);
         return snapshot.size;
     } catch (error) {
-        console.warn('[Cache] Cleanup error:', error);
+        logger.warn('[Cache] Cleanup error:', error);
         return 0;
     }
 }

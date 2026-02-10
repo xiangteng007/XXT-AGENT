@@ -1,3 +1,4 @@
+import { logger } from 'firebase-functions/v2';
 import { getDb } from '../config/firebase';
 import { Rule, RuleMatcher, FieldMapping } from '../models';
 import { NotionProperties } from '../types';
@@ -87,7 +88,7 @@ function matchRule(text: string, matcher: RuleMatcher): boolean {
                 const regex = new RegExp(pattern, flags);
                 return regex.test(text);
             } catch {
-                console.error('Invalid regex pattern:', pattern);
+                logger.error('Invalid regex pattern:', pattern);
                 return false;
             }
 

@@ -11,6 +11,7 @@
  *   4. Auto-categorize → record transaction in Firestore
  */
 
+import { logger } from 'firebase-functions/v2';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { financeService } from '../finance.service';
 
@@ -172,7 +173,7 @@ export async function processReceiptImage(
         return msg;
 
     } catch (error) {
-        console.error('[ReceiptOCR] Processing failed:', error);
+        logger.error('[ReceiptOCR] Processing failed:', error);
         if ((error as Error).message.includes('Low confidence')) {
             return '📸 無法清楚辨識這張收據，請確保圖片清晰且包含金額資訊。\n\n💡 您也可以手動記帳，例如：「記帳 500 午餐」';
         }

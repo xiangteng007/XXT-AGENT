@@ -5,12 +5,13 @@
  * using Gemini AI or OpenAI GPT with fallback to keyword matching.
  */
 
+import { logger } from 'firebase-functions/v2';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
-import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
+import { getSecret } from '../config/secrets';
 import { getButlerContext } from './butler-data.service';
+import { sanitizeForAI, sanitizeAIOutput } from '../utils/ai-sanitizer';
 
-const secretManager = new SecretManagerServiceClient();
 let geminiClient: GoogleGenerativeAI | null = null;
 let openaiClient: OpenAI | null = null;
 
@@ -53,18 +54,13 @@ const BUTLER_SYSTEM_PROMPT = `你是「小秘書」，一個專業的個人智�
  */
 async function getGeminiClient(): Promise<GoogleGenerativeAI> {
     if (geminiClient) return geminiClient;
-
-    const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'xxt-agent';
-    const secretName = `projects/${projectId}/secrets/GEMINI_API_KEY/versions/latest`;
-
     try {
-        const [version] = await secretManager.accessSecretVersion({ name: secretName });
-        const apiKey = version.payload?.data?.toString() || '';
+        const apiKey = await getSecret('GEMINI_API_KEY');
         geminiClient = new GoogleGenerativeAI(apiKey);
-        console.log('[Butler AI] Gemini client initialized');
+        logger.info('[Butler AI] Gemini client initialized');
         return geminiClient;
     } catch (err) {
-        console.error('[Butler AI] Failed to get Gemini API key:', err);
+        logger.error('[Butler AI] Failed to get Gemini API key:', err);
         throw new Error('Gemini API key not available');
     }
 }
@@ -74,18 +70,13 @@ async function getGeminiClient(): Promise<GoogleGenerativeAI> {
  */
 async function getOpenAIClient(): Promise<OpenAI> {
     if (openaiClient) return openaiClient;
-
-    const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'xxt-agent';
-    const secretName = `projects/${projectId}/secrets/OPENAI_API_KEY/versions/latest`;
-
     try {
-        const [version] = await secretManager.accessSecretVersion({ name: secretName });
-        const apiKey = version.payload?.data?.toString() || '';
+        const apiKey = await getSecret('OPENAI_API_KEY');
         openaiClient = new OpenAI({ apiKey });
-        console.log('[Butler AI] OpenAI client initialized');
+        logger.info('[Butler AI] OpenAI client initialized');
         return openaiClient;
     } catch (err) {
-        console.error('[Butler AI] Failed to get OpenAI API key:', err);
+        logger.error('[Butler AI] Failed to get OpenAI API key:', err);
         throw new Error('OpenAI API key not available');
     }
 }
@@ -146,6 +137,10 @@ export async function generateAIResponse(
 ): Promise<string> {
     const selectedModel = context?.model || 'gemini-1.5-flash';
 
+    // Sanitize input (V3 #9 — prompt injection guard)
+    const sanitized = sanitizeForAI(userMessage);
+    const safeMessage = sanitized.text;
+
     try {
         // Build conversation context
         let contextPrompt = '';
@@ -170,7 +165,7 @@ export async function generateAIResponse(
                     contextPrompt += `\n\n## 用戶今日行程\n${JSON.stringify(personalData.calendar, null, 2)}`;
                 }
             } catch (dataErr) {
-                console.warn('[Butler AI] Failed to fetch personal data, proceeding without:', dataErr);
+                logger.warn('[Butler AI] Failed to fetch personal data, proceeding without:', dataErr);
             }
         }
 
@@ -178,23 +173,23 @@ export async function generateAIResponse(
 
         if (selectedModel.startsWith('gpt')) {
             response = await generateOpenAIResponse(
-                userMessage,
+                safeMessage,
                 selectedModel as 'gpt-4o' | 'gpt-4o-mini',
                 contextPrompt
             );
         } else {
             response = await generateGeminiResponse(
-                userMessage,
+                safeMessage,
                 selectedModel as 'gemini-1.5-flash' | 'gemini-1.5-pro',
                 contextPrompt
             );
         }
 
-        console.log(`[Butler AI] Generated response using ${selectedModel} for user ${userId || 'unknown'}`);
-        return response;
+        logger.info(`[Butler AI] Generated response using ${selectedModel} for user ${userId || 'unknown'}`);
+        return sanitizeAIOutput(response);
 
     } catch (err) {
-        console.error('[Butler AI] AI generation failed, using fallback:', err);
+        logger.error('[Butler AI] AI generation failed, using fallback:', err);
         return generateFallbackResponse(userMessage);
     }
 }
@@ -494,7 +489,7 @@ export async function generateAIResponseWithTools(
 
         return { text: response.text() };
     } catch (err) {
-        console.error('[Butler AI] Function Calling failed:', err);
+        logger.error('[Butler AI] Function Calling failed:', err);
         return { text: generateFallbackResponse(userMessage) };
     }
 }

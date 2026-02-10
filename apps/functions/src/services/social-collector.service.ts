@@ -5,6 +5,7 @@
  * Fetches posts using adapters, enriches with Gemini, stores to Firestore.
  */
 
+import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import {
@@ -41,7 +42,7 @@ export async function processCollectJob(job: CollectJob): Promise<{
     deduplicated: number;
     errors: string[];
 }> {
-    console.log(`[Social Collector] Processing job: ${job.tenantId}/${job.sourceId}`);
+    logger.info(`[Social Collector] Processing job: ${job.tenantId}/${job.sourceId}`);
 
     const result = { fetched: 0, inserted: 0, deduplicated: 0, errors: [] as string[] };
 
@@ -86,7 +87,7 @@ export async function processCollectJob(job: CollectJob): Promise<{
         const fetchResult = await adapter.fetchDelta(cursor, source.config);
         result.fetched = fetchResult.items.length;
 
-        console.log(`[Social Collector] Fetched ${result.fetched} items from ${source.platform}`);
+        logger.info(`[Social Collector] Fetched ${result.fetched} items from ${source.platform}`);
 
         // Process each item
         for (const item of fetchResult.items) {
@@ -113,7 +114,7 @@ export async function processCollectJob(job: CollectJob): Promise<{
                 }
 
             } catch (itemErr: unknown) {
-                console.error('[Social Collector] Error processing item:', itemErr);
+                logger.error('[Social Collector] Error processing item:', itemErr);
                 result.errors.push(getErrorMessage(itemErr));
             }
         }
@@ -131,11 +132,11 @@ export async function processCollectJob(job: CollectJob): Promise<{
         await incrementMetric(job.tenantId, 'social_posts_fetched', result.fetched);
         await incrementMetric(job.tenantId, 'social_posts_inserted', result.inserted);
 
-        console.log('[Social Collector] Job complete:', result);
+        logger.info('[Social Collector] Job complete:', result);
         return result;
 
     } catch (err: unknown) {
-        console.error('[Social Collector] Job failed:', err);
+        logger.error('[Social Collector] Job failed:', err);
 
         // Update cursor error state
         const cursorId = `${job.tenantId}_${job.sourceId}`;
@@ -207,7 +208,7 @@ async function enrichPost(post: NormalizedPost): Promise<NormalizedPost> {
             entities: [...post.entities, ...enrichment.entities],
         };
     } catch (err) {
-        console.warn('[Social Collector] Gemini enrichment failed, using raw data:', err);
+        logger.warn('[Social Collector] Gemini enrichment failed, using raw data:', err);
         return post;
     }
 }
@@ -254,7 +255,7 @@ async function createFusedEvent(post: NormalizedPost): Promise<void> {
         ts: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    console.log(`[Social Collector] Created fused event: ${eventType}`);
+    logger.info(`[Social Collector] Created fused event: ${eventType}`);
 }
 
 /**

@@ -4,6 +4,7 @@
  * Images from LINE are downloaded and uploaded to Cloud Storage,
  * then the public URL is used in Notion.
  */
+import { logger } from 'firebase-functions/v2';
 import { Storage } from '@google-cloud/storage';
 import { getMessageContent } from './line.service';
 
@@ -28,7 +29,7 @@ export async function uploadLineImage(
         // Download from LINE
         const content = await getMessageContent(messageId, integrationId);
         if (!content) {
-            console.error(`[Storage] Failed to download image ${messageId}`);
+            logger.error(`[Storage] Failed to download image ${messageId}`);
             return null;
         }
 
@@ -56,12 +57,12 @@ export async function uploadLineImage(
         await file.makePublic();
 
         const publicUrl = `https://storage.googleapis.com/${bucketName}/${filename}`;
-        console.log(`[Storage] Image uploaded: ${publicUrl}`);
+        logger.info(`[Storage] Image uploaded: ${publicUrl}`);
 
         return publicUrl;
 
     } catch (error) {
-        console.error('[Storage] Upload error:', error);
+        logger.error('[Storage] Upload error:', error);
         return null;
     }
 }
@@ -86,7 +87,7 @@ export async function getSignedUrl(
         return url;
 
     } catch (error) {
-        console.error('[Storage] Signed URL error:', error);
+        logger.error('[Storage] Signed URL error:', error);
         return null;
     }
 }
@@ -119,11 +120,11 @@ export async function deleteOldImages(
             }
         }
 
-        console.log(`[Storage] Deleted ${deletedCount} old images for ${tenantId}`);
+        logger.info(`[Storage] Deleted ${deletedCount} old images for ${tenantId}`);
         return deletedCount;
 
     } catch (error) {
-        console.error('[Storage] Cleanup error:', error);
+        logger.error('[Storage] Cleanup error:', error);
         return 0;
     }
 }

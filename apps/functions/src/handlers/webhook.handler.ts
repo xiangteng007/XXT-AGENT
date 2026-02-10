@@ -1,3 +1,4 @@
+import { logger } from 'firebase-functions/v2';
 import { Request, Response } from 'express';
 import { getLineChannelSecret } from '../services/secrets.service';
 import { verifySignature, replyMessage } from '../services/line.service';
@@ -32,7 +33,7 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
         // 3. Validate payload
         const validation = validateWebhookPayload(req.body);
         if (!validation.valid) {
-            console.warn('Invalid payload:', validation.error);
+            logger.warn('Invalid payload:', validation.error);
             res.status(400).send(validation.error);
             return;
         }
@@ -51,7 +52,7 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
         // 4. Find tenant configuration
         const tenant = await findTenantByChannelId(destination);
         if (!tenant) {
-            console.warn(`Unknown channel: ${destination}`);
+            logger.warn(`Unknown channel: ${destination}`);
             // Still return 200 to prevent LINE from retrying
             res.status(200).send('OK');
             return;
@@ -62,7 +63,7 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
         const channelSecret = await getLineChannelSecret(tenant.integrationId);
 
         if (!verifySignature(rawBody, signature, channelSecret)) {
-            console.error('Invalid signature for channel:', destination);
+            logger.error('Invalid signature for channel:', destination);
             res.status(401).send('Invalid signature');
             return;
         }
@@ -75,7 +76,7 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
         // Log any failures
         const failures = results.filter(r => r.status === 'rejected');
         if (failures.length > 0) {
-            console.error('Some events failed:', failures);
+            logger.error('Some events failed:', failures);
         }
 
         const duration = Date.now() - startTime;
@@ -89,7 +90,7 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
         res.status(200).send('OK');
 
     } catch (error) {
-        console.error('Webhook handler error:', error);
+        logger.error('Webhook handler error:', error);
         res.status(500).send('Internal Server Error');
     }
 }

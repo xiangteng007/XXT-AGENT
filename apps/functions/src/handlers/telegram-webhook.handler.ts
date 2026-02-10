@@ -5,6 +5,7 @@
  * Provides the same core functionality as the LINE Bot but with Telegram-specific features.
  */
 
+import { logger } from 'firebase-functions/v2';
 import { Request, Response } from 'express';
 import { generateAIResponseWithTools } from '../services/butler-ai.service';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
@@ -44,10 +45,10 @@ async function getBotToken(): Promise<string> {
             name: 'projects/xxt-agent/secrets/TELEGRAM_BOT_TOKEN/versions/latest',
         });
         cachedBotToken = version.payload?.data?.toString() || '';
-        console.log('[Telegram] Bot token loaded from Secret Manager');
+        logger.info('[Telegram] Bot token loaded from Secret Manager');
         return cachedBotToken;
     } catch (error) {
-        console.error('[Telegram] Failed to load token from Secret Manager:', error);
+        logger.error('[Telegram] Failed to load token from Secret Manager:', error);
         throw new Error('TELEGRAM_BOT_TOKEN not available');
     }
 }
@@ -118,7 +119,7 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
         const dedupeRef = db.collection('_telegramDedup').doc(updateId);
         const existing = await dedupeRef.get();
         if (existing.exists) {
-            console.warn('[Telegram] Duplicate update_id skipped:', updateId);
+            logger.warn('[Telegram] Duplicate update_id skipped:', updateId);
             return;
         }
         await dedupeRef.set({ processedAt: Date.now() });
@@ -129,7 +130,7 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
             await handleCallbackQuery(update.callback_query);
         }
     } catch (error) {
-        console.error('[Telegram Webhook] Error processing update:', error);
+        logger.error('[Telegram Webhook] Error processing update:', error);
     }
 }
 
@@ -142,7 +143,7 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
     const telegramUserId = message.from.id;
     const text = message.text || '';
 
-    console.log(`[Telegram] Message from ${telegramUserId}: ${text || '[non-text content]'}`);
+    logger.info(`[Telegram] Message from ${telegramUserId}: ${text || '[non-text content]'}`);
 
     // Handle voice messages
     if (message.voice) {
@@ -180,7 +181,7 @@ async function handleVoiceMessage(chatId: number, telegramUserId: number, messag
     const voice = message.voice;
     if (!voice) return;
 
-    console.log(`[Telegram] Voice message received: duration=${voice.duration}s, file_id=${voice.file_id}`);
+    logger.info(`[Telegram] Voice message received: duration=${voice.duration}s, file_id=${voice.file_id}`);
 
     await sendChatAction(chatId, 'typing');
 
@@ -228,7 +229,7 @@ async function handleVoiceMessage(chatId: number, telegramUserId: number, messag
         ]);
         const transcribed = result.response.text().trim();
 
-        console.log(`[Telegram] STT result: "${transcribed}"`);
+        logger.info(`[Telegram] STT result: "${transcribed}"`);
 
         if (!transcribed || transcribed === '無法辨識') {
             await sendMessage(chatId, '🎤 無法辨識語音內容，請重新錄製或使用文字輸入。');
@@ -240,7 +241,7 @@ async function handleVoiceMessage(chatId: number, telegramUserId: number, messag
         await handleNaturalLanguage(chatId, telegramUserId, transcribed);
 
     } catch (error) {
-        console.error('[Telegram] Voice STT error:', error);
+        logger.error('[Telegram] Voice STT error:', error);
         await sendMessage(chatId, '❌ 語音辨識失敗，請使用文字輸入。');
     }
 }
@@ -254,7 +255,7 @@ async function handleLocationMessage(
     telegramUserId: number, 
     location: { latitude: number; longitude: number }
 ): Promise<void> {
-    console.log(`[Telegram] Location received: lat=${location.latitude}, lng=${location.longitude}`);
+    logger.info(`[Telegram] Location received: lat=${location.latitude}, lng=${location.longitude}`);
     
     const linkedUid = await getLinkedFirebaseUid(telegramUserId);
     
@@ -289,7 +290,7 @@ async function handleLocationMessage(
             },
         });
     } catch (error) {
-        console.error('[Telegram] Location save error:', error);
+        logger.error('[Telegram] Location save error:', error);
         await sendMessage(chatId, '❌ 無法儲存位置，請稍後再試。');
     }
 }
@@ -306,7 +307,7 @@ async function handlePhotoMessage(chatId: number, telegramUserId: number, messag
     const photo = photos[photos.length - 1];
     const caption = message.caption || '';
 
-    console.log(`[Telegram] Photo received: file_id=${photo.file_id}, caption="${caption}"`);
+    logger.info(`[Telegram] Photo received: file_id=${photo.file_id}, caption="${caption}"`);
 
     const linkedUid = await getLinkedFirebaseUid(telegramUserId);
 
@@ -384,10 +385,10 @@ async function handlePhotoMessage(chatId: number, telegramUserId: number, messag
             },
         });
 
-        console.log(`[Telegram] Receipt OCR success: ${receipt.storeName} $${receipt.totalAmount}`);
+        logger.info(`[Telegram] Receipt OCR success: ${receipt.storeName} $${receipt.totalAmount}`);
 
     } catch (error) {
-        console.error('[Telegram] Photo message error:', error);
+        logger.error('[Telegram] Photo message error:', error);
         await sendMessage(chatId, '❌ 圖片處理發生錯誤，請稍後再試。');
     }
 }
@@ -590,7 +591,7 @@ async function sendStockPrice(chatId: number, text: string): Promise<void> {
         }
         await sendMessage(chatId, results.join('\n\n'));
     } catch (error) {
-        console.error('[Telegram] Stock price error:', error);
+        logger.error('[Telegram] Stock price error:', error);
         await sendMessage(chatId, '❌ 股價查詢失敗，請稍後再試。');
     }
 }
@@ -629,7 +630,7 @@ async function sendMonthlyReport(chatId: number, telegramUserId: number): Promis
             },
         });
     } catch (error) {
-        console.error('[Telegram] Monthly report error:', error);
+        logger.error('[Telegram] Monthly report error:', error);
         await sendMessage(chatId, '❌ 月報生成失敗，請稍後再試。');
     }
 }
@@ -784,7 +785,7 @@ async function sendHealthSnapshot(chatId: number, telegramUserId: number): Promi
             },
         });
     } catch (error) {
-        console.error('[Telegram] Health snapshot error:', error);
+        logger.error('[Telegram] Health snapshot error:', error);
         await sendMessage(chatId, '❌ 無法載入健康數據，請稍後再試。', {
             reply_markup: {
                 inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
@@ -891,7 +892,7 @@ ${maintenanceItems.length > 0 ? '📋 **待辦提醒**\n' + maintenanceItems.joi
             },
         });
     } catch (error) {
-        console.error('[Telegram] Vehicle status error:', error);
+        logger.error('[Telegram] Vehicle status error:', error);
         await sendMessage(chatId, '❌ 無法載入車輛數據，請稍後再試。', {
             reply_markup: {
                 inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
@@ -976,7 +977,7 @@ ${topCategoriesText}
             },
         });
     } catch (error) {
-        console.error('[Telegram] Balance info error:', error);
+        logger.error('[Telegram] Balance info error:', error);
         await sendMessage(chatId, '❌ 無法載入財務數據，請稍後再試。', {
             reply_markup: {
                 inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
@@ -1060,7 +1061,7 @@ ${holdingList}`, {
             },
         });
     } catch (err) {
-        console.error('[Telegram] Investment summary error:', err);
+        logger.error('[Telegram] Investment summary error:', err);
         await sendMessage(chatId, '❌ 無法載入投資數據。');
     }
 }
@@ -1099,7 +1100,7 @@ ${loanList}`, {
             },
         });
     } catch (err) {
-        console.error('[Telegram] Loan summary error:', err);
+        logger.error('[Telegram] Loan summary error:', err);
         await sendMessage(chatId, '❌ 無法載入貸款數據。');
     }
 }
@@ -1140,7 +1141,7 @@ async function sendTaxEstimation(chatId: number, telegramUserId: number): Promis
             },
         });
     } catch (err) {
-        console.error('[Telegram] Tax estimation error:', err);
+        logger.error('[Telegram] Tax estimation error:', err);
         await sendMessage(chatId, '❌ 無法計算稅務。');
     }
 }
@@ -1303,7 +1304,7 @@ async function executeTelegramToolCalls(
                     results.push(`⚠️ 未支援的操作：${call.name}`);
             }
         } catch (err) {
-            console.error(`[Telegram] Tool call ${call.name} failed:`, err);
+            logger.error(`[Telegram] Tool call ${call.name} failed:`, err);
             results.push(`❌ ${call.name} 執行失敗`);
         }
     }
@@ -1346,7 +1347,7 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<void> {
             );
             await sendMessage(chatId, financialAdvisorService.formatForLine(report));
         } catch (err) {
-            console.error('[Telegram] Advice error:', err);
+            logger.error('[Telegram] Advice error:', err);
             await sendMessage(chatId, '❌ 產生建議時發生錯誤，請稍後再試。');
         }
     }
@@ -1396,10 +1397,10 @@ async function sendMessage(
 
         if (!response.ok) {
             const error = await response.text();
-            console.error('[Telegram] Send message failed:', error);
+            logger.error('[Telegram] Send message failed:', error);
         }
     } catch (error) {
-        console.error('[Telegram] Send message error:', error);
+        logger.error('[Telegram] Send message error:', error);
     }
 }
 
@@ -1412,7 +1413,7 @@ async function sendChatAction(chatId: number, action: 'typing' | 'upload_photo')
             body: JSON.stringify({ chat_id: chatId, action }),
         });
     } catch (error) {
-        console.error('[Telegram] Chat action error:', error);
+        logger.error('[Telegram] Chat action error:', error);
     }
 }
 
@@ -1425,7 +1426,7 @@ async function answerCallbackQuery(callbackQueryId: string, text?: string): Prom
             body: JSON.stringify({ callback_query_id: callbackQueryId, text }),
         });
     } catch (error) {
-        console.error('[Telegram] Answer callback error:', error);
+        logger.error('[Telegram] Answer callback error:', error);
     }
 }
 
@@ -1441,7 +1442,7 @@ async function getLinkedFirebaseUid(telegramUserId: number): Promise<string | nu
         }
         return null;
     } catch (error) {
-        console.error('[Telegram] Get linked UID error:', error);
+        logger.error('[Telegram] Get linked UID error:', error);
         return null;
     }
 }

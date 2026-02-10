@@ -5,6 +5,7 @@
  * Triggered by Cloud Scheduler every minute.
  */
 
+import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 import {
     WatchlistItem,
@@ -29,14 +30,14 @@ export async function runMarketStreamer(): Promise<{
     signals: number;
     errors: string[];
 }> {
-    console.log('[Market Streamer] Starting cycle...');
+    logger.info('[Market Streamer] Starting cycle...');
 
     const result = { processed: 0, signals: 0, errors: [] as string[] };
 
     try {
         // Get all enabled watchlist items
         const watchlistItems = await getEnabledWatchlistItems();
-        console.log(`[Market Streamer] Found ${watchlistItems.length} watchlist items`);
+        logger.info(`[Market Streamer] Found ${watchlistItems.length} watchlist items`);
 
         if (watchlistItems.length === 0) {
             return result;
@@ -71,7 +72,7 @@ export async function runMarketStreamer(): Promise<{
                     result.signals++;
                 }
             } catch (err: unknown) {
-                console.error(`[Market Streamer] Error processing ${quote.symbol}:`, err);
+                logger.error(`[Market Streamer] Error processing ${quote.symbol}:`, err);
                 result.errors.push(`${quote.symbol}: ${getErrorMessage(err)}`);
             }
         }
@@ -80,11 +81,11 @@ export async function runMarketStreamer(): Promise<{
         await incrementMetric('system', 'market_quotes_processed', result.processed);
         await incrementMetric('system', 'market_signals_generated', result.signals);
 
-        console.log('[Market Streamer] Cycle complete:', result);
+        logger.info('[Market Streamer] Cycle complete:', result);
         return result;
 
     } catch (err: unknown) {
-        console.error('[Market Streamer] Fatal error:', err);
+        logger.error('[Market Streamer] Fatal error:', err);
         result.errors.push(getErrorMessage(err));
         return result;
     }
@@ -121,7 +122,7 @@ async function getEnabledWatchlistItems(): Promise<WatchlistItem[]> {
  * - US stocks: Yahoo Finance v8 (free, no key)
  */
 async function fetchQuotes(symbols: string[]): Promise<QuoteData[]> {
-    console.log(`[Market Streamer] Fetching ${symbols.length} symbols`);
+    logger.info(`[Market Streamer] Fetching ${symbols.length} symbols`);
     const results: QuoteData[] = [];
 
     // Split TW vs US symbols
@@ -152,9 +153,9 @@ async function fetchQuotes(symbols: string[]): Promise<QuoteData[]> {
                     }
                 }
             }
-            console.log(`[Market Streamer] TWSE: ${results.length}/${twSymbols.length} fetched (codes: ${codes})`);
+            logger.info(`[Market Streamer] TWSE: ${results.length}/${twSymbols.length} fetched (codes: ${codes})`);
         } catch (e) {
-            console.error('[Market Streamer] TWSE fetch error:', e);
+            logger.error('[Market Streamer] TWSE fetch error:', e);
         }
     }
 
@@ -184,9 +185,9 @@ async function fetchQuotes(symbols: string[]): Promise<QuoteData[]> {
                     }
                 }
             }
-            console.log(`[Market Streamer] Yahoo: ${results.length - twSymbols.length}/${usSymbols.length} fetched`);
+            logger.info(`[Market Streamer] Yahoo: ${results.length - twSymbols.length}/${usSymbols.length} fetched`);
         } catch (e) {
-            console.error('[Market Streamer] Yahoo fetch error:', e);
+            logger.error('[Market Streamer] Yahoo fetch error:', e);
         }
     }
 
@@ -349,7 +350,7 @@ async function createSignal(quote: QuoteData, detection: SignalDetectionResult):
     };
 
     await db.collection('market_signals').add(signal);
-    console.log(`[Market Streamer] Created signal: ${signal.signalType} for ${quote.symbol}`);
+    logger.info(`[Market Streamer] Created signal: ${signal.signalType} for ${quote.symbol}`);
 }
 
 /**

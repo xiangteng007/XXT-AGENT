@@ -1,3 +1,4 @@
+import { logger } from 'firebase-functions/v2';
 import { getLineAccessToken } from './secrets.service';
 import { verifyLineSignature } from '../utils/validation';
 import { LineReplyMessage, LineTextSendMessage } from '../types';
@@ -46,14 +47,14 @@ export async function replyMessage(
 
         if (!response.ok) {
             const errorBody = await response.text();
-            console.error('LINE reply failed:', response.status, errorBody);
+            logger.error('LINE reply failed:', response.status, errorBody);
             return false;
         }
 
         return true;
 
     } catch (error) {
-        console.error('LINE reply error:', error);
+        logger.error('LINE reply error:', error);
         return false;
     }
 }
@@ -85,7 +86,7 @@ export async function getUserProfile(
         };
 
     } catch (error) {
-        console.error('Get profile error:', error);
+        logger.error('Get profile error:', error);
         return null;
     }
 }
@@ -117,7 +118,7 @@ export async function getMessageContent(
         return Buffer.from(arrayBuffer);
 
     } catch (error) {
-        console.error('Get content error:', error);
+        logger.error('Get content error:', error);
         return null;
     }
 }

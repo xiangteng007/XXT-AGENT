@@ -4,11 +4,12 @@
  * HTTP endpoint triggered by Cloud Scheduler to dispatch social collect jobs.
  */
 
+import { logger } from 'firebase-functions/v2';
 import { Request, Response } from 'express';
 import { dispatchSocialCollectJobs } from '../services/social-dispatcher.service';
 
 export async function handleSocialDispatcher(req: Request, res: Response): Promise<void> {
-    console.log('[Social Dispatcher Handler] Triggered');
+    logger.info('[Social Dispatcher Handler] Triggered');
 
     try {
         const result = await dispatchSocialCollectJobs();
@@ -21,7 +22,7 @@ export async function handleSocialDispatcher(req: Request, res: Response): Promi
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error('[Social Dispatcher Handler] Error:', error);
+        logger.error('[Social Dispatcher Handler] Error:', error);
         res.status(500).json({
             success: false,
             error: message,

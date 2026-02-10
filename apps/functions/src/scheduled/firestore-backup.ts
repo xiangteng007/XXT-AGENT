@@ -11,6 +11,7 @@
  * 3. Grant the Cloud Functions service account the 
  *    `roles/storage.admin` role on the backup bucket
  */
+import { logger } from 'firebase-functions/v2';
 import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 
@@ -38,7 +39,7 @@ export const scheduledFirestoreBackup = functions
                 collectionIds: [], // Empty = export all collections
             });
 
-            console.log(JSON.stringify({
+            logger.info(JSON.stringify({
                 severity: 'INFO',
                 message: `Firestore backup started`,
                 outputUri,
@@ -47,7 +48,7 @@ export const scheduledFirestoreBackup = functions
 
             return operation;
         } catch (error) {
-            console.error(JSON.stringify({
+            logger.error(JSON.stringify({
                 severity: 'ERROR',
                 message: 'Firestore backup failed',
                 error: String(error),

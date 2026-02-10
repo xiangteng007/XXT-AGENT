@@ -1,3 +1,4 @@
+import { logger } from 'firebase-functions/v2';
 interface RetryOptions {
     maxRetries: number;
     baseDelayMs: number;
@@ -44,7 +45,7 @@ export async function retry<T>(
             // Cap the delay
             delay = Math.min(delay, maxDelayMs);
 
-            console.log(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`);
+            logger.info(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`);
             await sleep(delay);
         }
     }

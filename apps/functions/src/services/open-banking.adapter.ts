@@ -13,6 +13,7 @@
  * 3. User consent through bank's app
  */
 
+import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 import { BankAccount, Transaction } from '../types/butler.types';
 import { TAIWAN_BANKS } from './finance.service';
@@ -184,7 +185,7 @@ export class TaiwanOpenBankingAdapter {
                 });
                 return newTokens;
             } catch {
-                console.error('Token refresh failed, user needs to re-authorize');
+                logger.error('Token refresh failed, user needs to re-authorize');
                 return null;
             }
         }
@@ -368,7 +369,7 @@ export class TaiwanOpenBankingAdapter {
                     });
                 }
             } catch (error) {
-                console.error(`Failed to fetch balance for ${bankCode}:`, error);
+                logger.error(`Failed to fetch balance for ${bankCode}:`, error);
             }
         }
         

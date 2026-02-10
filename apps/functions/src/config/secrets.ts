@@ -4,6 +4,7 @@
  * Unified secret management that abstracts Secret Manager access.
  * All secrets are loaded lazily and cached for the function lifetime.
  */
+import { logger } from 'firebase-functions/v2';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 
 let client: SecretManagerServiceClient | null = null;
@@ -43,10 +44,10 @@ export async function getSecret(name: string): Promise<string> {
         });
         const value = version.payload?.data?.toString() || '';
         secretCache.set(name, value);
-        console.log(`[Secrets] Loaded "${name}" from Secret Manager`);
+        logger.info(`[Secrets] Loaded "${name}" from Secret Manager`);
         return value;
     } catch (error) {
-        console.error(`[Secrets] Failed to load "${name}":`, error);
+        logger.error(`[Secrets] Failed to load "${name}":`, error);
         throw new Error(`Secret "${name}" not available`);
     }
 }

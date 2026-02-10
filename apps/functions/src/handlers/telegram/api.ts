@@ -3,6 +3,7 @@
  * Low-level Telegram Bot API interaction functions
  */
 
+import { logger } from 'firebase-functions/v2';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import { getFirestore } from 'firebase-admin/firestore';
 import type { InlineKeyboardButton } from './types';
@@ -24,10 +25,10 @@ export async function getBotToken(): Promise<string> {
             name: 'projects/xxt-agent/secrets/TELEGRAM_BOT_TOKEN/versions/latest',
         });
         cachedBotToken = version.payload?.data?.toString() || '';
-        console.log('[Telegram] Bot token loaded from Secret Manager');
+        logger.info('[Telegram] Bot token loaded from Secret Manager');
         return cachedBotToken;
     } catch (error) {
-        console.error('[Telegram] Failed to load token from Secret Manager:', error);
+        logger.error('[Telegram] Failed to load token from Secret Manager:', error);
         throw new Error('TELEGRAM_BOT_TOKEN not available');
     }
 }
@@ -52,10 +53,10 @@ export async function sendMessage(
 
         if (!response.ok) {
             const error = await response.text();
-            console.error('[Telegram] Send message failed:', error);
+            logger.error('[Telegram] Send message failed:', error);
         }
     } catch (error) {
-        console.error('[Telegram] Send message error:', error);
+        logger.error('[Telegram] Send message error:', error);
     }
 }
 
@@ -68,7 +69,7 @@ export async function sendChatAction(chatId: number, action: 'typing' | 'upload_
             body: JSON.stringify({ chat_id: chatId, action }),
         });
     } catch (error) {
-        console.error('[Telegram] Chat action error:', error);
+        logger.error('[Telegram] Chat action error:', error);
     }
 }
 
@@ -81,7 +82,7 @@ export async function answerCallbackQuery(callbackQueryId: string, text?: string
             body: JSON.stringify({ callback_query_id: callbackQueryId, text }),
         });
     } catch (error) {
-        console.error('[Telegram] Answer callback error:', error);
+        logger.error('[Telegram] Answer callback error:', error);
     }
 }
 
@@ -94,7 +95,7 @@ export async function getLinkedFirebaseUid(telegramUserId: number): Promise<stri
         }
         return null;
     } catch (error) {
-        console.error('[Telegram] Get linked UID error:', error);
+        logger.error('[Telegram] Get linked UID error:', error);
         return null;
     }
 }

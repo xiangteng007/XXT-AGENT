@@ -5,6 +5,7 @@
  * Supports: Activities, Sleep, Heart Rate, Steps, Body Composition
  */
 
+import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 import { DailyHealthData, WorkoutSession } from '../types/butler.types';
 
@@ -129,7 +130,7 @@ export class GarminConnectAdapter {
             const response = await this.makeSignedRequest(url, tokens);
             return response as GarminDailySummary;
         } catch (error) {
-            console.error('Garmin daily summary fetch failed:', error);
+            logger.error('Garmin daily summary fetch failed:', error);
             return null;
         }
     }
@@ -149,7 +150,7 @@ export class GarminConnectAdapter {
             const response = await this.makeSignedRequest(url, tokens);
             return response as GarminSleepData;
         } catch (error) {
-            console.error('Garmin sleep fetch failed:', error);
+            logger.error('Garmin sleep fetch failed:', error);
             return null;
         }
     }
@@ -169,7 +170,7 @@ export class GarminConnectAdapter {
             const response = await this.makeSignedRequest(url, tokens);
             return (response as { activities: GarminActivitySummary[] }).activities || [];
         } catch (error) {
-            console.error('Garmin activities fetch failed:', error);
+            logger.error('Garmin activities fetch failed:', error);
             return [];
         }
     }
@@ -294,8 +295,8 @@ export class GarminConnectAdapter {
         // This is a placeholder - in production, implement proper OAuth1.0a signing
         // using libraries like 'oauth-1.0a' or 'simple-oauth2'
         
-        console.log(`Making Garmin API request to: ${url}`);
-        console.log(`Using token for user: ${tokens.userId}`);
+        logger.info(`Making Garmin API request to: ${url}`);
+        logger.info(`Using token for user: ${tokens.userId}`);
         
         // For now, return mock data for development
         throw new Error('OAuth1.0a signing not implemented. Use Garmin Webhook Push instead.');

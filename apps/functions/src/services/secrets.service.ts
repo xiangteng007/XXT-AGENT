@@ -1,3 +1,4 @@
+import { logger } from 'firebase-functions/v2';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 
 const client = new SecretManagerServiceClient();
@@ -46,11 +47,11 @@ export async function getSecret(secretName: string): Promise<string> {
 
     } catch (error: unknown) {
         const err = error as Error & { code?: number };
-        console.error(`Failed to get secret ${secretName}:`, err.message);
+        logger.error(`Failed to get secret ${secretName}:`, err.message);
 
         // Return cached value if available (even if expired)
         if (cached) {
-            console.warn(`Using expired cache for ${secretName}`);
+            logger.warn(`Using expired cache for ${secretName}`);
             return cached.value;
         }
 

@@ -3,6 +3,7 @@
  * 
  * Triggered by: Cloud Scheduler (every minute) or HTTP
  */
+import { logger } from 'firebase-functions/v2';
 import { Request, Response } from 'express';
 import {
     fetchQueuedJobs,
@@ -35,7 +36,7 @@ export async function handleWorker(req: Request, res: Response): Promise<void> {
             return;
         }
 
-        console.log(`[Worker] Processing ${jobs.length} job(s)`);
+        logger.info(`[Worker] Processing ${jobs.length} job(s)`);
 
         const results = await Promise.allSettled(
             jobs.map(job => processJob(job))
@@ -54,7 +55,7 @@ export async function handleWorker(req: Request, res: Response): Promise<void> {
         });
 
     } catch (error) {
-        console.error('[Worker] Handler error:', error);
+        logger.error('[Worker] Handler error:', error);
         res.status(500).json({ error: 'Worker error' });
     }
 }
@@ -68,11 +69,11 @@ async function processJob(job: Job): Promise<void> {
     // Try to claim the job (atomic)
     const claimed = await claimJob(job.id);
     if (!claimed) {
-        console.log(`[Worker] Job ${job.id} already claimed, skipping`);
+        logger.info(`[Worker] Job ${job.id} already claimed, skipping`);
         return;
     }
 
-    console.log(`[Worker] Processing job ${job.id} type=${job.eventType} (attempt ${job.attempts + 1})`);
+    logger.info(`[Worker] Processing job ${job.id} type=${job.eventType} (attempt ${job.attempts + 1})`);
 
     try {
         const payload = job.payload;
@@ -127,11 +128,11 @@ async function processJob(job: Job): Promise<void> {
             payload.databaseId
         );
 
-        console.log(`[Worker] Job ${job.id} completed in ${latency}ms`);
+        logger.info(`[Worker] Job ${job.id} completed in ${latency}ms`);
 
     } catch (error) {
         const err = error as Error;
-        console.error(`[Worker] Job ${job.id} failed:`, err.message);
+        logger.error(`[Worker] Job ${job.id} failed:`, err.message);
 
         await failJob(job.id, err);
         await incrementFailedCount(job.payload.tenantId);

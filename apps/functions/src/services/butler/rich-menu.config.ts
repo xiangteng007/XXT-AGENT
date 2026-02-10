@@ -1,3 +1,4 @@
+import { logger } from 'firebase-functions/v2';
 /**
  * Butler LINE Rich Menu Configuration
  * 
@@ -93,7 +94,7 @@ export async function setupRichMenu(accessToken: string): Promise<string> {
     }
 
     const { richMenuId } = await createRes.json() as { richMenuId: string };
-    console.log(`[RichMenu] Created: ${richMenuId}`);
+    logger.info(`[RichMenu] Created: ${richMenuId}`);
 
     // 2. Set as default
     const setDefaultRes = await fetch(
@@ -105,9 +106,9 @@ export async function setupRichMenu(accessToken: string): Promise<string> {
     );
 
     if (!setDefaultRes.ok) {
-        console.warn(`[RichMenu] Failed to set default: ${await setDefaultRes.text()}`);
+        logger.warn(`[RichMenu] Failed to set default: ${await setDefaultRes.text()}`);
     } else {
-        console.log(`[RichMenu] Set as default for all users`);
+        logger.info(`[RichMenu] Set as default for all users`);
     }
 
     return richMenuId;

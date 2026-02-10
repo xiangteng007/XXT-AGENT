@@ -4,6 +4,7 @@
  * Fetches and parses RSS feeds for news collection.
  */
 
+import { logger } from 'firebase-functions/v2';
 import Parser from 'rss-parser';
 
 export interface RssItem {
@@ -35,7 +36,7 @@ export async function fetchAllRssFeeds(): Promise<RssItem[]> {
 
     for (const feed of RSS_FEEDS) {
         try {
-            console.log(`Fetching RSS: ${feed.name} (${feed.url})`);
+            logger.info(`Fetching RSS: ${feed.name} (${feed.url})`);
             const data = await parser.parseURL(feed.url);
             
             for (const item of data.items.slice(0, 20)) {
@@ -49,13 +50,13 @@ export async function fetchAllRssFeeds(): Promise<RssItem[]> {
                     });
                 }
             }
-            console.log(`Parsed ${data.items.length} items from ${feed.name}`);
+            logger.info(`Parsed ${data.items.length} items from ${feed.name}`);
         } catch (error) {
-            console.warn(`Failed to fetch ${feed.name}: ${error}`);
+            logger.warn(`Failed to fetch ${feed.name}: ${error}`);
         }
     }
 
-    console.log(`Total RSS items fetched: ${results.length}`);
+    logger.info(`Total RSS items fetched: ${results.length}`);
     return results;
 }
 
@@ -76,6 +77,6 @@ export function deduplicateItems(
         }
     }
 
-    console.log(`Deduplicated: ${items.length} -> ${unique.length} items`);
+    logger.info(`Deduplicated: ${items.length} -> ${unique.length} items`);
     return unique;
 }

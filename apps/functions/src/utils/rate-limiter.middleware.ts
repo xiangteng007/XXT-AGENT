@@ -5,6 +5,7 @@
  * Configuration: 100 requests per minute per user/IP.
  */
 
+import { logger } from 'firebase-functions/v2';
 import { Request, Response, NextFunction } from 'express';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
@@ -113,7 +114,7 @@ export function rateLimiter(options?: {
             next();
         } catch (error) {
             // On error, allow request but log warning
-            console.warn('[RateLimiter] Error checking rate limit:', error);
+            logger.warn('[RateLimiter] Error checking rate limit:', error);
             next();
         }
     };
@@ -140,7 +141,7 @@ export async function cleanupRateLimits(): Promise<number> {
     snapshot.docs.forEach(doc => batch.delete(doc.ref));
     await batch.commit();
 
-    console.log(`[RateLimiter] Cleaned up ${snapshot.size} expired records`);
+    logger.info(`[RateLimiter] Cleaned up ${snapshot.size} expired records`);
     return snapshot.size;
 }
 

@@ -4,12 +4,13 @@
  * HTTP endpoint triggered by Cloud Tasks to process a single collect job.
  */
 
+import { logger } from 'firebase-functions/v2';
 import { Request, Response } from 'express';
 import { processCollectJob } from '../services/social-collector.service';
 import { CollectJob } from '../types/social.types';
 
 export async function handleSocialCollector(req: Request, res: Response): Promise<void> {
-    console.log('[Social Collector Handler] Triggered');
+    logger.info('[Social Collector Handler] Triggered');
 
     try {
         // Parse job from request body
@@ -32,7 +33,7 @@ export async function handleSocialCollector(req: Request, res: Response): Promis
         });
 
     } catch (error: unknown) {
-        console.error('[Social Collector Handler] Error:', error);
+        logger.error('[Social Collector Handler] Error:', error);
 
         const message = error instanceof Error ? error.message : String(error);
         const errorCode = (error as { code?: number }).code;

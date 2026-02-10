@@ -1,3 +1,4 @@
+import { logger } from 'firebase-functions/v2';
 import { Client } from '@notionhq/client';
 import { getNotionToken } from './secrets.service';
 import { retry, isRetryableError } from '../utils/retry';
@@ -95,7 +96,7 @@ export async function writeToNotion(params: WriteParams): Promise<WriteResult> {
 
     } catch (error: unknown) {
         const err = error as Error & { status?: number; code?: string };
-        console.error('Notion write error:', {
+        logger.error('Notion write error:', {
             status: err.status,
             code: err.code,
             message: err.message,
@@ -144,7 +145,7 @@ export async function getDatabaseSchema(
         return schema;
 
     } catch (error) {
-        console.error('Get database schema error:', error);
+        logger.error('Get database schema error:', error);
         return null;
     }
 }

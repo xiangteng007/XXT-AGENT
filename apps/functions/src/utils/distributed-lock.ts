@@ -6,6 +6,7 @@
  * 
  * Uses atomic Firestore transactions with TTL-based auto-release.
  */
+import { logger } from 'firebase-functions/v2';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 
 const db = getFirestore();
@@ -54,7 +55,7 @@ export async function acquireLock(options: LockOptions): Promise<boolean> {
         
         return result;
     } catch (error) {
-        console.error(`[Lock] Failed to acquire lock "${name}":`, error);
+        logger.error(`[Lock] Failed to acquire lock "${name}":`, error);
         return false;
     }
 }
@@ -66,7 +67,7 @@ export async function releaseLock(name: string): Promise<void> {
     try {
         await db.collection(LOCKS_COLLECTION).doc(name).delete();
     } catch (error) {
-        console.error(`[Lock] Failed to release lock "${name}":`, error);
+        logger.error(`[Lock] Failed to release lock "${name}":`, error);
     }
 }
 
@@ -80,7 +81,7 @@ export async function withLock<T>(
 ): Promise<T | null> {
     const acquired = await acquireLock(options);
     if (!acquired) {
-        console.log(`[Lock] Skipping "${options.name}" — already running`);
+        logger.info(`[Lock] Skipping "${options.name}" — already running`);
         return null;
     }
     

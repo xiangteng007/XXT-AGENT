@@ -3,6 +3,7 @@
  * Core authorization logic for XXT-AGENT platform
  */
 
+import { logger } from 'firebase-functions/v2';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import {
@@ -72,7 +73,7 @@ class RBACService {
 
             return context;
         } catch (error) {
-            console.error('Failed to get user context:', error);
+            logger.error('Failed to get user context:', error);
             return null;
         }
     }
@@ -108,7 +109,7 @@ class RBACService {
                 });
             }
         } catch (error) {
-            console.error('Failed to get team memberships:', error);
+            logger.error('Failed to get team memberships:', error);
         }
 
         return memberships;
@@ -215,7 +216,7 @@ class RBACService {
             // Invalidate cache
             this.userCache.delete(userId);
         } catch (error) {
-            console.error('Failed to set user claims:', error);
+            logger.error('Failed to set user claims:', error);
             throw error;
         }
     }

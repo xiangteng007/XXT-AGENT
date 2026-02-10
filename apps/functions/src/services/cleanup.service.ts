@@ -5,6 +5,7 @@
  * - Delete old logs
  * - Clean up orphaned images
  */
+import { logger } from 'firebase-functions/v2';
 import { getDb } from '../config/firebase';
 import { deleteOldImages } from './storage.service';
 
@@ -63,10 +64,10 @@ export async function cleanupOldJobs(): Promise<{ deleted: number; errors: numbe
             }
         }
 
-        console.log(`[Cleanup] Jobs: deleted ${deleted}, errors ${errors}`);
+        logger.info(`[Cleanup] Jobs: deleted ${deleted}, errors ${errors}`);
 
     } catch (error) {
-        console.error('[Cleanup] Jobs cleanup error:', error);
+        logger.error('[Cleanup] Jobs cleanup error:', error);
         errors++;
     }
 
@@ -99,10 +100,10 @@ export async function cleanupOldLogs(): Promise<{ deleted: number; errors: numbe
             }
         }
 
-        console.log(`[Cleanup] Logs: deleted ${deleted}, errors ${errors}`);
+        logger.info(`[Cleanup] Logs: deleted ${deleted}, errors ${errors}`);
 
     } catch (error) {
-        console.error('[Cleanup] Logs cleanup error:', error);
+        logger.error('[Cleanup] Logs cleanup error:', error);
         errors++;
     }
 
@@ -135,10 +136,10 @@ export async function cleanupProcessedEvents(): Promise<{ deleted: number; error
             }
         }
 
-        console.log(`[Cleanup] ProcessedEvents: deleted ${deleted}, errors ${errors}`);
+        logger.info(`[Cleanup] ProcessedEvents: deleted ${deleted}, errors ${errors}`);
 
     } catch (error) {
-        console.error('[Cleanup] ProcessedEvents cleanup error:', error);
+        logger.error('[Cleanup] ProcessedEvents cleanup error:', error);
         errors++;
     }
 
@@ -156,11 +157,11 @@ export async function cleanupOldImages(tenantIds: string[]): Promise<{ totalDele
             const deleted = await deleteOldImages(tenantId, IMAGES_RETENTION_DAYS);
             totalDeleted += deleted;
         } catch (error) {
-            console.error(`[Cleanup] Images cleanup error for ${tenantId}:`, error);
+            logger.error(`[Cleanup] Images cleanup error for ${tenantId}:`, error);
         }
     }
 
-    console.log(`[Cleanup] Images: deleted ${totalDeleted} total`);
+    logger.info(`[Cleanup] Images: deleted ${totalDeleted} total`);
     return { totalDeleted };
 }
 
@@ -174,7 +175,7 @@ export async function getAllTenantIds(): Promise<string[]> {
         const snapshot = await db.collection('tenants').select().get();
         return snapshot.docs.map(doc => doc.id);
     } catch (error) {
-        console.error('[Cleanup] Failed to get tenant IDs:', error);
+        logger.error('[Cleanup] Failed to get tenant IDs:', error);
         return [];
     }
 }
@@ -188,7 +189,7 @@ export async function runAllCleanup(): Promise<{
     events: { deleted: number; errors: number };
     images: { totalDeleted: number };
 }> {
-    console.log('[Cleanup] Starting scheduled cleanup...');
+    logger.info('[Cleanup] Starting scheduled cleanup...');
 
     const [jobs, logs, events] = await Promise.all([
         cleanupOldJobs(),
@@ -200,7 +201,7 @@ export async function runAllCleanup(): Promise<{
     const tenantIds = await getAllTenantIds();
     const images = await cleanupOldImages(tenantIds);
 
-    console.log('[Cleanup] Completed:', { jobs, logs, events, images });
+    logger.info('[Cleanup] Completed:', { jobs, logs, events, images });
 
     return { jobs, logs, events, images };
 }

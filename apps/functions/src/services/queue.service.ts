@@ -6,6 +6,7 @@
  * - Worker polls for queued jobs
  * - Supports retry with exponential backoff
  */
+import { logger } from 'firebase-functions/v2';
 import { getDb } from '../config/firebase';
 import { Job, JobPayload, JobStatus } from '../models/job.model';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
@@ -35,7 +36,7 @@ export async function enqueueJob(payload: JobPayload, webhookEventId: string): P
 
     const docRef = await db.collection(JOBS_COLLECTION).add(jobData);
 
-    console.log(`[Queue] Job enqueued: ${docRef.id} for tenant ${payload.tenantId}`);
+    logger.info(`[Queue] Job enqueued: ${docRef.id} for tenant ${payload.tenantId}`);
 
     return docRef.id;
 }
@@ -83,7 +84,7 @@ export async function claimJob(jobId: string): Promise<boolean> {
         });
         return true;
     } catch (error) {
-        console.warn(`[Queue] Failed to claim job ${jobId}:`, error);
+        logger.warn(`[Queue] Failed to claim job ${jobId}:`, error);
         return false;
     }
 }
@@ -100,7 +101,7 @@ export async function completeJob(jobId: string): Promise<void> {
         updatedAt: FieldValue.serverTimestamp(),
     });
 
-    console.log(`[Queue] Job completed: ${jobId}`);
+    logger.info(`[Queue] Job completed: ${jobId}`);
 }
 
 /**
@@ -133,7 +134,7 @@ export async function failJob(jobId: string, error: Error): Promise<void> {
         updatedAt: FieldValue.serverTimestamp(),
     });
 
-    console.log(`[Queue] Job ${newStatus === 'dead' ? 'dead' : 'will retry'}: ${jobId} (attempt ${attempts}/${maxAttempts})`);
+    logger.info(`[Queue] Job ${newStatus === 'dead' ? 'dead' : 'will retry'}: ${jobId} (attempt ${attempts}/${maxAttempts})`);
 }
 
 /**

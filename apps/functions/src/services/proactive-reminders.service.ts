@@ -10,6 +10,7 @@
  * Run via Cloud Scheduler every 15 minutes.
  */
 
+import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 import { 
     notificationService, 
@@ -49,7 +50,7 @@ export async function processScheduledReminders(): Promise<{
             }
         }
 
-        console.log(`[Reminders] Processed: ${result.processed}, Sent: ${result.sent}`);
+        logger.info(`[Reminders] Processed: ${result.processed}, Sent: ${result.sent}`);
         return result;
     } catch (error) {
         result.errors.push((error as Error).message);

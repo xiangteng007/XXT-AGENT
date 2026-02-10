@@ -5,9 +5,10 @@
  * Provides RESTful API access to all butler services.
  */
 
+import { logger } from 'firebase-functions/v2';
 import { Request, Response } from 'express';
 import * as admin from 'firebase-admin';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+
 
 // Import services
 import { butlerService } from '../services/butler.service';
@@ -39,48 +40,63 @@ function getCorsOrigin(req: Request): string {
 }
 
 // ================================
-// Rate Limiting (per-user, 100 req/min)
+// Rate Limiting — In-Memory (V3 #10)
 // ================================
 const RATE_LIMIT_MAX = 100;
 const RATE_LIMIT_WINDOW_MS = 60_000;
+const rateLimitMap = new Map<string, { count: number; windowStart: number }>();
 
-async function checkRateLimit(uid: string): Promise<boolean> {
-    const db = getFirestore();
-    const ref = db.collection('_rateLimits').doc(uid);
+function checkRateLimit(uid: string): boolean {
     const now = Date.now();
-    try {
-        const doc = await ref.get();
-        const data = doc.data();
-        if (!data || now - (data.windowStart || 0) > RATE_LIMIT_WINDOW_MS) {
-            await ref.set({ count: 1, windowStart: now });
-            return true;
-        }
-        if (data.count >= RATE_LIMIT_MAX) return false;
-        await ref.update({ count: FieldValue.increment(1) });
+    const entry = rateLimitMap.get(uid);
+    if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+        rateLimitMap.set(uid, { count: 1, windowStart: now });
         return true;
-    } catch {
-        return true; // Fail open to avoid blocking on Firestore errors
     }
+    if (entry.count >= RATE_LIMIT_MAX) return false;
+    entry.count++;
+    return true;
 }
 
+// Periodic cleanup to prevent memory leaks
+setInterval(() => {
+    const now = Date.now();
+    for (const [uid, entry] of rateLimitMap) {
+        if (now - entry.windowStart > RATE_LIMIT_WINDOW_MS * 2) rateLimitMap.delete(uid);
+    }
+}, 120_000);
+
 // ================================
-// Authentication Helper
+// Token Verification Cache (V3 #12)
 // ================================
+const TOKEN_CACHE_TTL_MS = 5 * 60_000; // 5 minutes
+const tokenCache = new Map<string, { uid: string; expiresAt: number }>();
 
 async function verifyAuth(req: Request): Promise<string | null> {
     const authHeader = req.headers.authorization;
-    
-    if (!authHeader?.startsWith('Bearer ')) {
-        return null;
-    }
+    if (!authHeader?.startsWith('Bearer ')) return null;
     
     try {
         const token = authHeader.split('Bearer ')[1];
+        
+        // Check cache first
+        const cached = tokenCache.get(token);
+        if (cached && Date.now() < cached.expiresAt) return cached.uid;
+        
         const decodedToken = await admin.auth().verifyIdToken(token);
+        tokenCache.set(token, { uid: decodedToken.uid, expiresAt: Date.now() + TOKEN_CACHE_TTL_MS });
         return decodedToken.uid;
     } catch {
         return null;
     }
+}
+
+// ================================
+// Request ID (V3 #11)
+// ================================
+let requestCounter = 0;
+function getRequestId(): string {
+    return `req-${Date.now()}-${++requestCounter}`;
 }
 
 // ================================
@@ -100,6 +116,10 @@ export async function handleButlerApi(req: Request, res: Response): Promise<void
         res.status(204).send('');
         return;
     }
+
+    // Request correlation (V3 #11)
+    const requestId = getRequestId();
+    res.set('X-Request-Id', requestId);
 
     // Health check (no auth required)
     if (req.path === '/health' || req.path === '/') {
@@ -162,8 +182,8 @@ export async function handleButlerApi(req: Request, res: Response): Promise<void
                 res.status(404).json({ error: 'Not found' });
         }
     } catch (error) {
-        console.error('[Butler API Error]', error);
-        res.status(500).json({ error: 'Internal server error' });
+        logger.error('[Butler API Error]', { requestId, module, action, error });
+        res.status(500).json({ error: 'Internal server error', requestId });
     }
 }
 

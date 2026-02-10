@@ -5,6 +5,7 @@
  * Supports: Telegram, LINE, Webhook, Email, Slack
  */
 
+import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 import { NotificationSetting, NotificationConfig, FusedEvent } from '../types/social.types';
 
@@ -21,13 +22,13 @@ export async function sendAlertsForEvent(event: FusedEvent): Promise<{
     failed: number;
     channels: string[];
 }> {
-    console.log(`[Alert Engine] Processing event: ${event.id}`);
+    logger.info(`[Alert Engine] Processing event: ${event.id}`);
     const result = { sent: 0, failed: 0, channels: [] as string[] };
 
     try {
         // Get all matching notification settings
         const settings = await getMatchingNotifications(event);
-        console.log(`[Alert Engine] Found ${settings.length} matching notification settings`);
+        logger.info(`[Alert Engine] Found ${settings.length} matching notification settings`);
 
         for (const setting of settings) {
             try {
@@ -48,7 +49,7 @@ export async function sendAlertsForEvent(event: FusedEvent): Promise<{
                 });
 
             } catch (err: unknown) {
-                console.error(`[Alert Engine] Failed to send via ${setting.channel}:`, err);
+                logger.error(`[Alert Engine] Failed to send via ${setting.channel}:`, err);
                 result.failed++;
             }
         }
@@ -65,7 +66,7 @@ export async function sendAlertsForEvent(event: FusedEvent): Promise<{
         return result;
 
     } catch (err: unknown) {
-        console.error('[Alert Engine] Fatal error:', err);
+        logger.error('[Alert Engine] Fatal error:', err);
         return result;
     }
 }
@@ -106,7 +107,7 @@ async function sendNotification(setting: NotificationSetting, event: FusedEvent)
             break;
         case 'email':
             // Email implementation would require SMTP or SendGrid
-            console.log('[Alert Engine] Email not implemented yet');
+            logger.info('[Alert Engine] Email not implemented yet');
             break;
         default:
             throw new Error(`Unknown channel: ${setting.channel}`);

@@ -9,12 +9,11 @@
  * - Impact hints
  */
 
+import { logger } from 'firebase-functions/v2';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
+import { getSecret } from '../config/secrets';
 import { z } from 'zod';
 import { GeminiEnrichRequest, GeminiEnrichResponse, Entity } from '../types/social.types';
-
-const secretManager = new SecretManagerServiceClient();
 
 let geminiClient: GoogleGenerativeAI | null = null;
 
@@ -32,21 +31,16 @@ const GeminiResponseSchema = z.object({
 });
 
 /**
- * Initialize Gemini client with API key from Secret Manager
+ * Initialize Gemini client with API key from centralized secrets
  */
 async function getGeminiClient(): Promise<GoogleGenerativeAI> {
     if (geminiClient) return geminiClient;
-
-    const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
-    const secretName = `projects/${projectId}/secrets/GEMINI_API_KEY/versions/latest`;
-
     try {
-        const [version] = await secretManager.accessSecretVersion({ name: secretName });
-        const apiKey = version.payload?.data?.toString() || '';
+        const apiKey = await getSecret('GEMINI_API_KEY');
         geminiClient = new GoogleGenerativeAI(apiKey);
         return geminiClient;
     } catch (err) {
-        console.error('[Gemini] Failed to get API key from Secret Manager:', err);
+        logger.error('[Gemini] Failed to get API key:', err);
         throw new Error('Gemini API key not available');
     }
 }
@@ -74,7 +68,7 @@ export async function enrichWithGemini(request: GeminiEnrichRequest): Promise<Ge
         return validated(parsed);
 
     } catch (err: unknown) {
-        console.error('[Gemini] Enrichment failed:', err);
+        logger.error('[Gemini] Enrichment failed:', err);
 
         // Return default response on failure
         return {
@@ -177,12 +171,12 @@ function validated(partial: Partial<GeminiEnrichResponse>): GeminiEnrichResponse
         }
 
         // Log Zod validation errors for debugging
-        console.warn('[Gemini] Zod validation failed:', JSON.stringify(result.error.issues));
+        logger.warn('[Gemini] Zod validation failed:', JSON.stringify(result.error.issues));
 
         // Fallback: apply manual normalization
         return fallbackValidation(partial);
     } catch (err) {
-        console.warn('[Gemini] Validation error, using fallback:', err);
+        logger.warn('[Gemini] Validation error, using fallback:', err);
         return fallbackValidation(partial);
     }
 }

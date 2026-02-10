@@ -7,6 +7,7 @@
  * - Firebase Cloud Messaging (FCM)
  */
 
+import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 
 const db = admin.firestore();
@@ -59,7 +60,7 @@ export async function sendLineNotification(
     title?: string
 ): Promise<boolean> {
     if (!LINE_CHANNEL_ACCESS_TOKEN) {
-        console.error('LINE_CHANNEL_ACCESS_TOKEN not configured');
+        logger.error('LINE_CHANNEL_ACCESS_TOKEN not configured');
         return false;
     }
 
@@ -85,13 +86,13 @@ export async function sendLineNotification(
 
         if (!response.ok) {
             const error = await response.text();
-            console.error('LINE push failed:', error);
+            logger.error('LINE push failed:', error);
             return false;
         }
 
         return true;
     } catch (error) {
-        console.error('LINE push error:', error);
+        logger.error('LINE push error:', error);
         return false;
     }
 }
@@ -140,7 +141,7 @@ export async function sendTelegramNotification(
     title?: string
 ): Promise<boolean> {
     if (!TELEGRAM_BOT_TOKEN) {
-        console.error('TELEGRAM_BOT_TOKEN not configured');
+        logger.error('TELEGRAM_BOT_TOKEN not configured');
         return false;
     }
 
@@ -159,13 +160,13 @@ export async function sendTelegramNotification(
 
         if (!response.ok) {
             const error = await response.text();
-            console.error('Telegram send failed:', error);
+            logger.error('Telegram send failed:', error);
             return false;
         }
 
         return true;
     } catch (error) {
-        console.error('Telegram send error:', error);
+        logger.error('Telegram send error:', error);
         return false;
     }
 }
@@ -214,7 +215,7 @@ export async function sendFcmNotification(
             failure: response.failureCount,
         };
     } catch (error) {
-        console.error('FCM send error:', error);
+        logger.error('FCM send error:', error);
         return { success: 0, failure: fcmTokens.length };
     }
 }
@@ -251,7 +252,7 @@ export class NotificationService {
         };
 
         if (!settings) {
-            console.warn(`No notification settings for user ${payload.userId}`);
+            logger.warn(`No notification settings for user ${payload.userId}`);
             return result;
         }
 

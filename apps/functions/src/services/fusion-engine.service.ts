@@ -7,6 +7,7 @@
  * Per SPEC_PHASE6_5_PHASE7_CLOUD.md and fusion-policy.md
  */
 
+import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 import { FusedEvent, Entity } from '../types/social.types';
 import { logAudit } from './audit.service';
@@ -26,7 +27,7 @@ export async function runFusionEngine(): Promise<{
     fused: number;
     errors: string[];
 }> {
-    console.log('[Fusion Engine] Starting fusion cycle...');
+    logger.info('[Fusion Engine] Starting fusion cycle...');
     const result = { processed: 0, fused: 0, errors: [] as string[] };
 
     try {
@@ -40,7 +41,7 @@ export async function runFusionEngine(): Promise<{
         ]);
 
         result.processed = socialEvents.length + marketEvents.length + newsEvents.length;
-        console.log(`[Fusion Engine] Found ${result.processed} events in window`);
+        logger.info(`[Fusion Engine] Found ${result.processed} events in window`);
 
         if (result.processed < 2) {
             return result; // Not enough to correlate
@@ -48,7 +49,7 @@ export async function runFusionEngine(): Promise<{
 
         // Find correlations
         const correlations = findCorrelations(socialEvents, marketEvents, newsEvents);
-        console.log(`[Fusion Engine] Found ${correlations.length} correlations`);
+        logger.info(`[Fusion Engine] Found ${correlations.length} correlations`);
 
         // Create fused events
         for (const corr of correlations) {
@@ -56,7 +57,7 @@ export async function runFusionEngine(): Promise<{
                 await createFusedEvent(corr);
                 result.fused++;
             } catch (err: unknown) {
-                console.error('[Fusion Engine] Failed to create fused event:', err);
+                logger.error('[Fusion Engine] Failed to create fused event:', err);
                 result.errors.push(getErrorMessage(err));
             }
         }
@@ -64,11 +65,11 @@ export async function runFusionEngine(): Promise<{
         await incrementMetric('system', 'fusion_runs_total', 1);
         await incrementMetric('system', 'fusion_events_created', result.fused);
 
-        console.log('[Fusion Engine] Cycle complete:', result);
+        logger.info('[Fusion Engine] Cycle complete:', result);
         return result;
 
     } catch (err: unknown) {
-        console.error('[Fusion Engine] Fatal error:', err);
+        logger.error('[Fusion Engine] Fatal error:', err);
         result.errors.push(getErrorMessage(err));
         return result;
     }
@@ -252,7 +253,7 @@ async function createFusedEvent(correlation: Correlation): Promise<void> {
         ts: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    console.log(`[Fusion Engine] Created fused event: ${title} (severity: ${finalSeverity})`);
+    logger.info(`[Fusion Engine] Created fused event: ${title} (severity: ${finalSeverity})`);
 
     await logAudit({
         tenantId: fusedEvent.tenantId,

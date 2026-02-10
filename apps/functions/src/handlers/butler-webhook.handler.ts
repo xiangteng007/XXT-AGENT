@@ -6,6 +6,7 @@
  * Supports Flex Message cards for finance, health, vehicle, and schedule domains.
  */
 
+import { logger } from 'firebase-functions/v2';
 import { Request, Response } from 'express';
 import * as crypto from 'crypto';
 import { generateAIResponse, generateAIResponseWithTools } from '../services/butler-ai.service';
@@ -41,7 +42,7 @@ const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 
 // Validate required environment variables (lazy - only warn at startup)
 if (!CHANNEL_SECRET || !CHANNEL_ACCESS_TOKEN) {
-    console.warn('WARNING: LINE_CHANNEL_SECRET and/or LINE_CHANNEL_ACCESS_TOKEN not set - LINE Bot features disabled');
+    logger.warn('WARNING: LINE_CHANNEL_SECRET and/or LINE_CHANNEL_ACCESS_TOKEN not set - LINE Bot features disabled');
 }
 
 // LINE API Base URL
@@ -81,12 +82,12 @@ interface LineEvent {
 // ================================
 
 export async function handleButlerWebhook(req: Request, res: Response): Promise<void> {
-    console.log('[Butler Webhook] Received request');
+    logger.info('[Butler Webhook] Received request');
 
     // Verify LINE signature
     const signature = req.headers['x-line-signature'] as string;
     if (!signature) {
-        console.warn('[Butler Webhook] Missing signature');
+        logger.warn('[Butler Webhook] Missing signature');
         res.status(401).send('Missing signature');
         return;
     }
@@ -99,14 +100,14 @@ export async function handleButlerWebhook(req: Request, res: Response): Promise<
         .digest('base64');
 
     if (signature !== expectedSignature) {
-        console.warn('[Butler Webhook] Invalid signature');
+        logger.warn('[Butler Webhook] Invalid signature');
         res.status(401).send('Invalid signature');
         return;
     }
 
     // Parse body
     const body: LineWebhookBody = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-    console.log('[Butler Webhook] Events:', body.events?.length || 0);
+    logger.info('[Butler Webhook] Events:', body.events?.length || 0);
 
     // Process events
     if (body.events && body.events.length > 0) {
@@ -114,7 +115,7 @@ export async function handleButlerWebhook(req: Request, res: Response): Promise<
             try {
                 await processButlerEvent(event);
             } catch (error) {
-                console.error('[Butler Webhook] Error processing event:', error);
+                logger.error('[Butler Webhook] Error processing event:', error);
             }
         }
     }
@@ -128,7 +129,7 @@ export async function handleButlerWebhook(req: Request, res: Response): Promise<
 // ================================
 
 async function processButlerEvent(event: LineEvent): Promise<void> {
-    console.log('[Butler] Processing event:', event.type);
+    logger.info('[Butler] Processing event:', event.type);
 
     switch (event.type) {
         case 'message':
@@ -141,10 +142,10 @@ async function processButlerEvent(event: LineEvent): Promise<void> {
             await handleFollowEvent(event);
             break;
         case 'unfollow':
-            console.log('[Butler] User unfollowed:', event.source.userId);
+            logger.info('[Butler] User unfollowed:', event.source.userId);
             break;
         default:
-            console.log('[Butler] Unhandled event type:', event.type);
+            logger.info('[Butler] Unhandled event type:', event.type);
     }
 }
 
@@ -161,7 +162,7 @@ async function handleMessageEvent(event: LineEvent): Promise<void> {
 
     // Handle image messages → Receipt OCR
     if (event.message.type === 'image' && userId) {
-        console.log(`[Butler] Image from ${userId}, processing receipt OCR`);
+        logger.info(`[Butler] Image from ${userId}, processing receipt OCR`);
         const imageUrl = `https://api-data.line.me/v2/bot/message/${event.message.id}/content`;
         const result = await processReceiptImage(userId, imageUrl, CHANNEL_ACCESS_TOKEN!);
         await replyMessage(event.replyToken, [
@@ -171,7 +172,7 @@ async function handleMessageEvent(event: LineEvent): Promise<void> {
     }
 
     const messageText = event.message.text || '';
-    console.log(`[Butler] Message from ${userId}: ${messageText}`);
+    logger.info(`[Butler] Message from ${userId}: ${messageText}`);
 
     // Handle special commands
     if (messageText === '清除對話' || messageText === '重新開始') {
@@ -185,7 +186,7 @@ async function handleMessageEvent(event: LineEvent): Promise<void> {
     // Quick-record commands: 記帳/體重/加油/行程 etc.
     const command = parseCommand(messageText);
     if (command && userId) {
-        console.log(`[Butler] Command detected: ${command.action} (${command.confidence})`);
+        logger.info(`[Butler] Command detected: ${command.action} (${command.confidence})`);
         const result = await executeCommand(userId, command);
         // Save to session for potential undo
         await appendMessage(userId, 'user', messageText);
@@ -198,7 +199,7 @@ async function handleMessageEvent(event: LineEvent): Promise<void> {
 
     // Detect domain for Flex Message reply
     const domain = detectDomain(messageText);
-    console.log(`[Butler] Detected domain: ${domain}`);
+    logger.info(`[Butler] Detected domain: ${domain}`);
 
     // Try Flex Message for specific domains
     const flexCard = await buildFlexReply(domain, messageText, userId);
@@ -232,7 +233,7 @@ async function handleMessageEvent(event: LineEvent): Promise<void> {
                 return;
             }
         } catch (toolErr) {
-            console.warn('[Butler] Function calling failed, falling back to standard AI:', toolErr);
+            logger.warn('[Butler] Function calling failed, falling back to standard AI:', toolErr);
         }
     }
 
@@ -423,7 +424,7 @@ async function executeToolCalls(
                     results.push(`⚠️ 未支援的操作：${call.name}`);
             }
         } catch (err) {
-            console.error(`[Butler] Tool call ${call.name} failed:`, err);
+            logger.error(`[Butler] Tool call ${call.name} failed:`, err);
             results.push(`❌ ${call.name} 執行失敗，請稍後再試`);
         }
     }
@@ -439,7 +440,7 @@ async function handlePostbackEvent(event: LineEvent): Promise<void> {
     const userId = event.source.userId;
     const postbackData = event.postback.data;
 
-    console.log(`[Butler] Postback from ${userId}: ${postbackData}`);
+    logger.info(`[Butler] Postback from ${userId}: ${postbackData}`);
 
     // Parse action from postback data
     const params = new URLSearchParams(postbackData);
@@ -581,7 +582,7 @@ async function buildFlexReply(
                 return null;
         }
     } catch (err) {
-        console.error(`[Butler] Flex build failed for ${domain}:`, err);
+        logger.error(`[Butler] Flex build failed for ${domain}:`, err);
         return null;
     }
 }
@@ -607,11 +608,11 @@ async function replyMessage(replyToken: string, messages: Array<Record<string, a
 
         if (!response.ok) {
             const error = await response.text();
-            console.error('[Butler] Reply failed:', error);
+            logger.error('[Butler] Reply failed:', error);
         } else {
-            console.log('[Butler] Reply sent successfully');
+            logger.info('[Butler] Reply sent successfully');
         }
     } catch (error) {
-        console.error('[Butler] Reply error:', error);
+        logger.error('[Butler] Reply error:', error);
     }
 }

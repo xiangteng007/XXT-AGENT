@@ -6,6 +6,7 @@
  * that are included as context for AI responses.
  */
 
+import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 
 const db = admin.firestore();
@@ -52,7 +53,7 @@ export async function getSession(userId: string): Promise<ConversationSession> {
 
         // Check if session expired
         if (now - lastActive > SESSION_TTL_MS) {
-            console.log(`[Session] Expired for ${userId}, creating new session`);
+            logger.info(`[Session] Expired for ${userId}, creating new session`);
             return createNewSession(userId);
         }
 
@@ -119,7 +120,7 @@ export async function getPreviousMessages(userId: string): Promise<string[]> {
  */
 export async function clearSession(userId: string): Promise<void> {
     await sessionRef(userId).delete();
-    console.log(`[Session] Cleared for ${userId}`);
+    logger.info(`[Session] Cleared for ${userId}`);
 }
 
 /**

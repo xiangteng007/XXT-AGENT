@@ -3,6 +3,7 @@
  * Verifies Firebase Auth tokens and injects user context
  */
 
+import { logger } from 'firebase-functions/v2';
 import { Request, Response, NextFunction } from 'express';
 import { getAuth } from 'firebase-admin/auth';
 import { rbacService } from '../services/rbac.service';
@@ -95,7 +96,7 @@ export function authenticate(options: AuthOptions = {}): (req: Request, res: Res
 
             next();
         } catch (error) {
-            console.error('Authentication error:', error);
+            logger.error('Authentication error:', error);
 
             if (required) {
                 res.status(401).json({

@@ -15,6 +15,7 @@
  *   提醒 週五 繳房租  → add reminder
  */
 
+import { logger } from 'firebase-functions/v2';
 import { financeService } from '../finance.service';
 import { healthService } from '../health.service';
 import { vehicleService } from '../vehicle.service';
@@ -274,7 +275,7 @@ export async function executeCommand(
                 return `❓ 不支援的指令類型：${cmd.action}`;
         }
     } catch (error) {
-        console.error(`[Butler] Command execution failed:`, error);
+        logger.error(`[Butler] Command execution failed:`, error);
         return `⚠️ 執行失敗，請稍後再試。\n指令：${cmd.display}`;
     }
 }

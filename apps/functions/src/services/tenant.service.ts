@@ -1,3 +1,4 @@
+import { logger } from 'firebase-functions/v2';
 import { getDb } from '../config/firebase';
 import { Team, Project, Integration, TenantConfig } from '../models';
 
@@ -31,7 +32,7 @@ export async function findTenantByChannelId(
             .get();
 
         if (integrationsSnapshot.empty) {
-            console.warn(`No integration found for channel: ${channelId}`);
+            logger.warn(`No integration found for channel: ${channelId}`);
             return null;
         }
 
@@ -43,7 +44,7 @@ export async function findTenantByChannelId(
         // Get team
         const teamDoc = await db.collection('teams').doc(integration.teamId).get();
         if (!teamDoc.exists) {
-            console.error(`Team not found: ${integration.teamId}`);
+            logger.error(`Team not found: ${integration.teamId}`);
             return null;
         }
         const team = { id: teamDoc.id, ...teamDoc.data() } as Team;
@@ -58,7 +59,7 @@ export async function findTenantByChannelId(
             .get();
 
         if (projectsSnapshot.empty) {
-            console.warn(`No active project for team: ${integration.teamId}`);
+            logger.warn(`No active project for team: ${integration.teamId}`);
             return null;
         }
 
@@ -84,7 +85,7 @@ export async function findTenantByChannelId(
         return config;
 
     } catch (error) {
-        console.error('Error finding tenant:', error);
+        logger.error('Error finding tenant:', error);
         return null;
     }
 }

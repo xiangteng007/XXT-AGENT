@@ -5,6 +5,7 @@
  * and store in Firestore for dashboard display.
  */
 
+import { logger } from 'firebase-functions/v2';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { fetchAllRssFeeds, deduplicateItems, RssItem } from '../services/rss.service';
 
@@ -29,7 +30,7 @@ async function getRecentUrls(): Promise<Set<string>> {
         if (url) urls.add(url);
     });
 
-    console.log(`Found ${urls.size} recent URLs for deduplication`);
+    logger.info(`Found ${urls.size} recent URLs for deduplication`);
     return urls;
 }
 
@@ -59,7 +60,7 @@ async function writeNewsToFirestore(items: RssItem[]): Promise<number> {
     }
 
     await batch.commit();
-    console.log(`Wrote ${count} news items to Firestore`);
+    logger.info(`Wrote ${count} news items to Firestore`);
     return count;
 }
 
@@ -72,7 +73,7 @@ export async function handleNewsCollector(): Promise<{
     written: number;
     skipped: number;
 }> {
-    console.log('[News Collector] Starting collection...');
+    logger.info('[News Collector] Starting collection...');
 
     try {
         // 1. Fetch RSS feeds
@@ -94,11 +95,11 @@ export async function handleNewsCollector(): Promise<{
             skipped: allItems.length - newItems.length,
         };
 
-        console.log('[News Collector] Complete:', result);
+        logger.info('[News Collector] Complete:', result);
         return result;
 
     } catch (error) {
-        console.error('[News Collector] Error:', error);
+        logger.error('[News Collector] Error:', error);
         return {
             ok: false,
             fetched: 0,

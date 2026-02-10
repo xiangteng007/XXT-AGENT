@@ -5,6 +5,7 @@
  * finance + health + schedule data to find patterns and provide advice.
  */
 
+import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 
 const db = admin.firestore();
@@ -33,7 +34,7 @@ export async function generateMonthlyInsights(uid: string, month?: string): Prom
     const startDate = `${targetMonth}-01`;
     const endDate = `${year}-${String(mon + 1).padStart(2, '0')}-01`;
 
-    console.log(`[Monthly Insights] Generating for ${uid}, month: ${targetMonth}`);
+    logger.info(`[Monthly Insights] Generating for ${uid}, month: ${targetMonth}`);
 
     // Fetch finance data
     const txSnap = await db.collection(`users/${uid}/transactions`)
@@ -140,7 +141,7 @@ export async function generateMonthlyInsights(uid: string, month?: string): Prom
 
     // Store the insight
     await db.collection(`users/${uid}/monthly_insights`).doc(targetMonth).set(insight);
-    console.log(`[Monthly Insights] Generated: ${summary}`);
+    logger.info(`[Monthly Insights] Generated: ${summary}`);
 
     return insight;
 }
