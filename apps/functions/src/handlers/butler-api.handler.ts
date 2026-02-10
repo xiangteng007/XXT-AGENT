@@ -21,6 +21,7 @@ import { investmentService } from '../services/butler/investment.service';
 import { loanService } from '../services/butler/loan.service';
 import { generateMonthlyInsights } from '../services/butler/monthly-insights.service';
 import { generateInvestmentReport } from '../services/butler/investment-report.service';
+import { validateBody, TransactionCreateSchema, TransactionQuerySchema } from '../validators/schemas';
 
 // ================================
 // CORS Whitelist
@@ -279,10 +280,11 @@ async function handleFinance(
             
         case 'transactions':
             if (method === 'GET') {
-                const { startDate, endDate, type, category } = req.query;
+                const qv = validateBody(TransactionQuerySchema, req.query);
+                if (!qv.success) { res.status(400).json({ error: qv.error }); return; }
                 const transactions = await financeService.getTransactions(
-                    uid, startDate as string, endDate as string,
-                    { type: type as 'income' | 'expense', category: category as string }
+                    uid, qv.data.startDate as string, qv.data.endDate as string,
+                    { type: qv.data.type as 'income' | 'expense', category: qv.data.category as string }
                 );
                 res.json(transactions);
             }
@@ -290,7 +292,9 @@ async function handleFinance(
             
         case 'transaction':
             if (method === 'POST') {
-                const id = await financeService.recordTransaction(uid, req.body);
+                const tv = validateBody(TransactionCreateSchema, req.body);
+                if (!tv.success) { res.status(400).json({ error: tv.error }); return; }
+                const id = await financeService.recordTransaction(uid, tv.data);
                 res.json({ id });
             }
             break;
