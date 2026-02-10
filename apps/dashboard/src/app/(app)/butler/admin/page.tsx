@@ -322,6 +322,7 @@ export default function ButlerAdminPage() {
                                         <span className="text-muted-foreground">{d.count} ({d.percentage}%)</span>
                                     </div>
                                     <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                                        {/* eslint-disable-next-line react/forbid-dom-props */}
                                         <div
                                             className="h-full rounded-full bg-gradient-to-r from-violet-500 to-violet-400 transition-all duration-500"
                                             style={{ width: `${d.percentage}%` }}

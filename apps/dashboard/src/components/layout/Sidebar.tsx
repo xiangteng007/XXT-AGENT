@@ -161,7 +161,7 @@ export function Sidebar() {
         <>
             {/* Mobile Close Button */}
             {isMobile && (
-                <div className="sidebar-header" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <div className="sidebar-header flex justify-end">
                     <button
                         className="header-icon-btn"
                         onClick={() => setSidebarOpen(false)}

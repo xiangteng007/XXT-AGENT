@@ -19,6 +19,7 @@ import { businessService } from '../services/business.service';
 import { investmentService } from '../services/butler/investment.service';
 import { loanService } from '../services/butler/loan.service';
 import { generateMonthlyInsights } from '../services/butler/monthly-insights.service';
+import { generateInvestmentReport } from '../services/butler/investment-report.service';
 
 // ================================
 // Authentication Helper
@@ -299,6 +300,12 @@ async function handleInvestment(req: Request, res: Response, uid: string, action
         case 'portfolio': {
             const summary = await investmentService.getPortfolioSummary(uid);
             res.json(summary);
+            break;
+        }
+        case 'report': {
+            const html = await generateInvestmentReport(uid);
+            res.set('Content-Type', 'text/html; charset=utf-8');
+            res.send(html);
             break;
         }
         default:

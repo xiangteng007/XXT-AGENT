@@ -39,9 +39,9 @@ import { parseCommand, executeCommand } from '../services/butler/butler-commands
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
 const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 
-// Validate required environment variables at startup
+// Validate required environment variables (lazy - only warn at startup)
 if (!CHANNEL_SECRET || !CHANNEL_ACCESS_TOKEN) {
-    console.error('CRITICAL: LINE_CHANNEL_SECRET and LINE_CHANNEL_ACCESS_TOKEN must be set');
+    console.warn('WARNING: LINE_CHANNEL_SECRET and/or LINE_CHANNEL_ACCESS_TOKEN not set - LINE Bot features disabled');
 }
 
 // LINE API Base URL

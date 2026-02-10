@@ -152,6 +152,7 @@ function SpendingTab({ data }: { data: FinanceData | null }) {
                                         <span className="text-sm">{cat}</span>
                                         <div className="flex items-center gap-2">
                                             <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
+                                                {/* eslint-disable-next-line react/forbid-dom-props */}
                                                 <div className="h-full bg-primary rounded-full"
                                                     style={{ width: `${Math.min(100, (amt / data.monthlyExpenses) * 100)}%` }} />
                                             </div>
@@ -217,6 +218,7 @@ function InvestmentTab({ data }: { data: InvestmentData | null }) {
                     <div className="w-full h-3 bg-muted rounded-full overflow-hidden flex">
                         {data.allocation.map((a, i) => {
                             const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500', 'bg-cyan-500'];
+                            // eslint-disable-next-line react/forbid-dom-props
                             return <div key={a.type} className={`h-full ${colors[i % colors.length]}`} style={{ width: `${a.percentage}%` }} />;
                         })}
                     </div>
