@@ -1,0 +1,39 @@
+name: Deploy Cloud Functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/functions/**'
+  workflow_dispatch:
+
+jobs:
+  lint-test-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/functions
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: apps/functions/package-lock.json
+
+      - run: npm ci
+
+      - name: TypeScript build
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+      - name: Deploy to Firebase
+        if: github.ref == 'refs/heads/main'
+        run: npx firebase deploy --only functions --force --non-interactive
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GCP_SA_KEY_PATH }}
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

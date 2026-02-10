@@ -107,13 +107,21 @@ interface InlineKeyboardButton {
 // ================================
 
 export async function handleTelegramWebhook(req: Request, res: Response): Promise<void> {
-    console.log('[Telegram Webhook] Received update');
-
     // Fast ACK - respond immediately
     res.status(200).send('OK');
 
     try {
         const update: TelegramUpdate = req.body;
+
+        // Idempotency check (#9) — skip already-processed updates
+        const updateId = String(update.update_id);
+        const dedupeRef = db.collection('_telegramDedup').doc(updateId);
+        const existing = await dedupeRef.get();
+        if (existing.exists) {
+            console.warn('[Telegram] Duplicate update_id skipped:', updateId);
+            return;
+        }
+        await dedupeRef.set({ processedAt: Date.now() });
 
         if (update.message) {
             await handleMessage(update.message);

@@ -7,6 +7,7 @@
 
 import { Request, Response } from 'express';
 import * as admin from 'firebase-admin';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
 // Import services
 import { butlerService } from '../services/butler.service';
@@ -20,6 +21,46 @@ import { investmentService } from '../services/butler/investment.service';
 import { loanService } from '../services/butler/loan.service';
 import { generateMonthlyInsights } from '../services/butler/monthly-insights.service';
 import { generateInvestmentReport } from '../services/butler/investment-report.service';
+
+// ================================
+// CORS Whitelist
+// ================================
+const ALLOWED_ORIGINS = [
+    'https://xxt-agent.vercel.app',
+    'https://xxt-agent.web.app',
+    'http://localhost:3000',
+    'http://localhost:3001',
+];
+
+function getCorsOrigin(req: Request): string {
+    const origin = req.headers.origin || '';
+    return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+}
+
+// ================================
+// Rate Limiting (per-user, 100 req/min)
+// ================================
+const RATE_LIMIT_MAX = 100;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+
+async function checkRateLimit(uid: string): Promise<boolean> {
+    const db = getFirestore();
+    const ref = db.collection('_rateLimits').doc(uid);
+    const now = Date.now();
+    try {
+        const doc = await ref.get();
+        const data = doc.data();
+        if (!data || now - (data.windowStart || 0) > RATE_LIMIT_WINDOW_MS) {
+            await ref.set({ count: 1, windowStart: now });
+            return true;
+        }
+        if (data.count >= RATE_LIMIT_MAX) return false;
+        await ref.update({ count: FieldValue.increment(1) });
+        return true;
+    } catch {
+        return true; // Fail open to avoid blocking on Firestore errors
+    }
+}
 
 // ================================
 // Authentication Helper
@@ -46,8 +87,10 @@ async function verifyAuth(req: Request): Promise<string | null> {
 // ================================
 
 export async function handleButlerApi(req: Request, res: Response): Promise<void> {
-    // CORS headers
-    res.set('Access-Control-Allow-Origin', '*');
+    // CORS headers — whitelist only
+    const origin = getCorsOrigin(req);
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Vary', 'Origin');
     
     if (req.method === 'OPTIONS') {
         res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
@@ -56,11 +99,24 @@ export async function handleButlerApi(req: Request, res: Response): Promise<void
         res.status(204).send('');
         return;
     }
+
+    // Health check (no auth required)
+    if (req.path === '/health' || req.path === '/') {
+        res.json({ status: 'ok', version: '2.0.0', timestamp: new Date().toISOString() });
+        return;
+    }
     
     // Authenticate
     const uid = await verifyAuth(req);
     if (!uid) {
         res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+
+    // Rate limiting
+    const allowed = await checkRateLimit(uid);
+    if (!allowed) {
+        res.status(429).json({ error: 'Too many requests. Please try again later.' });
         return;
     }
     
@@ -102,11 +158,11 @@ export async function handleButlerApi(req: Request, res: Response): Promise<void
                 await handleInsights(req, res, uid, action);
                 break;
             default:
-                res.status(404).json({ error: 'Not found', path });
+                res.status(404).json({ error: 'Not found' });
         }
     } catch (error) {
         console.error('[Butler API Error]', error);
-        res.status(500).json({ error: (error as Error).message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 }
 
