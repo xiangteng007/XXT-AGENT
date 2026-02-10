@@ -170,7 +170,8 @@ export class FinancialAdvisorService {
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private calculateHealthScore(spending: any, portfolio: any, loans: any): HealthScore {
-        let savings = 0, investment = 0, debt = 25, risk = 10;
+        let savings = 0, investment = 0, debt = 25;
+        const risk = 10;
 
         if (spending) {
             savings = Math.min(25, Math.round(spending.averageSavingsRate / 20 * 25));

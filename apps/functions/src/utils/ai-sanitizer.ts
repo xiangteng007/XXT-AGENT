@@ -59,6 +59,7 @@ export function sanitizeForAI(input: string): SanitizeResult {
     // Strip potentially dangerous formatting
     text = text
         .replace(/\0/g, '')             // null bytes
+        // eslint-disable-next-line no-control-regex
         .replace(/\x1b\[[0-9;]*m/g, '') // ANSI escape codes
         .replace(/\r/g, '');            // carriage returns
 
