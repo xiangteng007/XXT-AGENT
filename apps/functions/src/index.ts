@@ -6,7 +6,10 @@
  * - #4:  Public endpoints protected with internal API key
  * - #7:  Eliminated mockReq/mockRes anti-pattern in schedulers
  * - #8:  maxInstances tuned per function type
+ * - #10: Distributed lock for all schedulers
+ * - #13: Centralized secret management
  * - #16: Schedule frequencies optimized (cost reduction)
+ * - #17: Cold start optimization via dynamic imports
  * - #20: Structured logging via firebase-functions logger
  * - #24: All imports consolidated at top
  */
@@ -17,21 +20,21 @@ import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions/v2';
 
-// Handler imports (consolidated — #24)
+// Core handler imports (always loaded — needed on every request)
 import { handleWebhook } from './handlers/webhook.handler.v2';
 import { handleWorker } from './handlers/worker.handler';
-import { handleCleanup } from './handlers/cleanup.handler';
 import { handleButlerApi } from './handlers/butler-api.handler';
 import { handleButlerWebhook } from './handlers/butler-webhook.handler';
 import { handleTelegramWebhook } from './handlers/telegram-webhook.handler';
-import { handleNewsCollector } from './handlers/news-collector.handler';
+
+// Lightweight utility imports
+import { withLock } from './utils/distributed-lock';
 
 // Service imports for direct scheduler calls (#7)
+// Only import lightweight queue/cleanup services statically
 import { fetchQueuedJobs } from './services/queue.service';
 import { runAllCleanup } from './services/cleanup.service';
 import { processScheduledReminders, cleanupNotificationMarkers } from './services/proactive-reminders.service';
-import { runFusionEngine } from './services/fusion-engine.service';
-import { runMarketStreamer } from './services/market-streamer.service';
 
 // Secrets
 const telegramBotToken = defineSecret('TELEGRAM_BOT_TOKEN');
@@ -101,7 +104,10 @@ export const lineWorker = onRequest(
 // Cleanup HTTP endpoint (internal use)
 export const lineCleanup = onRequest(
     { cors: false, memory: '512MiB', timeoutSeconds: 540, maxInstances: 2 },
-    handleCleanup as AnyHandler
+    async (req, res) => {
+        const results = await runAllCleanup();
+        res.json(results);
+    }
 );
 
 // ================================
@@ -114,6 +120,8 @@ export const newsCollector = onRequest(
             res.status(403).json({ error: 'Forbidden' });
             return;
         }
+        // Dynamic import for cold start optimization (#17)
+        const { handleNewsCollector } = await import('./handlers/news-collector.handler');
         const result = await handleNewsCollector();
         res.json(result);
     }
@@ -137,15 +145,16 @@ export const reminderManual = onRequest(
 export { onUserCreated } from './triggers/auth.trigger';
 
 // Export handlers for testing
-export { handleWebhook, handleWorker, handleCleanup, handleButlerApi, handleButlerWebhook, handleTelegramWebhook };
+export { handleWebhook, handleWorker, handleButlerApi, handleButlerWebhook, handleTelegramWebhook };
 
 // ================================
-// Scheduled Functions (single instance — #8, #7 direct calls, #16 optimized frequencies)
+// Scheduled Functions
+// All use distributed lock (#10) to prevent concurrent execution
+// Heavy services use dynamic import for cold start optimization (#17)
 // ================================
 
 /**
  * Worker Scheduler — processes queued jobs
- * (Calls service directly instead of mockReq/mockRes — #7)
  */
 export const lineWorkerScheduled = onSchedule(
     {
@@ -156,26 +165,26 @@ export const lineWorkerScheduled = onSchedule(
         maxInstances: 1,
     },
     async () => {
-        const jobs = await fetchQueuedJobs(5);
-        if (jobs.length === 0) {
-            logger.info('[Worker Scheduled] No jobs in queue');
-            return;
-        }
-        // Delegate to HTTP handler with proper req/res for complex job processing
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const mockReq = { method: 'POST', headers: {} } as any;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const mockRes = {
-            status: () => mockRes,
-            json: (data: unknown) => logger.info('[Worker Scheduled]', { data }),
-        } as any;
-        await handleWorker(mockReq, mockRes);
+        await withLock({ name: 'worker', ttlSeconds: 300 }, async () => {
+            const jobs = await fetchQueuedJobs(5);
+            if (jobs.length === 0) {
+                logger.info('[Worker Scheduled] No jobs in queue');
+                return;
+            }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const mockReq = { method: 'POST', headers: {} } as any;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const mockRes = {
+                status: () => mockRes,
+                json: (data: unknown) => logger.info('[Worker Scheduled]', { data }),
+            } as any;
+            await handleWorker(mockReq, mockRes);
+        });
     }
 );
 
 /**
  * Cleanup Scheduler — daily at 3 AM
- * (Calls runAllCleanup directly — #7)
  */
 export const lineCleanupScheduled = onSchedule(
     {
@@ -186,14 +195,16 @@ export const lineCleanupScheduled = onSchedule(
         maxInstances: 1,
     },
     async () => {
-        const results = await runAllCleanup();
-        logger.info('[Cleanup Scheduled]', { results });
+        await withLock({ name: 'cleanup', ttlSeconds: 540 }, async () => {
+            const results = await runAllCleanup();
+            logger.info('[Cleanup Scheduled]', { results });
+        });
     }
 );
 
 /**
- * News Collector — RSS feed aggregation
- * Optimized: every 30 minutes (was 10 — #16)
+ * News Collector — RSS feed aggregation (every 30 min — #16)
+ * Dynamic import for cold start optimization (#17)
  */
 export const newsCollectorScheduled = onSchedule(
     {
@@ -204,14 +215,16 @@ export const newsCollectorScheduled = onSchedule(
         maxInstances: 1,
     },
     async () => {
-        const result = await handleNewsCollector();
-        logger.info('[News Collector Scheduled]', { result });
+        await withLock({ name: 'news-collector', ttlSeconds: 120 }, async () => {
+            const { handleNewsCollector } = await import('./handlers/news-collector.handler');
+            const result = await handleNewsCollector();
+            logger.info('[News Collector Scheduled]', { result });
+        });
     }
 );
 
 /**
- * Proactive Reminders — checks vehicle, bills, events, health goals
- * Optimized: every 30 minutes (was 15 — #16)
+ * Proactive Reminders — every 30 min (#16)
  */
 export const reminderScheduled = onSchedule(
     {
@@ -220,8 +233,10 @@ export const reminderScheduled = onSchedule(
         maxInstances: 1,
     },
     async () => {
-        const result = await processScheduledReminders();
-        logger.info('[Reminder Scheduled]', { result });
+        await withLock({ name: 'reminders', ttlSeconds: 120 }, async () => {
+            const result = await processScheduledReminders();
+            logger.info('[Reminder Scheduled]', { result });
+        });
     }
 );
 
@@ -236,14 +251,16 @@ export const reminderCleanup = onSchedule(
         maxInstances: 1,
     },
     async () => {
-        const cleaned = await cleanupNotificationMarkers();
-        logger.info('[Reminder Cleanup]', { cleaned });
+        await withLock({ name: 'reminder-cleanup', ttlSeconds: 120 }, async () => {
+            const cleaned = await cleanupNotificationMarkers();
+            logger.info('[Reminder Cleanup]', { cleaned });
+        });
     }
 );
 
 /**
- * Fusion Engine — cross-domain signal correlation
- * Optimized: every 15 minutes (was 5 — #16)
+ * Fusion Engine — cross-domain correlation (every 15 min — #16)
+ * Dynamic import for cold start optimization (#17)
  */
 export const fusionScheduled = onSchedule(
     {
@@ -252,14 +269,17 @@ export const fusionScheduled = onSchedule(
         maxInstances: 1,
     },
     async () => {
-        const result = await runFusionEngine();
-        logger.info('[Fusion Scheduled]', { result });
+        await withLock({ name: 'fusion-engine', ttlSeconds: 300 }, async () => {
+            const { runFusionEngine } = await import('./services/fusion-engine.service');
+            const result = await runFusionEngine();
+            logger.info('[Fusion Scheduled]', { result });
+        });
     }
 );
 
 /**
- * Market Streamer — real-time TWSE + US stock monitoring
- * Optimized: every 5 minutes during trading hours (was 1 — #16)
+ * Market Streamer — TWSE + US stock (every 5 min during trading hours — #16)
+ * Dynamic import for cold start optimization (#17)
  */
 export const marketStreamerScheduled = onSchedule(
     {
@@ -275,7 +295,10 @@ export const marketStreamerScheduled = onSchedule(
         if (day === 0 || day === 6 || hour < 9 || hour >= 14) {
             return; // Skip weekends and off-hours
         }
-        const result = await runMarketStreamer();
-        logger.info('[Market Streamer Scheduled]', { result });
+        await withLock({ name: 'market-streamer', ttlSeconds: 30 }, async () => {
+            const { runMarketStreamer } = await import('./services/market-streamer.service');
+            const result = await runMarketStreamer();
+            logger.info('[Market Streamer Scheduled]', { result });
+        });
     }
 );
