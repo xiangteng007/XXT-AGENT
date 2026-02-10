@@ -117,13 +117,21 @@ export async function handleButlerApi(req: Request, res: Response): Promise<void
         return;
     }
 
-    // Request correlation (V3 #11)
+    // Request correlation (V3 #11) + API version header (V3 #8)
     const requestId = getRequestId();
     res.set('X-Request-Id', requestId);
+    res.set('X-API-Version', '2.1.0');
 
     // Health check (no auth required)
     if (req.path === '/health' || req.path === '/') {
-        res.json({ status: 'ok', version: '2.0.0', timestamp: new Date().toISOString() });
+        res.json({ status: 'ok', version: '2.1.0', timestamp: new Date().toISOString() });
+        return;
+    }
+
+    // CSP violation report endpoint (V3 #13) — no auth required
+    if (req.path === '/csp-report' && req.method === 'POST') {
+        logger.warn('[CSP Violation]', { body: req.body, userAgent: req.headers['user-agent'] });
+        res.status(204).send('');
         return;
     }
     

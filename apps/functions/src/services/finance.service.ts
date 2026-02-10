@@ -20,51 +20,9 @@ import {
 
 const db = admin.firestore();
 
-// ================================
-// Taiwan Bank Configuration
-// ================================
-
-export const TAIWAN_BANKS = {
-    '808': {
-        code: '808',
-        name: '玉山銀行',
-        englishName: 'E.SUN Bank',
-        openBankingSupport: true,
-        apiBase: 'https://openapi.esunbank.com.tw',
-    },
-    '822': {
-        code: '822',
-        name: '中國信託',
-        englishName: 'CTBC Bank',
-        openBankingSupport: true,
-        apiBase: 'https://openapi.ctbcbank.com',
-    },
-    '004': {
-        code: '004',
-        name: '臺灣銀行',
-        englishName: 'Bank of Taiwan',
-        openBankingSupport: true,
-        apiBase: 'https://fapi.bot.com.tw',
-    },
-    '007': {
-        code: '007',
-        name: '第一銀行',
-        englishName: 'First Bank',
-        openBankingSupport: true,
-        apiBase: 'https://openapi.firstbank.com.tw',
-    },
-} as const;
-
-// Transaction categories
-export const TRANSACTION_CATEGORIES = {
-    income: ['薪資', '獎金', '投資收益', '退款', '其他收入'],
-    expense: {
-        essential: ['餐飲', '交通', '住宅', '水電瓦斯', '保險', '醫療'],
-        lifestyle: ['娛樂', '購物', '旅遊', '訂閱服務', '教育'],
-        business: ['營業支出', '設備採購', '人事費用', '稅務'],
-        vehicle: ['加油', '保養', '停車', '過路費', '驗車'],
-    },
-};
+// Bank configuration extracted to config/bank-config.ts (V3 #6)
+import { TAIWAN_BANKS, TRANSACTION_CATEGORIES } from '../config/bank-config';
+export { TAIWAN_BANKS, TRANSACTION_CATEGORIES };
 
 // ================================
 // Finance Service Class
