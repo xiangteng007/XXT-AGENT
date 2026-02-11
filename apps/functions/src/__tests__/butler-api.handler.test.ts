@@ -86,7 +86,7 @@ describe('Butler API Handler', () => {
             mockReq.path = '/health';
             await handleButlerApi(mockReq as any, mockRes as any);
             expect(jsonFn).toHaveBeenCalledWith(
-                expect.objectContaining({ status: 'ok', version: '2.0.0' })
+                expect.objectContaining({ status: 'ok', version: '2.1.0' })
             );
         });
     });

@@ -324,8 +324,9 @@ export function getAvailableModels(): AIModel[] {
 // Gemini Function Calling (Tool Use)
 // ================================
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { SchemaType } from '@google/generative-ai';
+// Use string literals instead of SchemaType enum to avoid runtime failures
+// when @google/generative-ai module is partially loaded in test environments.
+// The Gemini API accepts both enum values and string literals.
 
 /**
  * Tool definitions for Gemini function calling.
@@ -338,11 +339,11 @@ const BUTLER_TOOLS = [
                 name: 'record_expense',
                 description: '記錄一筆支出到用戶的財務記錄',
                 parameters: {
-                    type: SchemaType.OBJECT,
+                    type: 'OBJECT' as const,
                     properties: {
-                        amount: { type: SchemaType.NUMBER, description: '金額' },
-                        description: { type: SchemaType.STRING, description: '描述（例如午餐、加油）' },
-                        category: { type: SchemaType.STRING, description: '分類：餐飲/交通/購物/醫療/娛樂/日用品/其他' },
+                        amount: { type: 'NUMBER' as const, description: '金額' },
+                        description: { type: 'STRING' as const, description: '描述（例如午餐、加油）' },
+                        category: { type: 'STRING' as const, description: '分類：餐飲/交通/購物/醫療/娛樂/日用品/其他' },
                     },
                     required: ['amount', 'description'],
                 },
@@ -351,9 +352,9 @@ const BUTLER_TOOLS = [
                 name: 'record_weight',
                 description: '記錄用戶的體重',
                 parameters: {
-                    type: SchemaType.OBJECT,
+                    type: 'OBJECT' as const,
                     properties: {
-                        weight: { type: SchemaType.NUMBER, description: '體重（公斤）' },
+                        weight: { type: 'NUMBER' as const, description: '體重（公斤）' },
                     },
                     required: ['weight'],
                 },
@@ -362,11 +363,11 @@ const BUTLER_TOOLS = [
                 name: 'add_event',
                 description: '新增一個行程到日曆',
                 parameters: {
-                    type: SchemaType.OBJECT,
+                    type: 'OBJECT' as const,
                     properties: {
-                        title: { type: SchemaType.STRING, description: '事件標題' },
-                        date: { type: SchemaType.STRING, description: '日期（YYYY-MM-DD）' },
-                        time: { type: SchemaType.STRING, description: '時間（HH:mm）' },
+                        title: { type: 'STRING' as const, description: '事件標題' },
+                        date: { type: 'STRING' as const, description: '日期（YYYY-MM-DD）' },
+                        time: { type: 'STRING' as const, description: '時間（HH:mm）' },
                     },
                     required: ['title', 'date'],
                 },
@@ -375,9 +376,9 @@ const BUTLER_TOOLS = [
                 name: 'get_schedule',
                 description: '查詢用戶的行程',
                 parameters: {
-                    type: SchemaType.OBJECT,
+                    type: 'OBJECT' as const,
                     properties: {
-                        date: { type: SchemaType.STRING, description: '要查詢的日期（YYYY-MM-DD），空白表示今天' },
+                        date: { type: 'STRING' as const, description: '要查詢的日期（YYYY-MM-DD），空白表示今天' },
                     },
                 },
             },
@@ -385,9 +386,9 @@ const BUTLER_TOOLS = [
                 name: 'get_spending',
                 description: '查詢用戶的支出摘要',
                 parameters: {
-                    type: SchemaType.OBJECT,
+                    type: 'OBJECT' as const,
                     properties: {
-                        month: { type: SchemaType.NUMBER, description: '月份（1-12），空白表示本月' },
+                        month: { type: 'NUMBER' as const, description: '月份（1-12），空白表示本月' },
                     },
                 },
             },
@@ -395,10 +396,10 @@ const BUTLER_TOOLS = [
                 name: 'record_fuel',
                 description: '記錄車輛加油',
                 parameters: {
-                    type: SchemaType.OBJECT,
+                    type: 'OBJECT' as const,
                     properties: {
-                        liters: { type: SchemaType.NUMBER, description: '公升數' },
-                        price_per_liter: { type: SchemaType.NUMBER, description: '每公升價格' },
+                        liters: { type: 'NUMBER' as const, description: '公升數' },
+                        price_per_liter: { type: 'NUMBER' as const, description: '每公升價格' },
                     },
                     required: ['liters'],
                 },
@@ -407,12 +408,12 @@ const BUTLER_TOOLS = [
                 name: 'add_investment',
                 description: '記錄投資交易（買入/賣出股票、ETF）',
                 parameters: {
-                    type: SchemaType.OBJECT,
+                    type: 'OBJECT' as const,
                     properties: {
-                        symbol: { type: SchemaType.STRING, description: '股票代號（如 2330、0050、AAPL）' },
-                        action: { type: SchemaType.STRING, description: '操作：buy 或 sell' },
-                        shares: { type: SchemaType.NUMBER, description: '股數' },
-                        price: { type: SchemaType.NUMBER, description: '每股價格' },
+                        symbol: { type: 'STRING' as const, description: '股票代號（如 2330、0050、AAPL）' },
+                        action: { type: 'STRING' as const, description: '操作：buy 或 sell' },
+                        shares: { type: 'NUMBER' as const, description: '股數' },
+                        price: { type: 'NUMBER' as const, description: '每股價格' },
                     },
                     required: ['symbol', 'action', 'shares', 'price'],
                 },
@@ -421,7 +422,7 @@ const BUTLER_TOOLS = [
                 name: 'get_portfolio',
                 description: '查詢投資組合總覽（持倉、損益、配置）',
                 parameters: {
-                    type: SchemaType.OBJECT,
+                    type: 'OBJECT' as const,
                     properties: {},
                 },
             },
@@ -429,11 +430,11 @@ const BUTLER_TOOLS = [
                 name: 'calculate_loan',
                 description: '貸款月付試算（等額本息）',
                 parameters: {
-                    type: SchemaType.OBJECT,
+                    type: 'OBJECT' as const,
                     properties: {
-                        principal: { type: SchemaType.NUMBER, description: '貸款金額' },
-                        annual_rate: { type: SchemaType.NUMBER, description: '年利率（%）' },
-                        term_months: { type: SchemaType.NUMBER, description: '貸款期數（月）' },
+                        principal: { type: 'NUMBER' as const, description: '貸款金額' },
+                        annual_rate: { type: 'NUMBER' as const, description: '年利率（%）' },
+                        term_months: { type: 'NUMBER' as const, description: '貸款期數（月）' },
                     },
                     required: ['principal', 'annual_rate', 'term_months'],
                 },
@@ -442,11 +443,11 @@ const BUTLER_TOOLS = [
                 name: 'estimate_tax',
                 description: '估算年度所得稅（台灣綜合所得稅）',
                 parameters: {
-                    type: SchemaType.OBJECT,
+                    type: 'OBJECT' as const,
                     properties: {
-                        annual_salary: { type: SchemaType.NUMBER, description: '年薪' },
-                        investment_income: { type: SchemaType.NUMBER, description: '投資收入（股利等）' },
-                        dependents: { type: SchemaType.NUMBER, description: '受扶養人數' },
+                        annual_salary: { type: 'NUMBER' as const, description: '年薪' },
+                        investment_income: { type: 'NUMBER' as const, description: '投資收入（股利等）' },
+                        dependents: { type: 'NUMBER' as const, description: '受扶養人數' },
                     },
                     required: ['annual_salary'],
                 },
@@ -455,9 +456,9 @@ const BUTLER_TOOLS = [
                 name: 'get_financial_advice',
                 description: '取得綜合理財建議報告（投資、負債、稅務、退休）',
                 parameters: {
-                    type: SchemaType.OBJECT,
+                    type: 'OBJECT' as const,
                     properties: {
-                        topic: { type: SchemaType.STRING, description: '主題：portfolio_review / debt_strategy / tax_optimization / retirement_planning / comprehensive' },
+                        topic: { type: 'STRING' as const, description: '主題：portfolio_review / debt_strategy / tax_optimization / retirement_planning / comprehensive' },
                     },
                 },
             },
