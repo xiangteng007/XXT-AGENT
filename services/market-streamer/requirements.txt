@@ -1,4 +1,4 @@
-aiohttp==3.9.5
+aiohttp==3.13.3
 google-cloud-pubsub==2.23.1
 google-cloud-secret-manager==2.20.2
 orjson==3.10.7
