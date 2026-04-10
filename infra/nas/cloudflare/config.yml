@@ -1,0 +1,41 @@
+# Cloudflare Tunnel 設定 — NAS Data Plane
+# 讓 OpenClaw Gateway（GCP Cloud Run）能安全存取 NAS 上的 Qdrant 和 MinIO
+#
+# 安裝方式：
+#   1. docker compose up -d cloudflared（在 NAS 上執行）
+#   2. 或直接在 NAS 安裝 cloudflared binary
+#
+# 關聯 docker-compose 補丁（加入 docker-compose.override.yml）：
+#   services:
+#     cloudflared:
+#       image: cloudflare/cloudflared:latest
+#       restart: unless-stopped
+#       command: tunnel --config /etc/cloudflared/config.yml run
+#       volumes:
+#         - ./cloudflare/config.yml:/etc/cloudflared/config.yml:ro
+#         - ./cloudflare/creds.json:/etc/cloudflared/creds.json:ro
+#       networks:
+#         - openclaw-net
+
+tunnel: <TUNNEL_ID>
+credentials-file: /etc/cloudflared/creds.json
+
+ingress:
+  # ── Qdrant REST（Gateway 調用向量搜尋）─────────────────
+  - hostname: qdrant.your-domain.com
+    service: http://qdrant:6333
+    originRequest:
+      httpHostHeader: qdrant.your-domain.com
+
+  # ── MinIO S3 API（Gateway + Functions 存取 Asset）──────
+  - hostname: minio.your-domain.com
+    service: http://minio:9000
+    originRequest:
+      httpHostHeader: minio.your-domain.com
+
+  # ── MinIO Console（僅管理員）─────────────────────────
+  - hostname: minio-console.your-domain.com
+    service: http://minio:9001
+
+  # 其餘請求 → 404
+  - service: http_status:404

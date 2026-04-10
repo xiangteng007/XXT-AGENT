@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OpenClaw HQ — Marvel Edition</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='28'>⚡</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+
+<!-- ── Loading ─── -->
+<div id="loading-screen">
+  <div class="lc">
+    <div class="ll">OPENCLAW HQ</div>
+    <div class="ls">MARVEL EDITION · ASSEMBLING...</div>
+    <div class="lb-wrap"><div id="lb" class="lb"></div></div>
+    <div id="lt" class="lt">Loading...</div>
+  </div>
+</div>
+
+<!-- ── Top Bar ─── -->
+<header id="topbar">
+  <div class="tl">
+    <div class="logo-box">
+      <div class="logo"><span class="v-cyan">OPENCLAW</span> HQ</div>
+      <span class="badge">ANIMAL EDITION</span>
+    </div>
+  </div>
+  <div class="tc">
+    <div class="chip" id="ws-chip"><div class="cdot"></div><span id="ws-lbl">OFFLINE</span></div>
+    <div class="chip"><div class="cdot"></div><span id="runner-lbl">LOCAL —</span></div>
+    <div class="chip"><div class="cdot"></div><span id="vram-lbl">GPU — MB</span></div>
+  </div>
+  <div class="tr">
+    <button class="hbtn assemble" id="btn-assemble">⚡ ASSEMBLE!</button>
+    <button class="hbtn danger"   id="btn-vram">⚡ FREE VRAM</button>
+  </div>
+</header>
+
+<!-- ── Main Scene ─── -->
+<main id="scene-area">
+  <div id="room-container">
+    <!-- Clean cyberpunk background -->
+    <div id="room-bg"></div>
+
+    <!-- ══════════════════════════════════════════════════════════
+         Interactive Name Labels — Cute Plush Animal Edition
+         ══════════════════════════════════════════════════════════ -->
+
+    <!-- 1. Accountant · Owl -->
+    <div class="agent-pin label-only" data-id="accountant" data-px="50" data-py="45" style="--px:50%;--py:45%;--ac:#eab308">
+      <div class="ap-bubble" id="bub-accountant">"帳目精確，容不下一絲沙礫。"</div>
+      <div class="ap-namecard" id="nc-accountant">
+        <span class="ap-status" id="st-accountant"></span>
+        <div class="ap-name">貓頭鷹 (Accountant)</div>
+        <div class="ap-role">會計總管</div>
+      </div>
+    </div>
+
+    <!-- 2. Finance · Lion -->
+    <div class="agent-pin label-only" data-id="finance" data-px="70" data-py="35" style="--px:70%;--py:35%;--ac:#f59e0b">
+      <div class="ap-bubble" id="bub-finance">"資金的安全，由我守護。"</div>
+      <div class="ap-namecard" id="nc-finance">
+        <span class="ap-status" id="st-finance"></span>
+        <div class="ap-name">獅子 (Finance)</div>
+        <div class="ap-role">財務總管</div>
+      </div>
+    </div>
+
+    <!-- 3. Guardian · Bear -->
+    <div class="agent-pin label-only" data-id="guardian" data-px="30" data-py="65" style="--px:30%;--py:65%;--ac:#8b5cf6">
+      <div class="ap-bubble" id="bub-guardian">"防護盾已開啟，風險隔離中。"</div>
+      <div class="ap-namecard" id="nc-guardian">
+        <span class="ap-status" id="st-guardian"></span>
+        <div class="ap-name">棕熊 (Guardian)</div>
+        <div class="ap-role">法務保險</div>
+      </div>
+    </div>
+
+    <!-- 4. Lex · Fox -->
+    <div class="agent-pin label-only" data-id="lex" data-px="25" data-py="45" style="--px:25%;--py:45%;--ac:#38bdf8">
+      <div class="ap-bubble" id="bub-lex">"合約的漏洞逃不過我的眼睛。"</div>
+      <div class="ap-namecard" id="nc-lex">
+        <span class="ap-status" id="st-lex"></span>
+        <div class="ap-name">雪狐 (Lex)</div>
+        <div class="ap-role">合約專家</div>
+      </div>
+    </div>
+
+    <!-- 5. Scout · Shiba -->
+    <div class="agent-pin label-only" data-id="scout" data-px="60" data-py="60" style="--px:60%;--py:60%;--ac:#f97316">
+      <div class="ap-bubble" id="bub-scout">"汪！無人機滿電，準備起飛！"</div>
+      <div class="ap-namecard" id="nc-scout">
+        <span class="ap-status" id="st-scout"></span>
+        <div class="ap-name">柴犬 (Scout)</div>
+        <div class="ap-role">無人機外勤</div>
+      </div>
+    </div>
+
+    <!-- 6. Zora · Sheep -->
+    <div class="agent-pin label-only" data-id="zora" data-px="40" data-py="55" style="--px:40%;--py:55%;--ac:#10b981">
+      <div class="ap-bubble" id="bub-zora">"每一份捐款都會化為溫暖的力量。"</div>
+      <div class="ap-namecard" id="nc-zora">
+        <span class="ap-status" id="st-zora"></span>
+        <div class="ap-name">綿羊 (Zora)</div>
+        <div class="ap-role">NGO 志工</div>
+      </div>
+    </div>
+
+    <!-- 7. Titan · Elephant -->
+    <div class="agent-pin label-only" data-id="titan" data-px="45" data-py="75" style="--px:45%;--py:75%;--ac:#64748b">
+      <div class="ap-bubble" id="bub-titan">"建築結構就像我的足跡一樣穩固。"</div>
+      <div class="ap-namecard" id="nc-titan">
+        <span class="ap-status" id="st-titan"></span>
+        <div class="ap-name">大象 (Titan)</div>
+        <div class="ap-role">BIM 建築</div>
+      </div>
+    </div>
+
+    <!-- 8. Lumi · Cat -->
+    <div class="agent-pin label-only" data-id="lumi" data-px="70" data-py="55" style="--px:70%;--py:55%;--ac:#ec4899">
+      <div class="ap-bubble" id="bub-lumi">"喵～ 美感與細節，是最重要的。"</div>
+      <div class="ap-namecard" id="nc-lumi">
+        <span class="ap-status" id="st-lumi"></span>
+        <div class="ap-name">波斯貓 (Lumi)</div>
+        <div class="ap-role">室內設計</div>
+      </div>
+    </div>
+
+    <!-- 9. Rusty · Raccoon -->
+    <div class="agent-pin label-only" data-id="rusty" data-px="20" data-py="55" style="--px:20%;--py:55%;--ac:#84cc16">
+      <div class="ap-bubble" id="bub-rusty">"每一塊建材的成本，我都在心裡算過了。"</div>
+      <div class="ap-namecard" id="nc-rusty">
+        <span class="ap-status" id="st-rusty"></span>
+        <div class="ap-name">浣熊 (Rusty)</div>
+        <div class="ap-role">估算工務</div>
+      </div>
+    </div>
+
+  </div><!-- /room-container -->
+</main>
+
+<!-- ── Right Chat Panel (ESC HQ 工作群聊) ─── -->
+<aside id="chat-panel">
+  <div class="cp-head">
+    <span class="cp-dot"></span>
+    <span class="cp-title">工作群聊</span>
+    <button class="cp-min" id="cp-min">−</button>
+  </div>
+  <div id="chat-feed"></div>
+  <div class="cp-input-wrap">
+    <span class="cp-input-prompt">&gt;</span>
+    <input type="text" id="chat-input" placeholder="輸入分析指令或任務..." autocomplete="off" />
+  </div>
+</aside>
+
+<!-- ── Agent Detail Panel ─── -->
+<aside id="agent-panel" class="hidden">
+  <button class="ap-close" id="ap-close">✕</button>
+  <div class="apd-head">
+    <img class="apd-img" id="apd-img" src="" alt="" />
+    <div>
+      <div class="apd-name" id="apd-name"></div>
+      <div class="apd-role" id="apd-role"></div>
+    </div>
+  </div>
+  <div class="apd-lore" id="apd-lore"></div>
+  <div class="apd-row">
+    <div class="apd-chip">
+      <div class="apd-dot" id="apd-dot"></div>
+      <span id="apd-stat"></span>
+    </div>
+    <div class="apd-chip">🤖 <span id="apd-model"></span></div>
+    <div class="apd-chip">📋 任務: <span id="apd-tasks">0</span></div>
+  </div>
+  <div class="apd-sec">超能力</div>
+  <div id="apd-caps"></div>
+  <div class="apd-sec">歷史通訊</div>
+  <div id="apd-chat"></div>
+</aside>
+
+<!-- ── Syslog ─── -->
+<footer id="syslog">
+  <div class="slh">
+    <div class="sldot"></div>
+    SYSTEM LOG
+    <span class="slc" id="evcount">0 events</span>
+  </div>
+  <div id="slstream"></div>
+</footer>
+
+<!-- ── Toasts ─── -->
+<div id="toasts"></div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

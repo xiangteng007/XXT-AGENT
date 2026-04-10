@@ -1,0 +1,381 @@
+/* OpenClaw HQ — ESC HQ Style (no Three.js) */
+@import url('https://fonts.googleapis.com/css2?family=Bangers&family=Share+Tech+Mono&family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap');
+
+:root {
+  --bg:#07070f; --panel:#0f0f1a; --card:#14141f;
+  --b:rgba(255,255,255,0.07);
+  --cyan:#00e5ff; --purple:#c56cff; --green:#39ffb0;
+  --yellow:#ffe14d; --red:#ff4444; --pink:#ff4db8;
+  --hi:#f0f0ff; --mid:#8888aa; --lo:#3a3a55;
+  --ui:'Google Sans','Noto Sans','Noto Sans TC',sans-serif; --mono:'Share Tech Mono',monospace; --comic:'Bangers',cursive;
+  --th:52px; --slh:90px; --chat-w:380px;
+}
+
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0 }
+html,body { width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--hi); font-family:var(--ui) }
+
+/* ── Loading ─────────────────────────────── */
+#loading-screen {
+  position:fixed; inset:0; z-index:999;
+  background:radial-gradient(ellipse at 50% 60%,#1a0a2e,#050510);
+  display:flex; align-items:center; justify-content:center;
+  transition:opacity .6s,visibility .6s
+}
+#loading-screen.done { opacity:0; visibility:hidden; pointer-events:none }
+.lc { text-align:center; width:320px }
+.ll { font-family:var(--comic); font-size:34px; letter-spacing:4px; color:var(--cyan); text-shadow:0 0 30px var(--cyan); margin-bottom:6px }
+.ls { font-family:var(--mono); font-size:10px; color:var(--mid); letter-spacing:2px; margin-bottom:20px }
+.lb-wrap { height:3px; background:rgba(255,255,255,.06); border-radius:2px; overflow:hidden; margin-bottom:10px }
+.lb { height:100%; width:0; background:linear-gradient(90deg,var(--cyan),var(--purple)); transition:width .4s; box-shadow:0 0 10px var(--cyan) }
+.lt { font-family:var(--mono); font-size:10px; color:var(--lo); letter-spacing:1px }
+
+/* ── Top Bar ─────────────────────────────── */
+#topbar {
+  position:fixed; top:0; left:0; right:0; z-index:30;
+  height:var(--th); display:flex; align-items:center;
+  justify-content:space-between; padding:0 20px;
+  background:rgba(7,7,15,.95); border-bottom:1px solid var(--b);
+  -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px)
+}
+.tl { display:flex; align-items:center; gap:10px }
+.logo-icon { color:var(--cyan); font-size:18px }
+.logo-text { font-family:var(--comic); font-size:20px; letter-spacing:3px }
+.marvel-tag { font-family:var(--mono); font-size:9px; color:var(--purple); border:1px solid rgba(197,108,255,.3); padding:2px 8px; border-radius:20px; letter-spacing:2px }
+.tc { display:flex; gap:8px }
+.chip { display:flex; align-items:center; gap:5px; padding:4px 10px; background:rgba(255,255,255,.03); border:1px solid var(--b); border-radius:20px; font-family:var(--mono); font-size:10px; color:var(--mid); letter-spacing:1px }
+.cdot { width:6px; height:6px; border-radius:50%; background:var(--lo); flex-shrink:0 }
+.chip.conn { border-color:rgba(57,255,176,.3); color:var(--green) }
+.chip.conn .cdot { background:var(--green); box-shadow:0 0 6px var(--green); animation:pd 2s ease-in-out infinite }
+.chip.link { border-color:rgba(255,225,77,.3); color:var(--yellow) }
+.chip.link .cdot { background:var(--yellow); animation:bd .8s step-end infinite }
+@keyframes pd { 0%,100%{opacity:1}50%{opacity:.3} }
+@keyframes bd { 50%{opacity:0} }
+.tr { display:flex; gap:8px }
+.hbtn { padding:6px 14px; background:transparent; border:1px solid rgba(0,229,255,.4); border-radius:6px; color:var(--cyan); font-family:var(--mono); font-size:11px; cursor:pointer; transition:all .15s; letter-spacing:1px }
+.hbtn:hover { background:rgba(0,229,255,.1); box-shadow:0 0 12px rgba(0,229,255,.25) }
+.hbtn.assemble { border-color:rgba(57,255,176,.5); color:var(--green) }
+.hbtn.assemble:hover { background:rgba(57,255,176,.1); box-shadow:0 0 14px rgba(57,255,176,.3) }
+.hbtn.danger { border-color:rgba(255,68,68,.4); color:var(--red) }
+.hbtn.danger:hover { background:rgba(255,68,68,.1) }
+
+/* ── Scene Area ──────────────────────────── */
+#scene-area {
+  position:fixed;
+  top:var(--th); left:0; right:0; bottom:var(--slh);
+  overflow:hidden
+}
+
+/* Room container: fills scene area */
+#room-container {
+  position:relative; width:100%; height:100%;
+}
+
+/* Clean cyberpunk background */
+#room-bg {
+  position:absolute; inset:0;
+  background:url('/src/assets/bg-hq-wide.png') center/cover no-repeat;
+  filter:brightness(0.95) saturate(1.1)
+}
+
+/* ── Interactive Name Labels ───────────────────────────────
+   Anchors are precisely placed over the beautifully baked 3D characters.
+   Layout: bubble (chat) → namecard, stacked upward from anchor. */
+
+.agent-pin {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none; /* Let hover pass through */
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  z-index: -1; /* Behind the name label */
+}
+.agent-pin:hover::before,
+.agent-pin.selected::before {
+  opacity: 1;
+  width: 130px;  /* Expands on hover like a scanning reticle */
+  height: 150px;
+  animation: scanPulse 2s infinite;
+}
+@keyframes scanPulse {
+  0%,100% { border-color: color-mix(in srgb, var(--ac) 50%, transparent); box-shadow: 0 0 10px color-mix(in srgb, var(--ac) 30%, transparent) inset; }
+  50% { border-color: color-mix(in srgb, var(--ac) 90%, transparent); box-shadow: 0 0 30px color-mix(in srgb, var(--ac) 50%, transparent) inset; }
+}
+
+/* Connector line from namecard down to char's head */
+.agent-pin::after {
+  content:'';
+  display:block;
+  width:1.5px;
+  height:10px;
+  background:linear-gradient(to bottom, var(--ac,#00e5ff), transparent);
+  opacity:.7;
+  flex-shrink:0
+}
+
+/* Bubble (active speech) */
+.ap-bubble {
+  background:rgba(15,15,28,.96);
+  border:1.5px solid var(--ac,#00e5ff);
+  border-radius:8px 8px 8px 3px;
+  padding:5px 10px;
+  font-size:11px;
+  color:var(--hi);
+  max-width:200px;
+  white-space:nowrap;
+  margin-bottom:3px;
+  pointer-events:none;
+  box-shadow:0 4px 20px rgba(0,0,0,.5), 0 0 10px rgba(0,229,255,.2);
+  
+  /* Hover feedback transition */
+  opacity:0;
+  transform:translateY(8px);
+  transition:all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.ap-bubble.vis, .agent-pin:hover .ap-bubble {
+  opacity:1;
+  transform:translateY(0);
+}
+
+/* Name card - Mini State by Default */
+.ap-namecard {
+  background:rgba(7,7,15,.70);
+  border:1px solid rgba(255,255,255,.10);
+  border-bottom:2px solid color-mix(in srgb, var(--ac,#00e5ff) 50%, transparent);
+  border-radius:20px; /* Round for mini state */
+  padding:4px;        /* Tiny padding */
+  text-align:center;
+  white-space:nowrap;
+  -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+  transition:all .3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width: 23px;
+  height: 23px;
+  overflow: hidden;
+}
+
+/* Expanded state on Hover */
+.agent-pin:hover .ap-namecard,
+.agent-pin.selected .ap-namecard {
+  background:rgba(7,7,15,.95);
+  border-bottom-color:var(--ac,#00e5ff);
+  border-radius:7px;
+  padding:5px 12px 6px;
+  flex-direction:column;
+  width: min-content;
+  height: auto;
+  min-width: 150px;
+  box-shadow:0 0 14px color-mix(in srgb,var(--ac,#00e5ff) 60%,transparent),
+             0 4px 20px rgba(0,0,0,.5);
+  -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px);
+}
+
+/* Status indicator */
+.ap-status {
+  display:inline-block; width:7px; height:7px;
+  border-radius:50%; background:var(--lo);
+  margin:0; /* Centered in mini state */
+  transition: margin .3s;
+}
+
+.agent-pin:hover .ap-status,
+.agent-pin.selected .ap-status {
+  margin-right:0px;
+  margin-bottom:3px;
+}
+
+
+.ap-status.working  { background:var(--cyan);   box-shadow:0 0 6px var(--cyan);   animation:pd 1s ease-in-out infinite }
+.ap-status.talking  { background:var(--green);  box-shadow:0 0 6px var(--green);  animation:pd .5s ease-in-out infinite }
+.ap-status.thinking { background:var(--purple); box-shadow:0 0 6px var(--purple); animation:pd 1.5s ease-in-out infinite }
+.ap-status.offline  { background:var(--red) }
+
+/* Content visibility toggle */
+.ap-name, .ap-role {
+  max-height:0;
+  max-width:0;
+  opacity:0;
+  overflow:hidden;
+  transition:all .2s ease-out;
+}
+
+.agent-pin:hover .ap-name,
+.agent-pin.selected .ap-name {
+  max-height:20px;
+  max-width:150px;
+  opacity:1;
+  font-family:var(--comic); font-size:14px; letter-spacing:1.5px; color:var(--hi);
+}
+
+.agent-pin:hover .ap-role,
+.agent-pin.selected .ap-role {
+  max-height:15px;
+  max-width:150px;
+  opacity:1;
+  font-family:var(--mono); font-size:9px; color:var(--mid); letter-spacing:1px;
+}
+
+/* Extra status details row injected on hover */
+.ap-details {
+  max-height:0;
+  opacity:0;
+  overflow:hidden;
+  font-family:var(--mono);
+  font-size:9px;
+  color:var(--mid);
+  text-align:left;
+  border-top:1px solid rgba(255,255,255,0.1);
+  margin-top:0;
+  padding-top:0;
+  transition:all 0.3s ease-out;
+  width:100%;
+}
+.agent-pin:hover .ap-details,
+.agent-pin.selected .ap-details {
+  max-height:80px;
+  opacity:1;
+  margin-top:5px;
+  padding-top:5px;
+}
+.apd-row { display:flex; justify-content:space-between; margin-bottom:2px; letter-spacing:0.5px; }
+.v-green { color:var(--green); text-shadow:0 0 5px var(--green); }
+.v-cyan { color:var(--cyan); text-shadow:0 0 5px var(--cyan); }
+.v-purple { color:var(--purple); text-shadow:0 0 5px var(--purple); }
+
+/* Status ring highlight — pulse on namecard when active */
+.agent-pin.working .ap-namecard  { animation:pinPulse 2s ease-in-out infinite }
+.agent-pin.talking .ap-namecard  { animation:pinPulse .8s ease-in-out infinite }
+@keyframes pinPulse {
+  0%,100%{ box-shadow:0 0 8px color-mix(in srgb,var(--ac,#00e5ff) 30%,transparent) }
+  50%    { box-shadow:0 0 20px color-mix(in srgb,var(--ac,#00e5ff) 60%,transparent), 0 4px 20px rgba(0,0,0,.5) }
+}
+
+
+/* ── Right Chat Panel (ESC HQ 工作群聊) ─── */
+#chat-panel {
+  position:fixed;
+  bottom:calc(var(--slh) + 12px);
+  right:16px;
+  width:var(--chat-w);
+  z-index:20;
+  background:rgba(14,14,24,.96);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;
+  overflow:hidden;
+  -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px);
+  box-shadow:0 8px 32px rgba(0,0,0,.5);
+  transition:width .3s, transform .3s
+}
+/* Fold mode: hide input, show only last message */
+#chat-panel.minimised .cp-input-wrap { display: none; }
+#chat-panel.minimised #chat-feed { padding: 0; }
+#chat-panel.minimised .cf-msg:not(:last-child) { display: none; }
+#chat-panel.minimised .cf-msg:last-child { border-bottom: none; padding: 10px 14px; }
+.cp-head {
+  display:flex; align-items:center; gap:8px;
+  padding:10px 14px;
+  background:rgba(255,255,255,.03);
+  border-bottom:1px solid var(--b)
+}
+.cp-dot {
+  width:7px; height:7px; border-radius:50%; background:var(--green);
+  box-shadow:0 0 6px var(--green); animation:pd 2s ease-in-out infinite; flex-shrink:0
+}
+.cp-title { font-family:var(--comic); font-size:14px; letter-spacing:1px; flex:1 }
+.cp-min { background:none; border:none; color:var(--lo); font-size:16px; cursor:pointer; width:20px; padding:0; transition:color .15s }
+.cp-min:hover { color:var(--hi) }
+#chat-feed {
+  max-height:400px; overflow-y:auto; padding:8px 0;
+  scrollbar-width:thin; scrollbar-color:var(--lo) transparent;
+  display: flex; flex-direction: column;
+}
+.cf-msg {
+  padding:12px 14px;
+  border-bottom:1px solid var(--b);
+  animation:si .2s ease
+}
+.cf-msg:last-child { border-bottom:none }
+.cf-who { font-family:var(--comic); font-size:13px; color:var(--hi); letter-spacing:.5px }
+.cf-tag { font-family:var(--mono); font-size:10px; color:var(--mid); margin-left:6px }
+.cf-text { font-size:14px; color:var(--hi); margin-top:6px; line-height:1.6 }
+
+/* ── Agent Detail Panel (slide in from right) */
+#agent-panel {
+  position:fixed;
+  top:var(--th); right:0; bottom:var(--slh);
+  width:300px; z-index:25;
+  background:var(--panel);
+  border-left:1px solid var(--b);
+  display:flex; flex-direction:column;
+  transform:translateX(0);
+  transition:transform .3s cubic-bezier(.4,0,.2,1)
+}
+#agent-panel.hidden { transform:translateX(100%) }
+.ap-close {
+  position:absolute; top:12px; right:14px;
+  background:none; border:none; color:var(--lo); font-size:16px;
+  cursor:pointer; transition:color .15s
+}
+.ap-close:hover { color:var(--hi) }
+.apd-head {
+  display:flex; gap:12px; align-items:center;
+  padding:16px 14px; background:var(--card); border-bottom:1px solid var(--b)
+}
+.apd-img {
+  width:90px; height:90px;
+  object-fit:contain; object-position:bottom;
+  flex-shrink:0;
+  filter:drop-shadow(0 4px 12px rgba(0,0,0,.6))
+}
+.apd-name { font-family:var(--comic); font-size:22px; letter-spacing:1px }
+.apd-role { font-family:var(--mono); font-size:10px; color:var(--mid); letter-spacing:1px; margin-top:3px }
+.apd-lore { font-size:11px; color:var(--mid); padding:10px 14px; line-height:1.6; border-bottom:1px solid var(--b); font-style:italic }
+.apd-row { display:flex; flex-wrap:wrap; gap:6px; padding:10px 14px; border-bottom:1px solid var(--b) }
+.apd-chip { display:flex; align-items:center; gap:5px; padding:3px 10px; background:rgba(255,255,255,.04); border:1px solid var(--b); border-radius:20px; font-family:var(--mono); font-size:10px }
+.apd-dot { width:7px; height:7px; border-radius:50%; background:var(--lo) }
+.apd-dot.working  { background:var(--cyan);   box-shadow:0 0 5px var(--cyan);   animation:pd 1s ease-in-out infinite }
+.apd-dot.talking  { background:var(--green);  box-shadow:0 0 5px var(--green);  animation:pd .5s ease-in-out infinite }
+.apd-dot.thinking { background:var(--purple); box-shadow:0 0 5px var(--purple); animation:pd 1.5s ease-in-out infinite }
+.apd-dot.offline  { background:var(--red) }
+.apd-sec { padding:8px 14px 4px; font-family:var(--mono); font-size:9px; color:var(--lo); letter-spacing:2px; text-transform:uppercase; border-top:1px solid var(--b) }
+#apd-caps { display:flex; flex-wrap:wrap; gap:5px; padding:4px 14px 8px }
+.ctag { padding:3px 8px; background:rgba(255,255,255,.04); border:1px solid var(--b); border-radius:20px; font-family:var(--mono); font-size:9px; color:var(--mid) }
+#apd-chat { flex:1; overflow-y:auto; padding:4px 14px; display:flex; flex-direction:column; gap:4px; scrollbar-width:thin; max-height:200px }
+.cmsg { background:rgba(255,255,255,.03); border:1px solid var(--b); border-radius:7px; padding:7px 9px; font-size:11px; color:var(--hi); line-height:1.5; animation:si .2s ease }
+.cmsg-who { font-family:var(--comic); font-size:12px }
+.cmsg-t { font-family:var(--mono); font-size:9px; color:var(--lo); margin-left:6px }
+
+/* ── Syslog ──────────────────────────────── */
+#syslog {
+  position:fixed; bottom:0; left:0; right:0;
+  z-index:15; height:var(--slh);
+  background:rgba(7,7,15,.94); border-top:1px solid var(--b);
+  display:flex; flex-direction:column;
+  -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px)
+}
+.slh { display:flex; align-items:center; gap:8px; padding:4px 16px; font-family:var(--mono); font-size:10px; color:var(--lo); letter-spacing:2px; border-bottom:1px solid var(--b); flex-shrink:0 }
+.sldot { width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 5px var(--green); animation:pd 2s ease-in-out infinite }
+.slc { margin-left:auto }
+#slstream { flex:1; overflow-y:auto; padding:3px 16px; display:flex; flex-direction:column; gap:1px; scrollbar-width:thin }
+.sl { font-family:var(--mono); font-size:11px; color:var(--lo); display:flex; gap:8px; line-height:1.6 }
+.sl-t { flex-shrink:0 }
+.sl.ok .sl-m  { color:var(--green) }
+.sl.warn .sl-m { color:var(--yellow) }
+.sl.err .sl-m  { color:var(--red) }
+.sl.info .sl-m { color:var(--mid) }
+
+/* ── Toasts ──────────────────────────────── */
+#toasts { position:fixed; top:70px; right:20px; z-index:200; display:flex; flex-direction:column; gap:8px; pointer-events:none }
+.toast { padding:10px 14px; background:rgba(14,14,24,.96); border:1px solid var(--b); border-left:3px solid var(--cyan); border-radius:8px; font-size:12px; color:var(--hi); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px); animation:si .2s, to .3s 4.5s forwards; max-width:280px }
+.toast.warn { border-left-color:var(--yellow) }
+.toast.err  { border-left-color:var(--red) }
+
+@keyframes si { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none} }
+@keyframes to { from{opacity:1} to{opacity:0;transform:translateX(20px)} }
+
+/* ── Chat Input ─── */
+.cp-input-wrap { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: rgba(0,0,0,0.6); border-top: 1px solid var(--b); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); margin-top: auto; flex-shrink: 0; }
+.cp-input-prompt { color: var(--green); font-family: var(--mono); font-weight: bold; font-size: 16px; animation: si 1s infinite alternate; }
+#chat-input { flex: 1; background: transparent; border: none; outline: none; color: var(--hi); font-family: var(--ui); font-size: 14px; letter-spacing: 0.5px; width: 100%; }
+#chat-input::placeholder { color: var(--lo); font-style: italic; }

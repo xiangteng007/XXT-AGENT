@@ -1,0 +1,24 @@
+# Regulation RAG Service — docker-compose（可選，純本地 Python 也可直接跑）
+# 若偏好 Docker 環境，執行：docker compose up -d
+
+services:
+  regulation-rag:
+    build: .
+    container_name: xxt-regulation-rag
+    ports:
+      - "8092:8092"
+    volumes:
+      - ./data:/app/data          # 法規文件 + Chroma DB 持久化
+    environment:
+      - CHROMA_PATH=/app/data/chroma_db
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434  # 連接主機 Ollama
+      - EMBED_MODEL=nomic-embed-text
+      - PORT=8092
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8092/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

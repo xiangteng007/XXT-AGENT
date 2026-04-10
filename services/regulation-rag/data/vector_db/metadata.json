@@ -1,0 +1,342 @@
+[
+  {
+    "id": "44865b68f003bd2a",
+    "content": "第二條\n本規則用語定義如左：\n一、基地：建造任何建築物所使用土地之全部面積。\n二、建蔽率：建築面積佔基地面積之比率。\n三、容積率：建築物各層樓地板面積之和除以基地面積之比率。\n四、建築面積：建築物外牆中心線或其代替柱中心線以內之最大水平投影面積。\n五、樓地板面積：各層樓地板或其代替物表面以內之水平投影面積。\n六、觀眾席樓地板面積：觀眾席位所佔之樓地板面積，包括走道之面積。\n七、無遮簷人行道：用供人行走，上無遮蔽物之道路。\n八、幢：建築物地面層以上，屋頂所覆蓋，外牆或其代替柱中心線以內之空間，每一獨立空間稱為一幢。\n九、棟：以防火牆或防火時效1小時以上之牆壁區劃者，每一獨立之空間稱為一棟。\n十、地下層：地板面在基地地面以下之樓層。",
+    "source": "建築法規 第二條",
+    "source_doc": "建築技術規則_種子資料.txt",
+    "category": "building",
+    "knowledge_date": "2024-07-01",
+    "article_number": "第二條",
+    "file_path": "data\\building-code\\建築技術規則_種子資料.txt"
+  },
+  {
+    "id": "19e4342fb8910692",
+    "content": "第九條（建蔽率）\n建築物之建蔽率，不得超過都市計畫法令或非都市土地使用管制規則之規定。\n住宅區建蔽率不得超過百分之六十。\n商業區建蔽率不得超過百分之八十。\n工業區建蔽率不得超過百分之七十。",
+    "source": "建築法規 第九條",
+    "source_doc": "建築技術規則_種子資料.txt",
+    "category": "building",
+    "knowledge_date": "2024-07-01",
+    "article_number": "第九條",
+    "file_path": "data\\building-code\\建築技術規則_種子資料.txt"
+  },
+  {
+    "id": "f4557bccff4e9fcd",
+    "content": "第十條（容積率）\n建築物之容積率，不得超過都市計畫法令或非都市土地使用管制規則之規定。\n住宅區容積率不得超過百分之二百。\n商業區容積率不得超過百分之六百。",
+    "source": "建築法規 第十條",
+    "source_doc": "建築技術規則_種子資料.txt",
+    "category": "building",
+    "knowledge_date": "2024-07-01",
+    "article_number": "第十條",
+    "file_path": "data\\building-code\\建築技術規則_種子資料.txt"
+  },
+  {
+    "id": "51c544b568aff0b9",
+    "content": "第十二條（基地安全）\n建築物基地應選擇安全之地點建築，在地震、洪水、土石流、山崩、海嘯等天然災害之危險地區，不得建築。",
+    "source": "建築法規 第十二條",
+    "source_doc": "建築技術規則_種子資料.txt",
+    "category": "building",
+    "knowledge_date": "2024-07-01",
+    "article_number": "第十二條",
+    "file_path": "data\\building-code\\建築技術規則_種子資料.txt"
+  },
+  {
+    "id": "041f661e5429283e",
+    "content": "第十七條（建築物高度）\n建築物高度不超過三十六公尺、十二樓層，且供住宅使用之建築物，其高度及各期構造需依規定辦理。",
+    "source": "建築法規 第十七條",
+    "source_doc": "建築技術規則_種子資料.txt",
+    "category": "building",
+    "knowledge_date": "2024-07-01",
+    "article_number": "第十七條",
+    "file_path": "data\\building-code\\建築技術規則_種子資料.txt"
+  },
+  {
+    "id": "18f04f2049ef754a",
+    "content": "第二十三條（停車空間）\n建築物應依下列規定，附設停車空間：\n一、住宅：每戶停車位不得少於1車位，建築基地面積超過1000平方公尺者，每增加100平方公尺應加設一停車位。\n二、商業用途：每100平方公尺樓地板面積至少設置1.5車位。\n三、辦公用途：每100平方公尺樓地板面積至少設置0.3車位。\n每一停車位之規格，不得小於長六公尺、寬二點五公尺、高二公尺。",
+    "source": "建築法規 第二十三條",
+    "source_doc": "建築技術規則_種子資料.txt",
+    "category": "building",
+    "knowledge_date": "2024-07-01",
+    "article_number": "第二十三條",
+    "file_path": "data\\building-code\\建築技術規則_種子資料.txt"
+  },
+  {
+    "id": "1545b3fe85174ca0",
+    "content": "第二十六條（無障礙設施）\n新建或改建建築物，應依無障礙設施設計規範，設置殘障坡道及其他無障礙設施。\n需設置無障礙廁所之建築物：\n一、六層以上建築物\n二、供公眾使用之建築物\n三、總樓地板面積超過500平方公尺者",
+    "source": "建築法規 第二十六條",
+    "source_doc": "建築技術規則_種子資料.txt",
+    "category": "building",
+    "knowledge_date": "2024-07-01",
+    "article_number": "第二十六條",
+    "file_path": "data\\building-code\\建築技術規則_種子資料.txt"
+  },
+  {
+    "id": "30b9b0af169ac7fc",
+    "content": "第五十二條（採光通風）\n居室之採光面積，不得小於樓地板面積八分之一。\n居室之通風開口，不得小於樓地板面積三十二分之一。\n廚房之採光及通風開口面積，不得小於各該室樓地板面積六分之一。",
+    "source": "建築法規 第五十二條",
+    "source_doc": "建築技術規則_種子資料.txt",
+    "category": "building",
+    "knowledge_date": "2024-07-01",
+    "article_number": "第五十二條",
+    "file_path": "data\\building-code\\建築技術規則_種子資料.txt"
+  },
+  {
+    "id": "ab40e54bb6fa2d59",
+    "content": "第五十八條（防火區劃）\n建築物若干樓層（依建築物用途、樓層數及樓地板面積）應設置防火區劃：\n一、建築物之防火區劃面積，每一區劃面積不得超過1500平方公尺。但符合規定者，得放寬至6000平方公尺。\n二、每一防火區劃應以防火牆、防火樓板及防火門區劃之。\n三、防火牆之耐火時效不得少於一小時。",
+    "source": "建築法規 第五十八條",
+    "source_doc": "建築技術規則_種子資料.txt",
+    "category": "building",
+    "knowledge_date": "2024-07-01",
+    "article_number": "第五十八條",
+    "file_path": "data\\building-code\\建築技術規則_種子資料.txt"
+  },
+  {
+    "id": "1e46f74aab6cdc59",
+    "content": "第七十三條（高度限制）\n基地境界線（不含建築線）以外之空地，不得建築建築物，但下列情形不在此限：\n一、得依規定設置圍牆。\n二、地下室使用，惟不得突出地面以上一公尺以上。",
+    "source": "建築法規 第七十三條",
+    "source_doc": "建築技術規則_種子資料.txt",
+    "category": "building",
+    "knowledge_date": "2024-07-01",
+    "article_number": "第七十三條",
+    "file_path": "data\\building-code\\建築技術規則_種子資料.txt"
+  },
+  {
+    "id": "7c2a655a32adf355",
+    "content": "第八十三條（防空避難室）\n供防空避難設施使用之地下室，其構造應符合內政部所定之防空疏散暨避難圖說設計規定。",
+    "source": "建築法規 第八十三條",
+    "source_doc": "建築技術規則_種子資料.txt",
+    "category": "building",
+    "knowledge_date": "2024-07-01",
+    "article_number": "第八十三條",
+    "file_path": "data\\building-code\\建築技術規則_種子資料.txt"
+  },
+  {
+    "id": "2931af27e7ff1924",
+    "content": "第九十一條（廢污水處理）\n廢污水之排水設施，不得排入雨水管道，應依環保規定另設置廢污水處理系統，並向相關主管機關申報核准後始得使用。",
+    "source": "建築法規 第九十一條",
+    "source_doc": "建築技術規則_種子資料.txt",
+    "category": "building",
+    "knowledge_date": "2024-07-01",
+    "article_number": "第九十一條",
+    "file_path": "data\\building-code\\建築技術規則_種子資料.txt"
+  },
+  {
+    "id": "e5f896d7c9adfcc7",
+    "content": "第九十四條（地下室）\n地下室各部分之地板面與地面距離不得大於三公尺。\n地下室應設置有效之防滲水、排水設施。",
+    "source": "建築法規 第九十四條",
+    "source_doc": "建築技術規則_種子資料.txt",
+    "category": "building",
+    "knowledge_date": "2024-07-01",
+    "article_number": "第九十四條",
+    "file_path": "data\\building-code\\建築技術規則_種子資料.txt"
+  },
+  {
+    "id": "b9875c74d4f8fba7",
+    "content": "第九十九條（建築材料)\n建築材料除另有規定外，應符合中華民國國家標準（CNS）之規定，尚未訂定國家標準者，應依技術法規規定辦理。",
+    "source": "建築法規 第九十九條",
+    "source_doc": "建築技術規則_種子資料.txt",
+    "category": "building",
+    "knowledge_date": "2024-07-01",
+    "article_number": "第九十九條",
+    "file_path": "data\\building-code\\建築技術規則_種子資料.txt"
+  },
+  {
+    "id": "32e46fe9c2dd4be1",
+    "content": "第一條\n為預防火災、搶救災難及緊急救護，以維護公共安全，確保人民生命財產，特制定本法。",
+    "source": "消防法規 第一條",
+    "source_doc": "消防法_種子資料.txt",
+    "category": "fire",
+    "knowledge_date": "2024-01-01",
+    "article_number": "第一條",
+    "file_path": "data\\fire-safety\\消防法_種子資料.txt"
+  },
+  {
+    "id": "11368c66e35f736f",
+    "content": "第六條\n下列場所應設置消防安全設備：\n一、供公眾使用建築物\n二、非供公眾使用之建築物，但達一定規模者",
+    "source": "消防法規 第六條",
+    "source_doc": "消防法_種子資料.txt",
+    "category": "fire",
+    "knowledge_date": "2024-01-01",
+    "article_number": "第六條",
+    "file_path": "data\\fire-safety\\消防法_種子資料.txt"
+  },
+  {
+    "id": "9c1d12f76a9bda05",
+    "content": "第七條（消防安全設備設置基準）\n消防安全設備之種類及設置，依各類場所消防安全設備設置標準辦理。\n主要設備類型：\n一、滅火設備：滅火器、室內消防栓、自動撒水、二氧化碳滅火、泡沫滅火設備\n二、警報設備：火警自動警報、手動報警、緊急廣播、瓦斯漏氣火警\n三、避難逃生設備：出口標示燈、避難方向指示燈、避難器具、緊急照明\n四、消防搶救上必要設備：消防專用蓄水池、連結送水管、緊急電源插座",
+    "source": "消防法規 第七條",
+    "source_doc": "消防法_種子資料.txt",
+    "category": "fire",
+    "knowledge_date": "2024-01-01",
+    "article_number": "第七條",
+    "file_path": "data\\fire-safety\\消防法_種子資料.txt"
+  },
+  {
+    "id": "34d2512966db8f31",
+    "content": "第十一條（消防演練）\n一定規模以上之供公眾使用建築物，應定期辦理滅火、通報、避難演練。\n演練頻率：\n一、第一類場所（甲類）：每半年至少辦理一次\n二、第二類場所（乙類）：每年至少辦理一次",
+    "source": "消防法規 第十一條",
+    "source_doc": "消防法_種子資料.txt",
+    "category": "fire",
+    "knowledge_date": "2024-01-01",
+    "article_number": "第十一條",
+    "file_path": "data\\fire-safety\\消防法_種子資料.txt"
+  },
+  {
+    "id": "860c847b1937781a",
+    "content": "第十三條（防火管理）\n一定規模以上之場所，應設防火管理人，責其製訂消防防護計畫，並依計畫實施自衛消防活動。\n防火管理人應具備：\n一、取得消防設備師或消防設備士資格，或\n二、接受內政部消防署認可機關辦理之防火管理人講習訓練合格",
+    "source": "消防法規 第十三條",
+    "source_doc": "消防法_種子資料.txt",
+    "category": "fire",
+    "knowledge_date": "2024-01-01",
+    "article_number": "第十三條",
+    "file_path": "data\\fire-safety\\消防法_種子資料.txt"
+  },
+  {
+    "id": "fab6fa54b4388ed8",
+    "content": "CNS 560 鋼筋混凝土用鋼筋（節錄）\n版本：2023年12月\n來源：中華民國國家標準（CNS）",
+    "source": "CNS 國家標準",
+    "source_doc": "CNS_鋼筋水泥_種子資料.txt",
+    "category": "cns",
+    "knowledge_date": "2023-12-01",
+    "article_number": "",
+    "file_path": "data\\cns-standards\\CNS_鋼筋水泥_種子資料.txt"
+  },
+  {
+    "id": "f2303a5ed71763fc",
+    "content": "一、適用範圍\n本標準適用於鋼筋混凝土結構用之熱軋帶肋鋼筋（即竹節鋼筋），包括：\nSD280（SD28）、SD420（SD42）、SD490（SD49）、SD550等強度等級。",
+    "source": "CNS 國家標準",
+    "source_doc": "CNS_鋼筋水泥_種子資料.txt",
+    "category": "cns",
+    "knowledge_date": "2023-12-01",
+    "article_number": "",
+    "file_path": "data\\cns-standards\\CNS_鋼筋水泥_種子資料.txt"
+  },
+  {
+    "id": "d224f9b9242df344",
+    "content": "二、化學成分\n不同強度等級鋼筋之碳含量、矽含量等化學成分需符合規定，\nSD280 含碳量 ≤ 0.35%，含錳量 ≤ 1.35%。\nSD420 含碳量 ≤ 0.35%，含錳量 ≤ 1.50%。",
+    "source": "CNS 國家標準",
+    "source_doc": "CNS_鋼筋水泥_種子資料.txt",
+    "category": "cns",
+    "knowledge_date": "2023-12-01",
+    "article_number": "",
+    "file_path": "data\\cns-standards\\CNS_鋼筋水泥_種子資料.txt"
+  },
+  {
+    "id": "f7f8b14e32df6b00",
+    "content": "三、機械性質\nSD280：降伏強度 ≥ 280 MPa，抗拉強度 ≥ 420 MPa，伸長率 ≥ 14%\nSD420：降伏強度 ≥ 420 MPa，抗拉強度 ≥ 560 MPa，伸長率 ≥ 12%\nSD490：降伏強度 ≥ 490 MPa，抗拉強度 ≥ 620 MPa，伸長率 ≥ 10%",
+    "source": "CNS 國家標準",
+    "source_doc": "CNS_鋼筋水泥_種子資料.txt",
+    "category": "cns",
+    "knowledge_date": "2023-12-01",
+    "article_number": "",
+    "file_path": "data\\cns-standards\\CNS_鋼筋水泥_種子資料.txt"
+  },
+  {
+    "id": "1402dcbbca7503d8",
+    "content": "四、尺寸規格\nD10（標稱直徑 9.53mm，重量 0.560 kg/m）\nD13（標稱直徑 12.7mm，重量 0.994 kg/m）\nD16（標稱直徑 15.9mm，重量 1.578 kg/m）\nD19（標稱直徑 19.1mm，重量 2.245 kg/m）\nD22（標稱直徑 22.2mm，重量 3.042 kg/m）\nD25（標稱直徑 25.4mm，重量 3.973 kg/m）\nD29（標稱直徑 28.7mm，重量 5.076 kg/m）\nD32（標稱直徑 31.8mm，重量 6.313 kg/m）",
+    "source": "CNS 國家標準",
+    "source_doc": "CNS_鋼筋水泥_種子資料.txt",
+    "category": "cns",
+    "knowledge_date": "2023-12-01",
+    "article_number": "",
+    "file_path": "data\\cns-standards\\CNS_鋼筋水泥_種子資料.txt"
+  },
+  {
+    "id": "df608a85e509177b",
+    "content": "五、建議使用\n一般結構主筋：SD420\n箍筋/肋筋：SD280 或 SD420\n耐震結構：建議 SD490 or 以上，SD280 minimum",
+    "source": "CNS 國家標準",
+    "source_doc": "CNS_鋼筋水泥_種子資料.txt",
+    "category": "cns",
+    "knowledge_date": "2023-12-01",
+    "article_number": "",
+    "file_path": "data\\cns-standards\\CNS_鋼筋水泥_種子資料.txt"
+  },
+  {
+    "id": "016943b79c3f769a",
+    "content": "CNS 61 卜特蘭水泥（節錄）\n版本：2023年12月\n適用：一般建築用普通卜特蘭水泥（Type I）之物理及化學性質要求",
+    "source": "CNS 國家標準",
+    "source_doc": "CNS_鋼筋水泥_種子資料.txt",
+    "category": "cns",
+    "knowledge_date": "2023-12-01",
+    "article_number": "",
+    "file_path": "data\\cns-standards\\CNS_鋼筋水泥_種子資料.txt"
+  },
+  {
+    "id": "cb59fa0298c9fb4b",
+    "content": "一、種類\nType I（普通用）：一般建築工程\nType II（中度耐硫酸鹽）：地下工程、海水接觸\nType III（高早強）：緊急修補、冬季施工",
+    "source": "CNS 國家標準",
+    "source_doc": "CNS_鋼筋水泥_種子資料.txt",
+    "category": "cns",
+    "knowledge_date": "2023-12-01",
+    "article_number": "",
+    "file_path": "data\\cns-standards\\CNS_鋼筋水泥_種子資料.txt"
+  },
+  {
+    "id": "5c36a455fa0932a9",
+    "content": "二、物理性質\n細度（比表面積）：≥ 2800 cm²/g\n初凝時間：≥ 45 分鐘\n終凝時間：≤ 10 小時\n28天抗壓強度（Type I）：≥ 28 MPa",
+    "source": "CNS 國家標準",
+    "source_doc": "CNS_鋼筋水泥_種子資料.txt",
+    "category": "cns",
+    "knowledge_date": "2023-12-01",
+    "article_number": "",
+    "file_path": "data\\cns-standards\\CNS_鋼筋水泥_種子資料.txt"
+  },
+  {
+    "id": "a7f3bcb478a16a70",
+    "content": "第七條（開立時限）\n營業人銷售貨物或勞務，應於日後開立統一發票。\n一般銷售：於銷售時開立，但月結發票得於次月15日前開立。\n收款時限：收款後無法當場開立者，得於次日開立。",
+    "source": "稅務法規 第七條",
+    "source_doc": "統一發票使用辦法_種子資料.txt",
+    "category": "tax",
+    "knowledge_date": "2024-01-01",
+    "article_number": "第七條",
+    "file_path": "data\\tax\\統一發票使用辦法_種子資料.txt"
+  },
+  {
+    "id": "ed06d94760bc0381",
+    "content": "第十條（申報期限）\n使用統一發票之營業人，應依左列規定申報銷售額及統一發票明細：\n一、按月申報者：每二月為一期（1-2月、3-4月...），於次期開始後15日內申報。\n二、按季申報者：申報截止日為次期開始後15日。\n申報期限遇例假日順延：如截止日為假日，順延至次個工作日。",
+    "source": "稅務法規 第十條",
+    "source_doc": "統一發票使用辦法_種子資料.txt",
+    "category": "tax",
+    "knowledge_date": "2024-01-01",
+    "article_number": "第十條",
+    "file_path": "data\\tax\\統一發票使用辦法_種子資料.txt"
+  },
+  {
+    "id": "d50a40d48eac1b56",
+    "content": "第十五條（發票種類）\n統一發票分為下列各類：\n一、二聯式：適用於零售、直接銷售消費者\n二、三聯式：適用於商業交易、需要進項扣抵\n三、電子發票：以電子形式開立\n四、特種統一發票：限特定行業使用",
+    "source": "稅務法規 第十五條",
+    "source_doc": "統一發票使用辦法_種子資料.txt",
+    "category": "tax",
+    "knowledge_date": "2024-01-01",
+    "article_number": "第十五條",
+    "file_path": "data\\tax\\統一發票使用辦法_種子資料.txt"
+  },
+  {
+    "id": "46916706bc0f87d2",
+    "content": "第十六條（電子發票）\n營業人開立電子發票，應依財政部規定之統一格式及傳輸方式為之。\n電子發票中獎通知：透過財政部財政資訊中心平台自動對獎通知。",
+    "source": "稅務法規 第十六條",
+    "source_doc": "統一發票使用辦法_種子資料.txt",
+    "category": "tax",
+    "knowledge_date": "2024-01-01",
+    "article_number": "第十六條",
+    "file_path": "data\\tax\\統一發票使用辦法_種子資料.txt"
+  },
+  {
+    "id": "ba8eee012002ad07",
+    "content": "第二十條（免開發票）\n下列銷售額免開統一發票：\n一、銷售予依法免徵營業稅之單位\n二、銷售予外銷廠商之零稅率貨物\n三、每次銷售額未達新台幣200元，且屬非固定性客戶者（但買受人要求應全額開立）",
+    "source": "稅務法規 第二十條",
+    "source_doc": "統一發票使用辦法_種子資料.txt",
+    "category": "tax",
+    "knowledge_date": "2024-01-01",
+    "article_number": "第二十條",
+    "file_path": "data\\tax\\統一發票使用辦法_種子資料.txt"
+  },
+  {
+    "id": "bc426fdd97f1d08f",
+    "content": "第二十六條（罰則）\n違反本辦法規定不開立統一發票者：\n一、首次違反：處新台幣1500元以上15000元以下罰鍰\n二、再次違反：處新台幣9000元以上90000元以下罰鍰\n三、情節重大：停止其營業",
+    "source": "稅務法規 第二十六條",
+    "source_doc": "統一發票使用辦法_種子資料.txt",
+    "category": "tax",
+    "knowledge_date": "2024-01-01",
+    "article_number": "第二十六條",
+    "file_path": "data\\tax\\統一發票使用辦法_種子資料.txt"
+  }
+]

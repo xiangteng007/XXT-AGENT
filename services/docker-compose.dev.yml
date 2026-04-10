@@ -36,3 +36,80 @@ services:
       GCP_PROJECT_ID: "local"
       ALWAYS_ON: "false"
     ports: ["8085:8080"]
+
+  # ── NemoClaw Layer 4: 台灣法規 RAG Service ──────────────────
+  regulation-rag:
+    build: ./regulation-rag
+    container_name: xxt-regulation-rag
+    ports: ["8092:8092"]
+    volumes:
+      - ./regulation-rag/data:/app/data   # 法規文件 + 向量 DB 持久化
+    environment:
+      CHROMA_PATH: /app/data/chroma_db
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      EMBED_MODEL: "nomic-embed-text"
+      PORT: "8092"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8092/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # ── OpenClaw Gateway（本地開發模式）────────────────────────
+  openclaw-gateway:
+    build:
+      context: ./openclaw-gateway
+      dockerfile: Dockerfile
+    container_name: xxt-openclaw-gateway
+    ports: ["3100:3100"]
+    environment:
+      PORT: "3100"
+      DEPLOY_MODE: "local"
+      NODE_ENV: "development"
+      LOCAL_RUNNER_BASE_URL: "http://host.docker.internal:11434"
+      REGULATION_RAG_URL: "http://regulation-rag:8092"
+      OLLAMA_L1_MODEL: "qwen3:14b"
+      PRIVACY_ENFORCE_LOCAL: "false"
+      # ── v6.0 新增環境變數 ──────────────────────────
+      STORE_ENCRYPTION_KEY: "${STORE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}"
+      OPENCLAW_API_KEY: "${OPENCLAW_API_KEY:-dev-secret-key}"
+      GATEWAY_INTERNAL_URL: "http://localhost:3100"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      regulation-rag:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── M-06: LangGraph 投資分析引擎 ────────────────────────────
+  investment-brain:
+    build: ./investment-brain
+    container_name: xxt-investment-brain
+    ports: ["8093:8093"]
+    environment:
+      PORT: "8093"
+      NODE_ENV: "development"
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      GATEWAY_URL: "http://openclaw-gateway:3100"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      openclaw-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8093/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped

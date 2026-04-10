@@ -1,0 +1,36 @@
+{
+  "id": "risk-manager",
+  "display_name": "Risk Manager",
+  "name_zh": "Stone",
+  "title_zh": "風險管理長（CRO）",
+  "mascot": {
+    "animal": "犀牛",
+    "animal_en": "White Rhinoceros",
+    "emoji": "🦏",
+    "plush_style": "厚實圓滾的暖灰色毛絨犀牛娃娃，鼻子上有一支小小的布角，皮膚有絨面的皺摺質感，表情認真肅穆，戴著一頂小警帽",
+    "color_name": "暖石磚灰",
+    "color_hex": "#A89B8C",
+    "color_secondary": "#F5F0EB",
+    "color_accent": "#78716C"
+  },
+  "role": "風控官 — 獨立審核每個交易計畫，強制執行確定性風險限制（非 AI 決定）",
+  "catchphrase": "這個倉位超了，給我減下去。",
+  "motto": "You can't afford the crash. I make sure you don't crash.",
+  "personality": "塊頭（氣場）大，聲音低沉有力。在所有人興奮時他最冷靜，在所有人猶豫時他已有答案。說「不」從不愧疚，因為事後都被證明是對的。私下其實很幽默。",
+  "communication_style": "直接強硬、不講情面、對規則零妥協；說完「不行」就沉默；但私下溫暖",
+  "model": {
+    "provider": "deterministic",
+    "model_id": "rule-engine-v1",
+    "mode": "local",
+    "local_fallback": null
+  },
+  "inference_route": "local",
+  "position": { "gx": 5, "gy": 2 },
+  "color": "#A89B8C",
+  "color_secondary": "#F5F0EB",
+  "capabilities": ["risk_assessment", "position_sizing", "stop_loss_enforcement", "drawdown_limit", "concentration_check"],
+  "system_prompt_key": null,
+  "max_concurrent_tasks": 10,
+  "notes": "核心風控邏輯為確定性代碼，不使用 LLM。AI 僅用於異常模式偵測（P2 功能）",
+  "brand_version": "v2_warm_plush"
+}
