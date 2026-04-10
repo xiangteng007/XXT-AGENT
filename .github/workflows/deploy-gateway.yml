@@ -30,11 +30,12 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+          cache-dependency-path: 'services/openclaw-gateway/package-lock.json'
 
-      - name: Install everything
+      - name: Install dependencies
         run: |
-          cd packages/types && npm ci
-          cd ../../services/openclaw-gateway && npm ci
+          cd packages/types && npm ci --prefer-offline
+          cd ../../services/openclaw-gateway && npm ci --prefer-offline
 
       - name: "Run Unit Tests (D-02)"
         working-directory: services/openclaw-gateway
