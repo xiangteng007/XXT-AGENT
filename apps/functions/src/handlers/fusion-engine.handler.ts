@@ -8,12 +8,19 @@ import { logger } from 'firebase-functions/v2';
 import { Request, Response } from 'express';
 import { runFusionEngine } from '../services/fusion-engine.service';
 import { getErrorMessage } from '../utils/error-handling';
+import { ocEmit } from '../services/openclaw-emitter.service';
 
 export async function handleFusionEngine(req: Request, res: Response): Promise<void> {
     logger.info('[Fusion Engine Handler] Triggered');
 
     try {
         const result = await runFusionEngine();
+
+        // [OpenClaw] Notify Office (fire-and-forget)
+        void ocEmit.fusionPulse(
+            crypto.randomUUID(),
+            `Fusion complete: ${result.fused} fused, ${result.processed} processed`,
+        );
 
         res.status(200).json({
             success: true,

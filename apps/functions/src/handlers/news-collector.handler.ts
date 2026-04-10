@@ -8,6 +8,7 @@
 import { logger } from 'firebase-functions/v2';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { fetchAllRssFeeds, deduplicateItems, RssItem } from '../services/rss.service';
+import { ocEmit } from '../services/openclaw-emitter.service';
 
 const MARKET_NEWS_COLLECTION = 'market_news';
 const RECENT_HOURS = 24; // Only keep URLs from last 24 hours for dedup
@@ -87,6 +88,9 @@ export async function handleNewsCollector(): Promise<{
 
         // 4. Write to Firestore
         const written = await writeNewsToFirestore(newItems);
+
+        // 5. [OpenClaw] Notify Office (fire-and-forget)
+        void ocEmit.newsIngested(written, allItems.map(i => i.source).filter((v, i, a) => a.indexOf(v) === i).slice(0, 5));
 
         const result = {
             ok: true,

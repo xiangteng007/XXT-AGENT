@@ -360,3 +360,20 @@ tr:hover td {
   outline: 2px solid var(--gold-primary);
   outline-offset: 2px;
 }
+
+/* ================================
+   M-05: CSS Custom Property Utilities
+   Data-driven dynamic styles via --mascot-color
+   ================================ */
+
+/* Mascot accent glow — uses --mascot-color set via style attr */
+[style*="--mascot-color"] {
+  background-color: var(--mascot-color, #6366f1);
+}
+
+/* Mascot badge — icon container with tinted background */
+.mascot-badge {
+  background-color: color-mix(in srgb, var(--mascot-color, #6366f1) 12%, transparent);
+  color: var(--mascot-color, #6366f1);
+  border: 1px solid color-mix(in srgb, var(--mascot-color, #6366f1) 25%, transparent);
+}

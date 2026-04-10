@@ -18,6 +18,7 @@ import { logNotionWritten, logAuditError } from '../services/audit.service';
 import { incrementOkCount, incrementFailedCount, incrementDlqCount, incrementNotion429, incrementNotion5xx, recordLatency } from '../services/metrics.service';
 import { Job } from '../models/job.model';
 import { NotionProperties } from '../types';
+import { ocEmit } from '../services/openclaw-emitter.service';
 
 const BATCH_SIZE = 5;
 
@@ -74,6 +75,8 @@ async function processJob(job: Job): Promise<void> {
     }
 
     logger.info(`[Worker] Processing job ${job.id} type=${job.eventType} (attempt ${job.attempts + 1})`);
+    // [OpenClaw] Task running
+    void ocEmit.taskRunning(job.id, job.payload.tenantId);
 
     try {
         const payload = job.payload;
@@ -129,6 +132,8 @@ async function processJob(job: Job): Promise<void> {
         );
 
         logger.info(`[Worker] Job ${job.id} completed in ${latency}ms`);
+        // [OpenClaw] Task done
+        void ocEmit.taskDone(job.id, job.payload.tenantId, latency);
 
     } catch (error) {
         const err = error as Error;
@@ -152,6 +157,8 @@ async function processJob(job: Job): Promise<void> {
         );
 
         await logAuditError(job.payload.tenantId, err, { jobId: job.id });
+        // [OpenClaw] Task failed
+        void ocEmit.taskFailed(job.id, job.payload.tenantId, err.message);
 
         throw error; // Re-throw for Promise.allSettled tracking
     }

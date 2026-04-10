@@ -1,10 +1,13 @@
 /**
  * AI Gateway Service
- * 
+ *
  * Multi-provider AI gateway supporting Gemini, OpenAI GPT, and Anthropic Claude.
  * - Loads API keys from Secret Manager (not exposed to frontend)
  * - Provides unified REST endpoints for AI operations
  * - Rate limiting and request validation
+ * - MCP-ready architecture (providers + tools separation)
+ *
+ * Refactored 2026-03-27: Split from monolithic 573-line file into modules.
  */
 
 import express, { Request, Response, NextFunction } from 'express';
@@ -12,10 +15,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import * as Sentry from '@sentry/node';
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
-import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
-import OpenAI from 'openai';
-import Anthropic from '@anthropic-ai/sdk';
+import { SUPPORTED_MODELS, DEFAULT_MODEL } from './config';
+import { initializeProviders, generateText, getProviderStatus } from './providers';
 
 // Initialize Sentry for error tracking
 if (process.env.SENTRY_DSN) {
@@ -28,94 +29,9 @@ if (process.env.SENTRY_DSN) {
 
 const app = express();
 const PORT = process.env.PORT || 8080;
-const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || 'xxt-agent';
-const SECRET_ID = process.env.GEMINI_SECRET_ID || 'gemini-api-key';
-const DEFAULT_MODEL = 'gemini-2.0-flash';
 
-// Supported Models - Multi-provider (Gemini + OpenAI + Anthropic)
-const SUPPORTED_MODELS: Record<string, { name: string; description: string; tier: string; provider: string }> = {
-    // === Google Gemini 2.5 ===
-    'gemini-2.5-pro-preview-06-05': {
-        name: 'Gemini 2.5 Pro',
-        description: '最新旗艦模型，頂級推理與多模態能力',
-        tier: 'premium',
-        provider: 'google',
-    },
-    'gemini-2.5-flash-preview-05-20': {
-        name: 'Gemini 2.5 Flash',
-        description: '新一代快速模型，平衡速度與智能',
-        tier: 'latest',
-        provider: 'google',
-    },
-    // === Google Gemini 2.0 ===
-    'gemini-2.0-flash': {
-        name: 'Gemini 2.0 Flash',
-        description: '穩定版快速模型，推理與多模態能力（預設）',
-        tier: 'standard',
-        provider: 'google',
-    },
-    'gemini-2.0-flash-lite': {
-        name: 'Gemini 2.0 Flash-Lite',
-        description: '超低延遲輕量模型，適合高頻即時互動',
-        tier: 'economy',
-        provider: 'google',
-    },
-    // === Google Gemini 1.5 ===
-    'gemini-1.5-pro': {
-        name: 'Gemini 1.5 Pro',
-        description: '100萬 token 上下文，適合長文檔分析',
-        tier: 'standard',
-        provider: 'google',
-    },
-    'gemini-1.5-flash': {
-        name: 'Gemini 1.5 Flash',
-        description: '快速回應、低成本，適合日常任務',
-        tier: 'economy',
-        provider: 'google',
-    },
-    // === OpenAI GPT ===
-    'gpt-4o': {
-        name: 'GPT-4o',
-        description: 'OpenAI 最強多模態模型，推理與創意兼備',
-        tier: 'premium',
-        provider: 'openai',
-    },
-    'gpt-4o-mini': {
-        name: 'GPT-4o Mini',
-        description: 'OpenAI 高性價比模型，適合日常任務',
-        tier: 'standard',
-        provider: 'openai',
-    },
-    // === Anthropic Claude ===
-    'claude-sonnet-4-20250514': {
-        name: 'Claude Sonnet 4',
-        description: 'Anthropic 最新模型，優秀的指令遵循與分析能力',
-        tier: 'premium',
-        provider: 'anthropic',
-    },
-    'claude-haiku-3-5-20241022': {
-        name: 'Claude Haiku 3.5',
-        description: 'Anthropic 快速模型，低成本高效率',
-        tier: 'standard',
-        provider: 'anthropic',
-    },
-};
+// ── Middleware ────────────────────────────────────────────────
 
-// Provider state
-let genAI: GoogleGenerativeAI | null = null;
-let openaiClient: OpenAI | null = null;
-let anthropicClient: Anthropic | null = null;
-let isInitialized = false;
-const modelCache = new Map<string, GenerativeModel>();
-
-// Provider readiness flags
-const providerReady: Record<string, boolean> = {
-    google: false,
-    openai: false,
-    anthropic: false,
-};
-
-// Middleware
 app.use(cors({
     origin: [
         'http://localhost:3000',
@@ -125,13 +41,12 @@ app.use(cors({
     credentials: true
 }));
 app.use(express.json({ limit: '1mb' }));
-
-// HTTP security headers
 app.use(helmet());
 
 // API Key validation for AI endpoints
 const API_KEYS = (process.env.AI_GATEWAY_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
 console.log(JSON.stringify({ severity: 'INFO', message: `API Key auth: ${API_KEYS.length} key(s) configured` }));
+
 app.use('/ai/', (req: Request, res: Response, next: NextFunction) => {
     if (API_KEYS.length === 0) return next(); // Skip if no keys configured
     const key = (req.headers['x-api-key'] as string || '').trim();
@@ -148,7 +63,7 @@ app.use('/ai/', rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: '請求過於頻繁，請稍後再試' }
-}));
+}) as any);
 
 // Request logging
 app.use((req: Request, _res: Response, next: NextFunction) => {
@@ -160,165 +75,72 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
     next();
 });
 
-/**
- * Load API key from env or Secret Manager
- */
-async function loadSecret(envKey: string, secretId?: string): Promise<string | null> {
-    if (process.env[envKey]) {
-        return process.env[envKey]!;
-    }
+// ── Health Check ─────────────────────────────────────────────
 
-    if (!secretId) return null;
-
-    try {
-        const client = new SecretManagerServiceClient();
-        const name = `projects/${PROJECT_ID}/secrets/${secretId}/versions/latest`;
-        const [response] = await client.accessSecretVersion({ name });
-        const payload = response.payload?.data;
-        if (!payload) return null;
-        return typeof payload === 'string' ? payload : new TextDecoder('utf-8').decode(payload as Uint8Array);
-    } catch (error) {
-        console.log(JSON.stringify({ severity: 'WARNING', message: `Secret ${secretId} not available`, error: String(error) }));
-        return null;
-    }
-}
-
-/**
- * Initialize all AI providers
- */
-async function initializeProviders(): Promise<void> {
-    if (isInitialized) return;
-
-    // Google Gemini
-    try {
-        const geminiKey = await loadSecret('GEMINI_API_KEY', SECRET_ID);
-        if (geminiKey) {
-            genAI = new GoogleGenerativeAI(geminiKey);
-            providerReady.google = true;
-            console.log(JSON.stringify({ severity: 'INFO', message: 'Gemini initialized' }));
-        }
-    } catch (e) {
-        console.error(JSON.stringify({ severity: 'ERROR', message: 'Gemini init failed', error: String(e) }));
-    }
-
-    // OpenAI
-    try {
-        const openaiKey = await loadSecret('OPENAI_API_KEY', 'OPENAI_API_KEY');
-        if (openaiKey) {
-            openaiClient = new OpenAI({ apiKey: openaiKey });
-            providerReady.openai = true;
-            console.log(JSON.stringify({ severity: 'INFO', message: 'OpenAI initialized' }));
-        }
-    } catch (e) {
-        console.log(JSON.stringify({ severity: 'WARNING', message: 'OpenAI not configured', error: String(e) }));
-    }
-
-    // Anthropic
-    try {
-        const anthropicKey = await loadSecret('ANTHROPIC_API_KEY', 'anthropic-api-key');
-        if (anthropicKey) {
-            anthropicClient = new Anthropic({ apiKey: anthropicKey });
-            providerReady.anthropic = true;
-            console.log(JSON.stringify({ severity: 'INFO', message: 'Anthropic initialized' }));
-        }
-    } catch (e) {
-        console.log(JSON.stringify({ severity: 'WARNING', message: 'Anthropic not configured', error: String(e) }));
-    }
-
-    isInitialized = true;
-}
-
-/**
- * Get or create a Gemini model instance
- */
-function getOrCreateModel(modelId: string = DEFAULT_MODEL): GenerativeModel | null {
-    if (!genAI) return null;
-    const validModelId = modelId in SUPPORTED_MODELS ? modelId : DEFAULT_MODEL;
-    if (!modelCache.has(validModelId)) {
-        const model = genAI.getGenerativeModel({ model: validModelId });
-        modelCache.set(validModelId, model);
-    }
-    return modelCache.get(validModelId) || null;
-}
-
-/**
- * Unified text generation - routes to correct provider based on model ID
- */
-async function generateText(prompt: string, modelId: string = DEFAULT_MODEL): Promise<string> {
-    const model = SUPPORTED_MODELS[modelId];
-    const provider = model?.provider || 'google';
-    const resolvedModelId = model ? modelId : DEFAULT_MODEL;
-
-    switch (provider) {
-        case 'openai': {
-            if (!openaiClient) throw new Error('OpenAI 未配置。請設定 OPENAI_API_KEY。');
-            const completion = await openaiClient.chat.completions.create({
-                model: resolvedModelId,
-                messages: [{ role: 'user', content: prompt }],
-                max_tokens: 4096,
-            });
-            return completion.choices[0]?.message?.content || '';
-        }
-        case 'anthropic': {
-            if (!anthropicClient) throw new Error('Anthropic 未配置。請設定 ANTHROPIC_API_KEY。');
-            const message = await anthropicClient.messages.create({
-                model: resolvedModelId,
-                max_tokens: 4096,
-                messages: [{ role: 'user', content: prompt }],
-            });
-            const block = message.content[0];
-            return block.type === 'text' ? block.text : '';
-        }
-        case 'google':
-        default: {
-            const geminiModel = getOrCreateModel(resolvedModelId);
-            if (!geminiModel) throw new Error('Gemini 未配置。請設定 GEMINI_API_KEY。');
-            const result = await geminiModel.generateContent(prompt);
-            const response = await result.response;
-            return response.text();
-        }
-    }
-}
-
-// Health check
 app.get('/health', (_req: Request, res: Response) => {
     res.json({
         status: 'healthy',
         service: 'ai-gateway',
-        providers: providerReady,
+        version: '2.1.0',
+        providers: getProviderStatus(),
         defaultModel: DEFAULT_MODEL,
         timestamp: new Date().toISOString()
     });
 });
 
-// Model info endpoint - shows only models whose provider is ready
+// ── Model Info ───────────────────────────────────────────────
+
 app.get('/ai/models', (_req: Request, res: Response) => {
+    const providerReady = getProviderStatus();
+
     const models = Object.entries(SUPPORTED_MODELS)
-        .filter(([, info]) => providerReady[info.provider])
+        .filter(([, info]) => providerReady[info.provider] && !info.deprecated)
         .map(([id, info]) => ({
             id,
             ...info,
             isDefault: id === DEFAULT_MODEL,
         }));
-    
-    // Also include unavailable providers marked as such
-    const unavailable = Object.entries(SUPPORTED_MODELS)
-        .filter(([, info]) => !providerReady[info.provider])
+
+    const deprecated = Object.entries(SUPPORTED_MODELS)
+        .filter(([, info]) => info.deprecated)
         .map(([id, info]) => ({
             id,
             ...info,
             isDefault: false,
             available: false,
+            reason: 'deprecated',
         }));
 
-    res.json({ models, unavailable, defaultModel: DEFAULT_MODEL, providers: providerReady });
+    const unavailable = Object.entries(SUPPORTED_MODELS)
+        .filter(([, info]) => !providerReady[info.provider] && !info.deprecated)
+        .map(([id, info]) => ({
+            id,
+            ...info,
+            isDefault: false,
+            available: false,
+            reason: 'provider_not_configured',
+        }));
+
+    res.json({
+        models,
+        unavailable,
+        deprecated,
+        defaultModel: DEFAULT_MODEL,
+        providers: providerReady,
+        totalModels: Object.keys(SUPPORTED_MODELS).length,
+    });
 });
 
-// ============ AI Endpoints ============
+// ── AI Endpoints ─────────────────────────────────────────────
+
+// Helper: parse JSON from AI response
+function parseJsonResponse(text: string): unknown {
+    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    return JSON.parse(cleaned);
+}
 
 /**
- * POST /ai/summarize
- * Generate text summary
+ * POST /ai/summarize — Generate text summary
  */
 app.post('/ai/summarize', async (req: Request, res: Response) => {
     try {
@@ -331,7 +153,7 @@ app.post('/ai/summarize', async (req: Request, res: Response) => {
 
         const prompt = `請用${language}簡潔摘要以下內容，最多${maxLength}字：\n\n${text}`;
         const summary = await generateText(prompt, modelId);
-        res.json({ summary });
+        res.json({ summary, model: modelId || DEFAULT_MODEL });
     } catch (error) {
         console.error('Summarize error:', error);
         res.status(500).json({ error: 'Failed to generate summary' });
@@ -339,8 +161,7 @@ app.post('/ai/summarize', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /ai/sentiment
- * Analyze sentiment of text
+ * POST /ai/sentiment — Analyze sentiment of text
  */
 app.post('/ai/sentiment', async (req: Request, res: Response) => {
     try {
@@ -372,8 +193,7 @@ ${context ? `背景：${context}\n` : ''}
 只回應 JSON，不要其他文字。`;
 
         const responseText = await generateText(prompt, modelId);
-        const cleanJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        const sentiment = JSON.parse(cleanJson);
+        const sentiment = parseJsonResponse(responseText);
         res.json(sentiment);
     } catch (error) {
         console.error('Sentiment error:', error);
@@ -382,8 +202,7 @@ ${context ? `背景：${context}\n` : ''}
 });
 
 /**
- * POST /ai/impact
- * Assess impact of news/event on market
+ * POST /ai/impact — Assess impact of news/event on market
  */
 app.post('/ai/impact', async (req: Request, res: Response) => {
     try {
@@ -414,8 +233,7 @@ ${newsType ? `類型：${newsType}` : ''}
 只回應 JSON，不要其他文字。`;
 
         const responseText = await generateText(prompt, modelId);
-        const cleanJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        const impact = JSON.parse(cleanJson);
+        const impact = parseJsonResponse(responseText);
         res.json(impact);
     } catch (error) {
         console.error('Impact error:', error);
@@ -424,8 +242,7 @@ ${newsType ? `類型：${newsType}` : ''}
 });
 
 /**
- * POST /ai/chat
- * General chat/Q&A
+ * POST /ai/chat — General chat/Q&A
  */
 app.post('/ai/chat', async (req: Request, res: Response) => {
     try {
@@ -443,7 +260,7 @@ app.post('/ai/chat', async (req: Request, res: Response) => {
         ].filter(Boolean).join('\n\n');
 
         const reply = await generateText(fullPrompt, modelId);
-        res.json({ reply });
+        res.json({ reply, model: modelId || DEFAULT_MODEL });
     } catch (error) {
         console.error('Chat error:', error);
         res.status(500).json({ error: 'Failed to generate response' });
@@ -451,8 +268,7 @@ app.post('/ai/chat', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /ai/batch-sentiment
- * Batch sentiment analysis
+ * POST /ai/batch-sentiment — Batch sentiment analysis
  */
 app.post('/ai/batch-sentiment', async (req: Request, res: Response) => {
     try {
@@ -476,8 +292,7 @@ ${batchItems.map((item: { id: string; content: string }, i: number) =>
 [{"id": "xxx", "label": "positive", "score": 0.8, "confidence": 0.9}, ...]`;
 
         const responseText = await generateText(prompt, modelId);
-        const cleanJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        const results = JSON.parse(cleanJson);
+        const results = parseJsonResponse(responseText);
         res.json({ results });
     } catch (error) {
         console.error('Batch sentiment error:', error);
@@ -485,8 +300,9 @@ ${batchItems.map((item: { id: string; content: string }, i: number) =>
     }
 });
 
-// Butler context-enriched chat endpoint
-// Accepts user data context (health, finance, vehicle, calendar) for personalized responses
+/**
+ * POST /ai/butler/chat — Butler context-enriched chat
+ */
 app.post('/ai/butler/chat', async (req: Request, res: Response) => {
     try {
         await initializeProviders();
@@ -535,20 +351,19 @@ ${contextSections.length > 0 ? '# 用戶個人數據\n' + contextSections.join('
     }
 });
 
-// API Versioning: /v1/ai/* forwards to /ai/*
-// Allows future /v2/ai/* with breaking changes
-app.use('/v1', (req: Request, res: Response, next: NextFunction) => {
-    // Forward /v1/ai/* requests to /ai/* routes
-    req.url = req.url; // URL is already correct after /v1 prefix strip
+// ── API Versioning ───────────────────────────────────────────
+
+app.use('/v1', (req: Request, _res: Response, next: NextFunction) => {
+    req.url = req.url;
     next();
 });
 
-// Sentry error handler (must be before custom error handler)
+// ── Error Handling ───────────────────────────────────────────
+
 if (process.env.SENTRY_DSN) {
     Sentry.setupExpressErrorHandler(app);
 }
 
-// Error handler
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     console.error(JSON.stringify({
         severity: 'ERROR',
@@ -558,14 +373,13 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     res.status(500).json({ error: 'Internal server error' });
 });
 
-// Start server
+// ── Start Server ─────────────────────────────────────────────
+
 app.listen(PORT, async () => {
     console.log(JSON.stringify({
         severity: 'INFO',
-        message: `AI Gateway listening on port ${PORT}`
+        message: `AI Gateway v2.1.0 listening on port ${PORT}`
     }));
-
-    // Pre-initialize all AI providers
     await initializeProviders();
 });
 

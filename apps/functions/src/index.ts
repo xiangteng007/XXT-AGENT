@@ -302,3 +302,8 @@ export const marketStreamerScheduled = onSchedule(
         });
     }
 );
+
+/**
+ * Firestore Scheduled Backup (DE-01)
+ */
+export { scheduledFirestoreBackup } from './scheduled/backup';

@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 interface ErrorBoundaryProps {
     children: ReactNode;
     fallback?: ReactNode;
+    /** 區塊名稱，顯示在錯誤訊息中 */
+    name?: string;
     onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
 }
 
@@ -30,10 +32,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
         this.setState({ errorInfo });
         this.props.onError?.(error, errorInfo);
-
+        const label = this.props.name ?? 'UnknownSection';
         // Log to console in development
         if (process.env.NODE_ENV === 'development') {
-            console.error('Error caught by boundary:', error, errorInfo);
+            console.error(`[ErrorBoundary:${label}] Caught error:`, error, errorInfo);
         }
     }
 
@@ -53,7 +55,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-red-600">
                                 <AlertTriangle className="h-5 w-5" />
-                                發生錯誤
+                                {this.props.name ? `「${this.props.name}」發生錯誤` : '發生錯誤'}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
