@@ -183,12 +183,79 @@ service cloud.firestore {
       }
     }
     
+    
     // ========================
     // System config
     // ========================
     match /system/{docId} {
       allow read: if isAuthenticated();
       allow write: if false;
+    }
+    
+    // ========================
+    // v6.0 Agent-Managed Collections (Admin SDK Only)
+    // CR-03: 所有 Agent 資料集合僅透過後端 Admin SDK 存取
+    // ========================
+    
+    // 會計帳本 & 銀行往來
+    match /accountant_ledger/{docId} {
+      allow read, write: if false; // Admin SDK only
+    }
+    match /bank_accounts/{docId} {
+      allow read, write: if false;
+    }
+    match /bank_transactions/{docId} {
+      allow read, write: if false;
+    }
+    
+    // 貸款 & 保險
+    match /loan_records/{docId} {
+      allow read, write: if false;
+    }
+    match /insurance_policies/{docId} {
+      allow read, write: if false;
+    }
+    
+    // UAV 無人機
+    match /uav_missions/{docId} {
+      allow read, write: if false;
+    }
+    match /uav_equipment/{docId} {
+      allow read, write: if false;
+    }
+    match /uav_pilots/{docId} {
+      allow read, write: if false;
+    }
+    
+    // 合約 & 協會
+    match /contracts/{docId} {
+      allow read, write: if false;
+    }
+    match /donations/{docId} {
+      allow read, write: if false;
+    }
+    match /volunteers/{docId} {
+      allow read, write: if false;
+    }
+    
+    // ========================
+    // v6.0 QVP 寫入請求佇列 & 死信
+    // ========================
+    match /write_request_log/{docId} {
+      allow read: if isAdmin();
+      allow write: if false; // Admin SDK only
+    }
+    match /dead_letters/{docId} {
+      allow read: if isOwner(); // 僅 owner 可查看死信
+      allow write: if false;
+    }
+    
+    // ========================
+    // v6.0 Agent 稽核日誌
+    // ========================
+    match /agent_audit_logs/{docId} {
+      allow read: if isAdmin();
+      allow write: if false; // Admin SDK only
     }
   }
 }

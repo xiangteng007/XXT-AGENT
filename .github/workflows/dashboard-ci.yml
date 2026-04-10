@@ -44,5 +44,10 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: "Run Lighthouse CI (F-03: performance gate)"
+        run: npx lhci autorun
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
       - name: Security audit
         run: npm audit --audit-level=high || true

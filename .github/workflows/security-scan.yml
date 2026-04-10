@@ -45,6 +45,15 @@ jobs:
               run: npm audit --audit-level=high || true
               working-directory: apps/dashboard
 
+            # Gateway audit (M-10: 之前遺漏)
+            - name: Install Gateway dependencies
+              run: npm ci
+              working-directory: services/openclaw-gateway
+
+            - name: Run npm audit (Gateway)
+              run: npm audit --audit-level=high || true
+              working-directory: services/openclaw-gateway
+
     codeql-analysis:
         name: CodeQL Analysis
         runs-on: ubuntu-latest
