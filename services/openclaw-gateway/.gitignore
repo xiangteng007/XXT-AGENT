@@ -1,0 +1,24 @@
+# OpenClaw Gateway — Service-level .gitignore
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment (never commit secrets)
+.env
+.env.local
+.env.production
+
+# Test output
+test-results.json
+coverage/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# OS / Editor
+.DS_Store
+*.swp
+Thumbs.db
