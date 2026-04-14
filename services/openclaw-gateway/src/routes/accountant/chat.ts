@@ -22,6 +22,46 @@ import { queryRag, detectRagCategory, REGULATION_RAG_URL, AGENT_ID, MODEL } from
 export const chatRouter = Router();
 
 // ── POST /agents/accountant/chat ──────────────────────────────
+/**
+ * @openapi
+ * /agents/accountant/chat:
+ *   post:
+ *     tags: [Accountant]
+ *     summary: 會計師 AI 問答
+ *     description: |
+ *       通用稅務/帳務問答。敏感財務資料強制走本地 Ollama（PRIVATE 等級，資料不出境）。
+ *       若問題包含稅務/勞健保關鍵字，自動查詢 Regulation RAG 補充法規條文。
+ *     security:
+ *       - FirebaseAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/AgentChatRequest'
+ *           example:
+ *             message: "我司今年度營業稅申報期間是幾月？"
+ *             session_id: "550e8400-e29b-41d4-a716-446655440000"
+ *     responses:
+ *       200:
+ *         description: AI 回答成功
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AgentChatResponse'
+ *       400:
+ *         description: 缺少 message 欄位
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       503:
+ *         description: Ollama 本地推理不可用
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 chatRouter.post('/chat', async (req: Request, res: Response) => {
   const { message, session_id, user_id, context } = req.body as {
     message?: string;

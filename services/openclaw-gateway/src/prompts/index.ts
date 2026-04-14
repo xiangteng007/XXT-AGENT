@@ -1,4 +1,5 @@
 export * from './types';
+export * from './registry/nova';       // E-1: Nova HR Agent
 export * from './registry/zora';
 export * from './registry/scout';
 export * from './registry/lex';

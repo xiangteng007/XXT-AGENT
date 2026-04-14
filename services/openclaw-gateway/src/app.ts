@@ -32,10 +32,13 @@ import { estimatorRouter } from "./routes/estimator";
 import { scoutRouter } from "./routes/scout";
 import { zoraRouter } from "./routes/zora";
 import { lexRouter } from "./routes/lex";
+import { novaRouter } from "./routes/nova";         // E-1: Nova HR Agent
 import { firebaseAuthMiddleware } from "./middleware/firebase-auth";
 import { globalRateLimit, agentRateLimit, financeRateLimit, getRateLimitStats } from "./middleware/rate-limiter";
 import { requestIdMiddleware, globalErrorHandler, notFoundHandler } from "./middleware/error-handler";
 import { getContextStoreStats } from "./context-store";
+import { setupSwagger } from "./swagger";            // L1: OpenAPI 文件
+
 
 // ── 設定 ──────────────────────────────────────────────────────
 const DEPLOY_MODE = process.env["DEPLOY_MODE"] ?? "local";
@@ -53,6 +56,9 @@ export const ALLOWED_ORIGINS = process.env["CORS_ALLOWED_ORIGINS"]
 
 // ── Express 應用 ──────────────────────────────────────────────
 export const app = express();
+
+// L1: Swagger 生成在中間件前挂載，讓 /api-docs 路由优先完成
+setupSwagger(app);
 
 // M-04: Cloud Run 代理層必須啟用 trust proxy
 app.set('trust proxy', true);
@@ -82,6 +88,22 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 // ── 公開路由（不需 Auth）─────────────────────────────────────
+/**
+ * @openapi
+ * /health:
+ *   get:
+ *     tags: [System]
+ *     summary: 系統健康檢查
+ *     description: 回傳 Gateway 狀態、本地 Runner、WebSocket 連線數、Context Store 統計
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: 系統正常
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/HealthResponse'
+ */
 app.get("/health", (_req: Request, res: Response) => {
   let wsConnections = 0;
   try { wsConnections = getWss().clients.size; } catch { /* WS not init in tests */ }
@@ -114,6 +136,7 @@ app.use("/regulation", firebaseAuthMiddleware, regulationRouter);
 app.use("/agents/accountant", firebaseAuthMiddleware, financeRateLimit, accountantRouter);
 app.use("/agents/guardian", firebaseAuthMiddleware, financeRateLimit, guardianRouter);
 app.use("/agents/finance", firebaseAuthMiddleware, financeRateLimit, financeRouter);
+app.use("/agents/nova", firebaseAuthMiddleware, financeRateLimit, novaRouter);  // E-1: Nova HR
 
 // Division 6 — Engineering & Spatial Design Layer
 app.use("/agents/bim", firebaseAuthMiddleware, bimRouter);

@@ -23,6 +23,74 @@ import {
 export const ledgerRouter = Router();
 
 // ── POST /ledger ── 新增收支記錄 ─────────────────────────────
+/**
+ * @openapi
+ * /agents/accountant/ledger:
+ *   post:
+ *     tags: [Accountant]
+ *     summary: 新增收支記錄
+ *     description: |
+ *       建立帳本記錄，支援含稅/未稅轉換、實體分類（個人/家庭/公司）。
+ *       資料持久化至 Firestore `accountant_ledger` 集合。
+ *     security:
+ *       - FirebaseAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LedgerEntry'
+ *           example:
+ *             type: income
+ *             category: engineering_payment
+ *             description: 南港捷運工程 6月請款
+ *             amount: 1050000
+ *             amount_type: taxed
+ *             entity_type: co_construction
+ *             invoice_no: AB-12345678
+ *     responses:
+ *       201:
+ *         description: 記錄建立成功
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:       { type: boolean }
+ *                 entry_id: { type: string, format: uuid }
+ *                 message:  { type: string }
+ *       400:
+ *         description: 必填欄位缺失
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *   get:
+ *     tags: [Accountant]
+ *     summary: 查詢收支明細
+ *     security:
+ *       - FirebaseAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: type
+ *         schema: { type: string, enum: [income, expense, all] }
+ *       - in: query
+ *         name: period
+ *         schema: { type: string, example: "202604" }
+ *         description: 兩個月申報期間（YYYYMM）
+ *       - in: query
+ *         name: entity_type
+ *         schema: { type: string, enum: [personal, family, co_construction, co_renovation, co_design, co_drone, assoc_rescue] }
+ *       - in: query
+ *         name: year
+ *         schema: { type: integer, example: 2026 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 100 }
+ *     responses:
+ *       200:
+ *         description: 查詢成功
+ */
 ledgerRouter.post('/ledger', async (req: Request, res: Response) => {
   const {
     type, category, description, amount,
