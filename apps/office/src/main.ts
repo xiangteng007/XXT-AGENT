@@ -358,7 +358,18 @@ function main(): void {
 
   setLoad(20, 'Building ESC HQ interface...');
 
-  /* Pin click events */
+  // M4: 從 data-* 屬性初始化 CSS custom properties（移除 HTML inline style）
+  // HTML 只需要 data-px, data-py, data-ac；此處統一套用至 CSS var(--px), var(--py), var(--ac)
+  document.querySelectorAll<HTMLElement>('.agent-pin').forEach(pin => {
+    const px = pin.dataset['px'];
+    const py = pin.dataset['py'];
+    const ac = pin.dataset['ac'];
+    if (px) pin.style.setProperty('--px', px.includes('%') ? px : `${px}%`);
+    if (py) pin.style.setProperty('--py', py.includes('%') ? py : `${py}%`);
+    if (ac) pin.style.setProperty('--ac', ac);
+  });
+
+
   document.querySelectorAll<HTMLElement>('.agent-pin').forEach(pin => {
     const id = pin.dataset['id'];
     if (!id) return;

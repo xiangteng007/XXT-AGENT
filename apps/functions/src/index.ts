@@ -55,13 +55,26 @@ setGlobalOptions({
 
 // ================================
 // Internal API Key check for manual trigger endpoints (#4)
+// P4: 生產環境強制要求 INTERNAL_API_KEY，不允許空 key 放行
 // ================================
 function verifyInternalKey(req: { headers: Record<string, string | string[] | undefined> }): boolean {
     const key = req.headers['x-internal-key'];
     const expected = process.env.INTERNAL_API_KEY;
-    if (!expected) return true; // No key configured = allow (dev mode)
+    const isProduction = process.env.DEPLOY_MODE === 'production' || process.env.NODE_ENV === 'production';
+
+    // P4: 生產環境 key 未設定 → 拒絕（原本此處直接 return true，是安全漏洞）
+    if (!expected) {
+        if (isProduction) {
+            logger.error('[Security] INTERNAL_API_KEY not set in production — request denied');
+            return false;
+        }
+        // 開發環境：保留豁免行為，但記錄警告
+        logger.warn('[Security] INTERNAL_API_KEY not set, allowing in dev mode');
+        return true;
+    }
     return key === expected;
 }
+
 
 // ================================
 // Webhook Endpoints (public, high concurrency)

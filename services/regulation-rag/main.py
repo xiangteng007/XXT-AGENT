@@ -25,6 +25,15 @@ from ollama_embed import get_embedding, ping_ollama
 from regulation_store import RegulationStore
 from query_cache import query_cache
 
+# ── P1: CORS 白名單（不再允許 *）─────────────────────────────
+# 生產環境請設定 ALLOWED_ORIGINS 環境變數（逗號分隔）
+# 例: ALLOWED_ORIGINS=http://openclaw-gateway:3100,https://xxt-agent-dashboard.vercel.app
+_raw_origins = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3100,http://openclaw-gateway:3100,https://xxt-agent-dashboard.vercel.app"
+)
+ALLOWED_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 # ── 設定 ──────────────────────────────────────────────────────
 CHROMA_PATH   = os.getenv("CHROMA_PATH", "./data/chroma_db")
 OLLAMA_BASE   = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -41,6 +50,8 @@ async def lifespan(app: FastAPI):
     print(f"[RegRAG] Loaded {store.total_chunks()} chunks from {CHROMA_PATH}")
     reachable = await ping_ollama(OLLAMA_BASE)
     print(f"[RegRAG] Ollama reachable: {reachable} ({OLLAMA_BASE})")
+    # P1: 啟動時印出 CORS 白名單供稽核
+    print(f"[RegRAG] CORS allowed origins: {ALLOWED_ORIGINS}")
     yield
     # Shutdown (nothing to clean up for pure Python store)
 
@@ -51,11 +62,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# P1: 鎖定 CORS 白名單（不再允許 * ）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Authorization"],
+    allow_credentials=False,
 )
 
 # ── 型別 ──────────────────────────────────────────────────────
