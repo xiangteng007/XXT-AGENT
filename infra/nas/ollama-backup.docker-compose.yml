@@ -1,0 +1,71 @@
+version: '3.9'
+
+# XXT-AGENT — NAS Ollama Backup Node
+# 用途: 當主力 GPU 工作站 (Ollama Primary :11434) 離線時，
+#       自動接管 PRIVATE/INTERNAL 等級的本地推理任務。
+#
+# 部署目標: Synology NAS (DSM 7+) 或任何可運行 Docker 的 NAS
+# 硬體需求: ≥ 8GB RAM (CPU-only 推理，qwen3:8b Q4 約需 5GB)
+# 啟動指令: docker compose -f ollama-backup.docker-compose.yml up -d
+#
+# 設定 OpenClaw Gateway:
+#   OLLAMA_PRIMARY=http://[工作站IP]:11434
+#   OLLAMA_BACKUP=http://[NAS IP]:11435
+
+services:
+  ollama-backup:
+    image: ollama/ollama:latest
+    container_name: xxt-ollama-backup
+    restart: unless-stopped
+
+    ports:
+      - "11435:11434"   # 備用端口 11435（不與主力工作站衝突）
+
+    volumes:
+      # Synology NAS 路徑（依實際 volume 名稱調整）
+      - /volume1/docker/ollama-backup/models:/root/.ollama
+      - /volume1/docker/ollama-backup/logs:/var/log/ollama
+
+    environment:
+      # CPU-only 推理設定（NAS 通常無 GPU）
+      - OLLAMA_NUM_PARALLEL=1           # 單一並發（NAS CPU 有限）
+      - OLLAMA_MAX_LOADED_MODELS=1      # 一次只載入一個模型
+      - OLLAMA_KEEP_ALIVE=10m           # 保留時間稍長（NAS 記憶體充裕）
+      - OLLAMA_DEBUG=0
+      # 日誌
+      - OLLAMA_ORIGINS=*                # 內網環境，允許任意來源
+
+    # 資源限制（防止 NAS 資源被耗盡）
+    deploy:
+      resources:
+        limits:
+          memory: 8G        # 最大 8GB RAM
+          # cpus: '4'       # 可選：限制 CPU 核心
+        reservations:
+          memory: 4G
+
+    # 健康檢查（供 OpenClaw Gateway A-2 probe 使用）
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ── 可選：Watchtower 自動更新 Ollama 映像 ──────────────────
+  # watchtower:
+  #   image: containrrr/watchtower
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   command: --interval 86400 xxt-ollama-backup   # 每日檢查更新
+
+# ── NAS 部署後步驟 ────────────────────────────────────────────
+# 1. docker compose -f ollama-backup.docker-compose.yml up -d
+# 2. 預拉備用模型（較小，CPU-only 推理可行）:
+#    docker exec xxt-ollama-backup ollama pull qwen3:8b
+# 3. 測試健康檢查:
+#    curl http://[NAS IP]:11435/
+# 4. 設定 OpenClaw Gateway 環境變數:
+#    OLLAMA_BACKUP=http://[NAS IP]:11435
+# 5. 在 GCP Secret Manager 更新:
+#    gcloud secrets versions add OLLAMA_BACKUP --data-file=- <<< "http://[NAS IP]:11435"

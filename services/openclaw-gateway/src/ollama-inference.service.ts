@@ -81,6 +81,7 @@ export async function ollamaChat(
     model: string = DEFAULT_L1_MODEL,
     options?: Record<string, unknown>,
     keepAlive: string = DEFAULT_KEEP_ALIVE,
+    baseUrl: string = OLLAMA_BASE,    // A-2: 支援動態來源（Primary / Backup）
 ): Promise<{ content: string; model: string; latency_ms: number }> {
     const start = Date.now();
 
@@ -104,7 +105,7 @@ export async function ollamaChat(
 
     let response: Response;
     try {
-        response = await fetch(`${OLLAMA_BASE}/api/chat`, {
+        response = await fetch(`${baseUrl}/api/chat`, {   // A-2: 使用動態 baseUrl
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

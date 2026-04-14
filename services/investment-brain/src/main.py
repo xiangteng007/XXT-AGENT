@@ -15,6 +15,7 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -26,6 +27,7 @@ from pydantic import BaseModel, Field
 from .config import settings
 from .graph.state import create_initial_state
 from .graph.supervisor import investment_graph
+from .session_store import RedisSessionStore
 from .tools.ai_gateway import ai_gateway
 from .tools.fusion_client import fusion_client
 from .tools.trade_planner import trade_planner
@@ -39,8 +41,12 @@ logging.basicConfig(
 logger = logging.getLogger("investment-brain")
 
 
-# ── Session store (in-memory, Phase 3 will use Redis) ──────
-_sessions: dict[str, dict] = {}
+# ── Session store (A-1 / P2: Redis backend, in-memory fallback) ──
+_session_ttl = int(os.getenv("SESSION_TTL_SECONDS", "86400"))
+session_store = RedisSessionStore(
+    redis_url=settings.redis_url,
+    ttl_seconds=_session_ttl,
+)
 
 
 # ── Lifecycle ──────────────────────────────────────────────
@@ -52,8 +58,12 @@ async def lifespan(app: FastAPI):
     logger.info(f"  Risk limits: pos={settings.max_single_position_pct}%, "
                 f"daily={settings.max_daily_loss_pct}%, "
                 f"drawdown={settings.max_drawdown_pct}%")
+    # A-1: 初始化 Redis session store
+    await session_store.connect()
+    logger.info(f"  Session backend: {session_store.backend}")
     yield
     # Cleanup
+    await session_store.close()
     await ai_gateway.close()
     await fusion_client.close()
     await trade_planner.close()
@@ -150,7 +160,7 @@ async def health_check():
             "max_daily_loss_pct": settings.max_daily_loss_pct,
             "max_drawdown_pct": settings.max_drawdown_pct,
         },
-        active_sessions=len(_sessions),
+        active_sessions=await session_store.count(),
         timestamp=datetime.utcnow().isoformat(),
     )
 
@@ -192,14 +202,14 @@ async def analyze_investment(req: AnalyzeRequest):
         if hasattr(msg, "content"):
             message_strs.append(msg.content)
 
-    # Store session
+    # Store session in Redis (A-1)
     session_data = {
         "session_id": session_id,
         "symbol": symbol,
         "result": result,
         "completed_at": datetime.utcnow().isoformat(),
     }
-    _sessions[session_id] = session_data
+    await session_store.set(session_id, session_data)
 
     # Build response
     response = AnalyzeResponse(
@@ -229,7 +239,7 @@ async def analyze_investment(req: AnalyzeRequest):
 @app.get("/invest/status/{session_id}")
 async def get_session_status(session_id: str):
     """Get the status of a previous analysis session."""
-    session = _sessions.get(session_id)
+    session = await session_store.get(session_id)           # A-1
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -239,6 +249,7 @@ async def get_session_status(session_id: str):
         "symbol": session["symbol"],
         "status": result.get("current_step", "complete"),
         "completed_at": session.get("completed_at"),
+        "session_backend": session_store.backend,          # A-1: 顯示 backend 供診斷
     }
 
 
@@ -265,18 +276,19 @@ async def get_portfolio():
 @app.get("/invest/sessions")
 async def list_sessions():
     """List recent analysis sessions."""
-    sessions = []
-    for sid, data in sorted(
-        _sessions.items(),
-        key=lambda x: x[1].get("completed_at", ""),
-        reverse=True,
-    )[:20]:
-        sessions.append({
-            "session_id": sid,
-            "symbol": data["symbol"],
-            "completed_at": data.get("completed_at"),
-        })
-    return {"sessions": sessions, "total": len(_sessions)}
+    recent = await session_store.list_recent(limit=20)      # A-1
+    return {
+        "sessions": [
+            {
+                "session_id": s["session_id"],
+                "symbol": s["symbol"],
+                "completed_at": s.get("completed_at"),
+            }
+            for s in recent
+        ],
+        "total": await session_store.count(),
+        "backend": session_store.backend,                   # A-1: 診斷資訊
+    }
 
 
 # ── Run with uvicorn ───────────────────────────────────────
