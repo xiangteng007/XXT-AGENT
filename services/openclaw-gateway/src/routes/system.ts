@@ -1,11 +1,8 @@
-/**
- * GET /system/health  — 本地 Ollama + 雲端 Gateway 健康狀態
- * GET /system/models  — 可用模型清單（local + cloud）
- */
-
 import { Router, Request, Response } from 'express';
 import { localRunner } from '../local-runner-circuit-breaker';
 import { getRunningModels } from '../ollama-inference.service';
+import { writeRequestQueue } from '../write-request-queue';
+import { costTracker } from '../cost-tracker';
 import { logger } from '../logger';
 
 export const systemRouter = Router();
@@ -13,7 +10,21 @@ export const systemRouter = Router();
 const OLLAMA_BASE = process.env['LOCAL_RUNNER_BASE_URL'] ?? 'http://localhost:11434';
 const AI_GATEWAY = process.env['AI_GATEWAY_URL'] ?? 'http://localhost:8080';
 
+// 已知 Agent 清單（與 agent-bus.ts 同步）
+const KNOWN_AGENT_COUNT = 11;
+
 // ── GET /system/health ────────────────────────────────────────
+/**
+ * @openapi
+ * /system/health:
+ *   get:
+ *     tags: [System]
+ *     summary: 系統深度健康狀態（D-5 Dashboard）
+ *     description: 回傳本地 Ollama / 雲端 Gateway / Agent Bus / AI 成本 / WRQ 的整合健康狀態
+ *     responses:
+ *       200:
+ *         description: 系統健康狀態
+ */
 systemRouter.get('/health', async (_req: Request, res: Response) => {
   const runnerStatus = localRunner.getStatus();
 
@@ -31,6 +42,16 @@ systemRouter.get('/health', async (_req: Request, res: Response) => {
   // Ollama VRAM 狀態
   const runningModels = await getRunningModels();
   const totalVramMB = runningModels.reduce((acc, m) => acc + Math.round(m.size_vram / 1024 / 1024), 0);
+
+  // WRQ 統計
+  const wrqStats = writeRequestQueue.getStats();
+
+  // AI Cost 摘要
+  const costStats = costTracker.getAllStats();
+  const totalInferences = costStats.reduce((s, a) => s + a.inference_count, 0);
+  const totalTokens = costStats.reduce((s, a) => s + a.total_tokens, 0);
+
+  logger.debug('[System/health] Health check computed');
 
   res.json({
     status: 'ok',
@@ -57,8 +78,22 @@ systemRouter.get('/health', async (_req: Request, res: Response) => {
       cuda_version: '12.x',
       compute_capability: '8.9',
     },
+    agents_summary: {
+      total_known: KNOWN_AGENT_COUNT,
+      description: 'Poll /system/agent-bus for live status',
+    },
+    write_request_queue: {
+      queued: wrqStats.queued,
+      dead_letters: wrqStats.dead_letters,
+      processed_keys: wrqStats.processed_keys,
+    },
+    ai_cost: {
+      total_inferences: totalInferences,
+      total_tokens: totalTokens,
+    },
   });
 });
+
 
 // ── GET /system/models ────────────────────────────────────────
 systemRouter.get('/models', async (_req: Request, res: Response) => {
