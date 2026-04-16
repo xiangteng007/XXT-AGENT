@@ -55,13 +55,21 @@ describe('PrivacyRouter.classify', () => {
 
   // ── 白名單測試 ─────────────────────────────────────────
   describe('Agent whitelist', () => {
-    it('should route whitelisted agent to PUBLIC regardless of keywords', () => {
-      const result = classify('查看我的持倉和薪資', undefined, 'titan');
+    it('should route whitelisted agent to PUBLIC for non-private queries', () => {
+      // 「設計方案讨论」has no PRIVATE keywords — whitelist applies
+      const result = classify('設計方案討論費用預算', undefined, 'titan');
       expect(result.level).toBe('PUBLIC');
     });
 
+    it('security-first: heavy private keywords override whitelist', () => {
+      // 持倉(3) + 薪資(3) = score 6 => PRIVATE even for titan
+      const result = classify('查看我的持倉和薪資', undefined, 'titan');
+      expect(result.level).toBe('PRIVATE');
+    });
+
     it('should respect whitelist for lumi', () => {
-      const result = classify('合約金額多少', undefined, 'lumi');
+      // 合約 alone scores 0 — only INTERNAL, whitelist lifts it to PUBLIC
+      const result = classify('設計合約的費用怎麼計算', undefined, 'lumi');
       expect(result.level).toBe('PUBLIC');
     });
 

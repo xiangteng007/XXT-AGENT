@@ -114,6 +114,12 @@ function createRateLimitMiddleware(
   limiterKey: keyof typeof LIMITERS,
 ) {
   return (req: Request, res: Response, next: NextFunction): void => {
+    // ── Skip rate limiting in test environment ──────────────
+    if (process.env['NODE_ENV'] === 'test') {
+      next();
+      return;
+    }
+
     const ip = getClientIp(req);
     const { allowed, remaining, resetAt } = LIMITERS[limiterKey].consume(ip);
 

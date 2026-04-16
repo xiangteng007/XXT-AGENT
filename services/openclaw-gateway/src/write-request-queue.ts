@@ -40,6 +40,7 @@
 
 import * as crypto from 'crypto';
 import { logger } from './logger';
+import { getDb as getFirestoreDb } from './firestore-client';
 
 // ════════════════════════════════════════════════════════════════
 // 型別定義
@@ -151,7 +152,7 @@ class WriteRequestQueue {
   // ── Firestore 連線（從單例取得）────────────────────────────
   private getDb(): FirebaseFirestore.Firestore | null {
     if (this._db) return this._db;
-    const { getDb: getFirestoreDb } = require('./firestore-client') as typeof import('./firestore-client');
+    // Use top-level imported getDb to avoid require() ESM issues in Vitest
     this._db = getFirestoreDb();
     return this._db;
   }

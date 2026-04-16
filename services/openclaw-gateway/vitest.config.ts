@@ -13,6 +13,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     isolate: true,   // T-01: 各 test file 模組獨立（防止 app 狀態共用）
+    pool: 'forks',   // Fix: require() inside vitest ESM context needs forks pool
     include: ['src/**/*.test.ts', 'src/**/*.spec.ts'],
     coverage: {
       reporter: ['text', 'lcov'],

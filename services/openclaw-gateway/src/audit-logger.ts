@@ -91,7 +91,11 @@ export async function writeAuditLog(log: AgentAuditLog): Promise<void> {
   }
 
   try {
-    await db.collection('agent_audit_logs').doc(log.trace_id).set(log);
+    // Firestore rejects undefined — strip optional fields that are not set
+    const payload = Object.fromEntries(
+      Object.entries(log).filter(([, v]) => v !== undefined)
+    ) as AgentAuditLog;
+    await db.collection('agent_audit_logs').doc(log.trace_id).set(payload);
     logger.debug(`[AuditLogger] Written to Firestore: ${log.trace_id}`);
   } catch (err) {
     // Firestore 寫入失敗不影響主流程
