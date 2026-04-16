@@ -2,8 +2,14 @@
 # Firestore Backup Bucket (DE-01)
 # ---------------------------------------------------------
 
+resource "random_string" "bucket_suffix" {
+  length  = 6
+  special = false
+  upper   = false
+}
+
 resource "google_storage_bucket" "firestore_backups" {
-  name          = "${var.project_id}-firestore-backups"
+  name          = "${var.project_id}-firestore-backups-${random_string.bucket_suffix.result}"
   location      = "asia-east1" # Should match Firestore location
   force_destroy = false
 
