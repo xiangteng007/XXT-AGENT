@@ -1,4 +1,4 @@
-import { EntityType } from 'types';
+import { EntityType } from '@xxt-agent/types';
 
 export interface MascotConfig {
     id: string;

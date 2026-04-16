@@ -39,11 +39,11 @@ jobs:
 
       - name: Lint
         working-directory: apps/dashboard
-        run: npm run lint || true
+        run: pnpm run lint || true
 
       - name: Build
         working-directory: apps/dashboard
-        run: npm run build
+        run: pnpm run build
 
       - name: "Run Lighthouse CI (F-03: performance gate)"
         working-directory: apps/dashboard
@@ -53,4 +53,4 @@ jobs:
 
       - name: Security audit
         working-directory: apps/dashboard
-        run: npm audit --audit-level=high || true
+        run: pnpm audit --audit-level=high || true
