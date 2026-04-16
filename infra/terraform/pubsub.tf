@@ -14,20 +14,3 @@ data "google_pubsub_topic" "fused_event" {
 data "google_pubsub_topic" "events_dlq" {
   name = "events.dlq"
 }
-
-# Reference existing Pub/Sub subscriptions
-data "google_pubsub_subscription" "raw_market_fuser" {
-  name = "raw-market-fuser"
-}
-
-data "google_pubsub_subscription" "raw_news_fuser" {
-  name = "raw-news-fuser"
-}
-
-data "google_pubsub_subscription" "raw_social_fuser" {
-  name = "raw-social-fuser"
-}
-
-data "google_pubsub_subscription" "fused_event_notifier" {
-  name = "fused-event-notifier"
-}
