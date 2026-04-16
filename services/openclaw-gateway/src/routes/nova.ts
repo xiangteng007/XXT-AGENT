@@ -194,6 +194,27 @@ novaRouter.post('/employee', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/nova/employees ────────────────────────────────
+/**
+ * @openapi
+ * /agents/nova/employees:
+ *   get:
+ *     tags: [Nova]
+ *     summary: 查詢員工列表
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: entity_type
+ *         schema: { type: string, enum: [co_construction, co_renovation, co_design, co_drone] }
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [active, inactive, on_leave] }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 50 }
+ *     responses:
+ *       200:
+ *         description: 員工列表（含年資、特休天數）
+ */
 novaRouter.get('/employees', async (req: Request, res: Response) => {
   const { entity_type, status, limit } = req.query as Record<string, string | undefined>;
   const validEntities: EntityType[] = ['co_construction', 'co_renovation', 'co_design', 'co_drone'];
@@ -214,7 +235,48 @@ novaRouter.get('/employees', async (req: Request, res: Response) => {
   });
 });
 
-// ── GET /agents/nova/employee/:id ─────────────────────────────
+// ── GET /agents/nova/employee/:id ────────────────────────────
+/**
+ * @openapi
+ * /agents/nova/employee/{id}:
+ *   get:
+ *     tags: [Nova]
+ *     summary: 取得員工詳細資料
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: 員工完整資料（包含年資、特休）
+ *       404:
+ *         description: 員工不存在
+ *   patch:
+ *     tags: [Nova]
+ *     summary: 更新員工資料
+ *     description: 可更新薪資、職別、狀態、离職日期、健保羼口數等安全欄位
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               base_salary: { type: number }
+ *               position: { type: string }
+ *               status: { type: string, enum: [active, inactive, on_leave] }
+ *               resign_date: { type: string, format: date }
+ *     responses:
+ *       200:
+ *         description: 員工資料已更新
+ */
 novaRouter.get('/employee/:id', async (req: Request, res: Response) => {
   const emp = await getEmployee(req.params['id'] ?? '');
   if (!emp) { res.status(404).json({ error: 'Employee not found' }); return; }
@@ -234,7 +296,26 @@ novaRouter.patch('/employee/:id', async (req: Request, res: Response) => {
   res.json({ ok: true, updated_fields: Object.keys(updates) });
 });
 
-// ── GET /agents/nova/leave/:id ── 特休試算 ───────────────────
+// ── GET /agents/nova/leave/:id — 特休試算 ───────────────────
+/**
+ * @openapi
+ * /agents/nova/leave/{id}:
+ *   get:
+ *     tags: [Nova]
+ *     summary: 員工特休天數試算
+ *     description: 依勞動基準法第 38 條計算員工特別休假天數
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: 特休天數（含年資資訊與法源）
+ *       404:
+ *         description: 員工不存在
+ */
 novaRouter.get('/leave/:id', async (req: Request, res: Response) => {
   const emp = await getEmployee(req.params['id'] ?? '');
   if (!emp) { res.status(404).json({ error: 'Employee not found' }); return; }
@@ -384,6 +465,33 @@ novaRouter.post('/payroll', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/nova/payroll ──────────────────────────────────
+/**
+ * @openapi
+ * /agents/nova/payroll:
+ *   get:
+ *     tags: [Nova]
+ *     summary: 查詢薪資記錄
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: employee_id
+ *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: period
+ *         schema: { type: string, example: '202605', description: 'YYYYMM' }
+ *       - in: query
+ *         name: year
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: entity_type
+ *         schema: { type: string }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 50 }
+ *     responses:
+ *       200:
+ *         description: 薪資記錄清單（含實發總額和雇主成本彙總）
+ */
 novaRouter.get('/payroll', async (req: Request, res: Response) => {
   const { employee_id, period, year, entity_type, limit } = req.query as Record<string, string | undefined>;
   const validEntities: EntityType[] = ['co_construction', 'co_renovation', 'co_design', 'co_drone'];
@@ -399,6 +507,18 @@ novaRouter.get('/payroll', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/nova/health ───────────────────────────────────
+/**
+ * @openapi
+ * /agents/nova/health:
+ *   get:
+ *     tags: [Nova]
+ *     summary: Nova Agent 健康檢查
+ *     description: 回傳 Nova Agent 狀態、RAG 可用性與能力清單
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Agent 健康狀態
+ */
 novaRouter.get('/health', async (_req: Request, res: Response) => {
   let ragStatus = 'unknown';
   try { const r = await fetch(`${REGULATION_RAG_URL}/health`, { signal: AbortSignal.timeout(3000) }); ragStatus = r.ok ? 'online' : 'degraded'; }

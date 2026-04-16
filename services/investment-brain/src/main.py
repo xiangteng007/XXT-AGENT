@@ -33,6 +33,11 @@ from .tools.fusion_client import fusion_client
 from .tools.trade_planner import trade_planner
 from .tools.market_data import market_data
 
+from .fugle_client import FugleClient
+from .backtest_engine import BacktestEngine
+
+fugle_client = FugleClient()
+backtest_engine = BacktestEngine()
 # ── Logging ────────────────────────────────────────────────
 logging.basicConfig(
     level=getattr(logging, settings.log_level, logging.INFO),
@@ -271,6 +276,31 @@ async def get_portfolio():
             "total_trades": 0,
         },
     }
+
+
+@app.get("/invest/backtest")
+async def run_backtest(symbol: str, start: str = "2023-01-01", end: str = "2024-01-01"):
+    """
+    Run backtesting strategy on historical data sourced from Fugle (C-2).
+    """
+    symbol = symbol.upper().strip()
+    try:
+        # 1. Fetch data from Fugle
+        historical_data = await fugle_client.get_historical_candles(symbol, start, end)
+        if not historical_data:
+            return {"error": f"No data found for {symbol} between {start} and {end}."}
+        
+        # 2. Run Backtest
+        metrics = backtest_engine.calculate_metrics(historical_data)
+        
+        return {
+            "symbol": symbol,
+            "status": "success",
+            "metrics": metrics
+        }
+    except Exception as e:
+        logger.error(f"[API] Backtest failed for {symbol}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Backtest failed: {str(e)}")
 
 
 @app.get("/invest/sessions")

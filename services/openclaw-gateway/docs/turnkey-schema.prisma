@@ -1,0 +1,79 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Client {
+  id        String    @id @default(uuid())
+  name      String
+  phone     String?
+  email     String?
+  projects  Project[]
+}
+
+model Project {
+  id             String      @id @default(uuid())
+  clientId       String
+  client         Client      @relation(fields: [clientId], references: [id])
+  name           String
+  status         String      // intake, design, estimation, contract, construction, completed
+  requirements   Json?       // JSON Schema for Client Questionnaire
+  totalAreaSqm   Float?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  
+  contracts      Contract[]
+  materials      Material[]
+  tasks          Task[]
+}
+
+model Contract {
+  id            String   @id @default(uuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id])
+  type          String   // e.g., "design", "construction"
+  totalAmount   Decimal
+  paymentTerms  Json     // e.g., [30, 40, 30] representing percentage nodes
+  isSigned      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+}
+
+model Material {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  category    String   // Flooring, Fixture, Electrical, Furniture
+  brand       String
+  modelNo     String?
+  unitPrice   Decimal
+  quantity    Float
+  vendor      String?
+  status      String   // proposed, approved, ordered, delivered
+}
+
+model Task {
+  id                 String       @id @default(uuid())
+  projectId          String
+  project            Project      @relation(fields: [projectId], references: [id])
+  name               String
+  startDate          DateTime
+  endDate            DateTime
+  progressPct        Float        @default(0.0)
+  assignedContractor String?
+  
+  inspections        Inspection[]
+}
+
+model Inspection {
+  id          String   @id @default(uuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id])
+  item        String   // Inspection checklist item
+  standard    String   // Corresponding CNS or Company Standard
+  isPassed    Boolean  @default(false)
+  notes       String?
+}

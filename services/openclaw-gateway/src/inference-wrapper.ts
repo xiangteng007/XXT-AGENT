@@ -3,6 +3,9 @@ import { logger } from './logger';
 import { PrivacyRouter, PrivacyClassification } from './privacy-router';
 import { wrapWithAudit } from './audit-logger';
 import { ollamaChat, OllamaMessage } from './ollama-inference.service';
+import { costTracker } from './cost-tracker';
+import { getDirectives } from './stores/kaizen-store';
+import { searchWeb } from './search-engine';
 
 export interface InferenceOptions {
   agentId: string;
@@ -12,9 +15,20 @@ export interface InferenceOptions {
   temperature?: number;
   num_predict?: number;
   thinking?: boolean;
+  responseFormat?: 'json' | 'text';
+  /** N-2: 是否啟用 Context Prompt Caching (支援 Gemini / Anthropic) */
+  useContextCache?: boolean;
+  /** 是否啟用上網搜尋能力 (Tool Calling) */
+  enableWebSearch?: boolean;
 }
 
-export type AgentMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+export type AgentMessage = { 
+  role: 'system' | 'user' | 'assistant' | 'tool'; 
+  content?: string;
+  name?: string;
+  tool_calls?: any[];
+  tool_call_id?: string;
+};
 
 export interface AgentChatResponse {
   content: string;
@@ -23,6 +37,12 @@ export interface AgentChatResponse {
   /** 是否使用了 fallback（方便監控） */
   used_fallback?: boolean;
   fallback_reason?: string;
+  /** Token 使用資訊 */
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 }
 
 // ── AI-02: Fallback Chain 設定 ────────────────────────────────────
@@ -96,16 +116,48 @@ async function callCloudModel(
     Authorization: `Bearer ${process.env['OPENCLAW_API_KEY'] ?? 'dev-secret-key'}`,
   };
 
+  const bodyParams: any = {
+    model,
+    messages,
+    temperature: options.temperature ?? 0.7,
+    max_tokens: options.num_predict ?? 2048,
+  };
+
+  // N-1: 支援 Gemini / OpenAI-compatible 的 JSON 模式
+  if (options.responseFormat === 'json') {
+    bodyParams.response_format = { type: "json_object" };
+  }
+
+  // N-2: Prompt Caching 注入 (將在 Proxy 層被解析給 Gemini 或 Anthropic)
+  if (options.useContextCache) {
+    bodyParams.extra_headers = { "x-use-context-cache": "true" };
+    // 對於第一個且長度較大的 system prompt 發出 cache 指示
+    if (messages.length > 0 && messages[0].role === 'system') {
+      messages[0] = { ...messages[0], cache_control: { type: "ephemeral" } } as any;
+    }
+  }
+
+  // If Web Search is enabled, inject the tool definition
+  if (options.enableWebSearch) {
+    bodyParams.tools = [{
+      type: "function",
+      function: {
+        name: "search_web",
+        description: "Search the web for real-time information, news, or specific data.",
+        parameters: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"]
+        }
+      }
+    }];
+  }
+
   const start = Date.now();
   const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeader },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.num_predict ?? 2048,
-    }),
+    body: JSON.stringify(bodyParams),
     signal: AbortSignal.timeout(30_000), // 30s timeout per attempt
   });
 
@@ -114,12 +166,48 @@ async function callCloudModel(
   }
 
   interface CloudAIResponse {
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{ message?: { content?: string, tool_calls?: any[] } }>;
+    usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
   }
   const data = await res.json() as CloudAIResponse;
-  const content = data.choices?.[0]?.message?.content ?? '';
+  const assistantMsg = data.choices?.[0]?.message;
+  let content = assistantMsg?.content ?? '';
+  const usage = data.usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  let latency = Date.now() - start;
 
-  return { content, model, latency_ms: Date.now() - start };
+  // Tool Calling Interceptor Loop
+  if (assistantMsg?.tool_calls && assistantMsg.tool_calls.length > 0) {
+    const tc = assistantMsg.tool_calls[0];
+    if (tc.function?.name === 'search_web') {
+      try {
+        const args = JSON.parse(tc.function.arguments);
+        logger.info(`[InferenceWrapper] LLM chose to search_web: ${args.query}`);
+        const searchResultStr = await searchWeb(args.query);
+        
+        // Append the assistant tool_call message and the tool response
+        const newMessages = [...messages, 
+          { role: 'assistant', content: '', tool_calls: assistantMsg.tool_calls } as AgentMessage,
+          { role: 'tool', tool_call_id: tc.id, name: 'search_web', content: searchResultStr } as AgentMessage
+        ];
+        
+        // Disable search for the recursive call to prevent infinite loops
+        const recursiveResult = await callCloudModel(endpoint, model, newMessages, { ...options, enableWebSearch: false });
+        
+        content = recursiveResult.content;
+        usage.prompt_tokens += recursiveResult.usage.prompt_tokens;
+        usage.completion_tokens += recursiveResult.usage.completion_tokens;
+        usage.total_tokens += recursiveResult.usage.total_tokens;
+        latency += recursiveResult.latency_ms;
+      } catch (e) {
+        logger.warn(`[InferenceWrapper] Tool calling execution failed: ${e}`);
+        content = `[系統提示] 我嘗試上網搜尋但遇到錯誤（${e}），因此無法取得最新資料，請稍後再試。`;
+      }
+    } else {
+      content = `[系統提示] 模型嘗試呼叫未知的工具 (${tc.function?.name})，行為已中止。`;
+    }
+  }
+
+  return { content, model, latency_ms: latency, usage };
 }
 
 /**
@@ -139,11 +227,13 @@ async function callWithFallbackChain(
   // PRIVATE 資料：直接走本地，不嘗試雲端
   if (classification.routeTo === 'local') {
     const localBase = await resolveLocalRunner();              // A-2: HA 路由
-    const result = await ollamaChat(messages as OllamaMessage[], LOCAL_FALLBACK_MODEL, {
+    const ollamaOpts: Record<string, unknown> = {
       temperature: options.temperature,
       num_predict: options.num_predict,
       thinking: options.thinking,
-    }, localBase);
+      responseFormat: options.responseFormat
+    };
+    const result = await ollamaChat(messages as OllamaMessage[], LOCAL_FALLBACK_MODEL, ollamaOpts, localBase);
     return result;
   }
 
@@ -175,6 +265,7 @@ async function callWithFallbackChain(
     if (options.temperature !== undefined) ollamaOpts['temperature'] = options.temperature;
     if (options.num_predict !== undefined) ollamaOpts['num_predict'] = options.num_predict;
     if (options.thinking !== undefined) ollamaOpts['thinking'] = options.thinking;
+    if (options.responseFormat !== undefined) ollamaOpts['responseFormat'] = options.responseFormat;
 
     const result = await ollamaChat(messages as OllamaMessage[], LOCAL_FALLBACK_MODEL, ollamaOpts, localBase);
     return {
@@ -198,9 +289,24 @@ async function callWithFallbackChain(
  * 4. 利用 AuditLogger 全程記錄
  */
 export async function agentChat(
-  messages: AgentMessage[],
+  inputMessages: AgentMessage[],
   options: InferenceOptions,
 ): Promise<AgentChatResponse> {
+  // CLONE messages to avoid mutating the caller's array
+  const messages = [...inputMessages];
+  
+  // KAIZEN: Inject self-improvement directives if available
+  const directives = await getDirectives(options.agentId).catch(() => null);
+  if (directives) {
+    const sysMsgIdx = messages.findIndex(m => m.role === 'system');
+    const kaizenBlock = `\n\n<KaizenDirectives>\n【這是在你過去犯錯的經驗中，系統自動歸納出的最高法則，請絕對遵守】：\n${directives}\n</KaizenDirectives>`;
+    if (sysMsgIdx >= 0) {
+      messages[sysMsgIdx] = { ...messages[sysMsgIdx], content: messages[sysMsgIdx].content + kaizenBlock };
+    } else {
+      messages.unshift({ role: 'system', content: kaizenBlock });
+    }
+  }
+
   const promptStr = messages.map((m) => m.content).join('\n');
   const classification = PrivacyRouter.classify(promptStr);
   const traceId = crypto.randomUUID();
@@ -226,7 +332,15 @@ export async function agentChat(
     `[InferenceWrapper] trace=${traceId} agent=${options.agentId} privacy=${classification.level} -> ${classification.routeTo} (chain: ${CLOUD_MODEL_CHAIN.join(' → ')} → ollama)`,
   );
 
-  return wrapWithAudit(meta, () =>
+  const response = await wrapWithAudit(meta, () =>
     callWithFallbackChain(endpoint, messages, options, classification)
   );
+
+  // D-3: 記錄成本與使用情況
+  void costTracker.recordUsage(options.agentId, response.model, {
+    ...response.usage,
+    latency_ms: response.latency_ms,
+  });
+
+  return response;
 }

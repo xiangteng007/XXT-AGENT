@@ -23,6 +23,28 @@ const currentLevel: LogLevel =
 
 const isProduction = process.env['NODE_ENV'] === 'production';
 
+// N-5: Telegram Alert Integration
+const TELEGRAM_BOT_TOKEN = process.env['TELEGRAM_BOT_TOKEN_ALERT'] || '';
+const TELEGRAM_CHAT_ID = process.env['TELEGRAM_CHAT_ID_ALERT'] || '';
+
+async function triggerTelegramAlert(msg: string, context?: Record<string, unknown>) {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+  try {
+    const text = `🚨 *XXT-AGENT OpenClaw Gateway Error*\n\n*Error*: ${msg}\n\n*Context*:\n\`\`\`json\n${JSON.stringify(context || {}, null, 2)}\n\`\`\``;
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text,
+        parse_mode: 'MarkdownV2'
+      })
+    });
+  } catch (err) {
+    console.error('Failed to send Telegram alert:', err);
+  }
+}
+
 function shouldLog(level: LogLevel): boolean {
   return LOG_LEVELS[level] >= LOG_LEVELS[currentLevel];
 }
@@ -73,6 +95,8 @@ function log(level: LogLevel, msg: string, ...args: unknown[]): void {
   switch (level) {
     case 'error':
       console.error(formatted, ...printArgs);
+      // N-5: Trigger background alert on error
+      triggerTelegramAlert(msg, context).catch(() => {});
       break;
     case 'warn':
       console.warn(formatted, ...printArgs);

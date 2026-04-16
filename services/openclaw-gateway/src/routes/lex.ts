@@ -179,7 +179,30 @@ async function notifyAccountant(
   }
 }
 
-// ── POST /agents/lex/chat ─────────────────────────────────────
+// ── POST /agents/lex/chat ──────────────────────────────────────
+/**
+ * @openapi
+ * /agents/lex/chat:
+ *   post:
+ *     tags: [Lex (合約)]
+ *     summary: 合約法律諮詢問答（AI）
+ *     description: 與 Lex 進行合約條款分析、風險評估、法規諮詢，支援多類別法規 RAG
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [message]
+ *             properties:
+ *               message: { type: string, example: '分包合約需注意哪些遁約風險？' }
+ *               entity_type: { type: string }
+ *               session_id: { type: string }
+ *     responses:
+ *       200:
+ *         description: AI 回覆
+ */
 lexRouter.post('/chat', async (req: Request, res: Response) => {
   const { message, session_id, entity_type } = req.body as {
     message?: string;
@@ -216,6 +239,56 @@ lexRouter.post('/chat', async (req: Request, res: Response) => {
 });
 
 // ── POST /agents/lex/contract ─────────────────────────────────
+/**
+ * @openapi
+ * /agents/lex/contract:
+ *   post:
+ *     tags: [Lex (合約)]
+ *     summary: 新增合約
+ *     description: 建立合約記錄，支援自動生成付款里程碑，到期警示自動分析
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [title, entity_type, counterparty, total_amount]
+ *             properties:
+ *               title: { type: string, example: '台北廠房工程主包合約' }
+ *               entity_type: { type: string }
+ *               counterparty: { type: string }
+ *               contract_type: { type: string, enum: [owner, subcontract, design, service, purchase, lease, nda, other] }
+ *               total_amount: { type: number, example: 5000000 }
+ *               sign_date: { type: string, format: date }
+ *               effective_date: { type: string, format: date }
+ *               expiry_date: { type: string, format: date }
+ *               milestone_labels: { type: array, items: { type: string } }
+ *               milestone_percentages: { type: array, items: { type: number } }
+ *     responses:
+ *       201:
+ *         description: 合約建立成功
+ *   get:
+ *     tags: [Lex (合約)]
+ *     summary: 查詢合約清單
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: entity_type
+ *         schema: { type: string }
+ *       - in: query
+ *         name: contract_type
+ *         schema: { type: string }
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [draft, review, active, completed, disputed, terminated] }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 50 }
+ *     responses:
+ *       200:
+ *         description: 合約清單（含合約總金額）
+ */
 lexRouter.post('/contract', async (req: Request, res: Response) => {
   const body = req.body as Partial<Contract> & {
     milestone_labels?: string[];
@@ -319,6 +392,21 @@ lexRouter.get('/contract', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/lex/contract/expiring ────────────────────────
+/**
+ * @openapi
+ * /agents/lex/contract/expiring:
+ *   get:
+ *     tags: [Lex (合約)]
+ *     summary: 即將到期合約警示
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: within_days
+ *         schema: { type: integer, default: 30 }
+ *     responses:
+ *       200:
+ *         description: 即將到期合約清單
+ */
 lexRouter.get('/contract/expiring', async (req: Request, res: Response) => {
   const { within_days } = req.query as { within_days?: string };
   const days = parseInt(within_days ?? '30');
@@ -344,6 +432,18 @@ lexRouter.get('/contract/expiring', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/lex/contract/milestones ──────────────────────
+/**
+ * @openapi
+ * /agents/lex/contract/milestones:
+ *   get:
+ *     tags: [Lex (合約)]
+ *     summary: 所有未付付款里程碑
+ *     description: 列出所有進行中合約的未付付款里程碑，依到期日排序
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: 未付里程碑清單（含逃期數量）
+ */
 lexRouter.get('/contract/milestones', async (req: Request, res: Response) => {
   const unpaidMilestones: Array<{
     contract_id: string; title: string; entity_type: string;
@@ -377,7 +477,35 @@ lexRouter.get('/contract/milestones', async (req: Request, res: Response) => {
   });
 });
 
-// ── PATCH /agents/lex/contract/:id/status ────────────────────
+// ── PATCH /agents/lex/contract/:id/status ───────────────────
+/**
+ * @openapi
+ * /agents/lex/contract/{id}/status:
+ *   patch:
+ *     tags: [Lex (合約)]
+ *     summary: 更新合約狀態 / 標記里程碑付款
+ *     description: 可更新合約狀態或標記特定里程碑為已付，里程碑付款後自動通知鳴鑫入帳
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status: { type: string, enum: [draft, review, active, completed, disputed, terminated] }
+ *               milestone_id: { type: string, format: uuid }
+ *               paid_date: { type: string, format: date }
+ *     responses:
+ *       200:
+ *         description: 合約狀態已更新
+ *       404:
+ *         description: 合約不存在
+ */
 lexRouter.patch('/contract/:id/status', async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { status, milestone_id, paid_date } = req.body as {
@@ -413,7 +541,31 @@ lexRouter.patch('/contract/:id/status', async (req: Request, res: Response) => {
   });
 });
 
-// ── POST /agents/lex/contract/:id/analyze ────────────────────
+// ── POST /agents/lex/contract/:id/analyze ──────────────────
+/**
+ * @openapi
+ * /agents/lex/contract/{id}/analyze:
+ *   post:
+ *     tags: [Lex (合約)]
+ *     summary: AI 合約條款風險分析
+ *     description: 由 AI 對現有合約紀錄或提供的合約內容進行風險評估與修改建議
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               content: { type: string, description: '合約內容（若不提供則依 ID 查詢）' }
+ *     responses:
+ *       200:
+ *         description: AI 合約風險分析報告
+ */
 lexRouter.post('/contract/:id/analyze', async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { content } = req.body as { content?: string };
@@ -455,7 +607,39 @@ ${userContent}
   });
 });
 
-// ── POST /agents/lex/document (DocHub) ───────────────────────
+// ── POST /agents/lex/document (DocHub) ────────────────────
+/**
+ * @openapi
+ * /agents/lex/document:
+ *   post:
+ *     tags: [Lex (合約)]
+ *     summary: 新增文件（DocHub）
+ *     description: 登錄根證、許可證、保單、認證等文件至 DocHub，支援到期警示
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [title, entity_type, category]
+ *             properties:
+ *               title: { type: string, example: '公司營業登記證' }
+ *               entity_type: { type: string }
+ *               category: { type: string, enum: [business_license, permit, insurance_policy, certification, design_doc, contract_file, correspondence, other] }
+ *               expiry_date: { type: string, format: date }
+ *               issuer: { type: string }
+ *     responses:
+ *       201:
+ *         description: 文件登錄成功（含到期警示）
+ *   get:
+ *     tags: [Lex (合約)]
+ *     summary: 查詢文件清單
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: 文件清單
+ */
 lexRouter.post('/document', async (req: Request, res: Response) => {
   const body = req.body as Partial<DocHubItem>;
 
@@ -491,7 +675,22 @@ lexRouter.post('/document', async (req: Request, res: Response) => {
   });
 });
 
-// ── GET /agents/lex/document/expiring ────────────────────────
+// ── GET /agents/lex/document/expiring ───────────────────────
+/**
+ * @openapi
+ * /agents/lex/document/expiring:
+ *   get:
+ *     tags: [Lex (合約)]
+ *     summary: 即將到期文件（執照/保單）
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: within_days
+ *         schema: { type: integer, default: 60 }
+ *     responses:
+ *       200:
+ *         description: 即將到期文件清單（含逰期項目）
+ */
 lexRouter.get('/document/expiring', async (req: Request, res: Response) => {
   const { within_days } = req.query as { within_days?: string };
   const days = parseInt(within_days ?? '60');
@@ -531,7 +730,19 @@ lexRouter.get('/document/expiring', async (req: Request, res: Response) => {
   });
 });
 
-// ── GET /agents/lex/health ────────────────────────────────────
+// ── GET /agents/lex/health ───────────────────────────────────
+/**
+ * @openapi
+ * /agents/lex/health:
+ *   get:
+ *     tags: [Lex (合約)]
+ *     summary: Lex Agent 健康檢查
+ *     description: 回傳合約/文件剩餘統計與即將到期/逰期警示
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Lex Agent 健康狀態
+ */
 lexRouter.get('/health', async (_req: Request, res: Response) => {
   const activeContracts  = CONTRACTS.filter(c => c.status === 'active');
   const expiringContracts = activeContracts.filter(

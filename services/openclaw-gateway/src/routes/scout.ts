@@ -197,6 +197,28 @@ async function writeToAccountant(
 }
 
 // ── POST /agents/scout/chat ────────────────────────────────────
+/**
+ * @openapi
+ * /agents/scout/chat:
+ *   post:
+ *     tags: [Scout]
+ *     summary: UAV 任務諮詢問答（AI）
+ *     description: 與 Scout 進行自由問答，支援航空法規 RAG 查詢，強制本地 Ollama qwen3:14b
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/AgentChatRequest'
+ *           example:
+ *             message: 台北市信義區空拍需要哪些許可？
+ *     responses:
+ *       200:
+ *         description: AI 回覆
+ *       400:
+ *         description: 缺少 message
+ */
 scoutRouter.post('/chat', async (req: Request, res: Response) => {
   const { message, session_id } = req.body as {
     message?: string;
@@ -227,6 +249,60 @@ scoutRouter.post('/chat', async (req: Request, res: Response) => {
 });
 
 // ── POST /agents/scout/mission ────────────────────────────────
+/**
+ * @openapi
+ * /agents/scout/mission:
+ *   post:
+ *     tags: [Scout]
+ *     summary: 新增飛行任務記錄
+ *     description: 建立新 UAV 飛行任務，自動核查飛手執照有效性與許可狀態
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [title, client_name, location, scheduled_start, pilot_id]
+ *             properties:
+ *               title: { type: string, example: '台積電廠區空拍' }
+ *               client_name: { type: string, example: '台積電股份有限公司' }
+ *               location: { type: string, example: '台南科學工業園區' }
+ *               scheduled_start: { type: string, format: date-time }
+ *               scheduled_end: { type: string, format: date-time }
+ *               mission_type: { type: string, enum: [aerial_photo, inspection, agriculture, survey, rescue_support, other] }
+ *               pilot_id: { type: string, format: uuid }
+ *               service_fee: { type: number, example: 25000 }
+ *               permit_obtained: { type: boolean, default: false }
+ *     responses:
+ *       201:
+ *         description: 任務建立成功（含合規警告）
+ *       400:
+ *         description: 缺少必要欄位
+ *   get:
+ *     tags: [Scout]
+ *     summary: 查詢任務清單
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [planned, in_progress, completed, cancelled, aborted] }
+ *       - in: query
+ *         name: client_name
+ *         schema: { type: string }
+ *       - in: query
+ *         name: from
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: to
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 50, maximum: 200 }
+ *     responses:
+ *       200:
+ *         description: 任務清單
+ */
 scoutRouter.post('/mission', async (req: Request, res: Response) => {
   const body = req.body as Partial<FlightMission>;
 
@@ -314,6 +390,36 @@ scoutRouter.get('/mission', async (req: Request, res: Response) => {
 });
 
 // ── PATCH /agents/scout/mission/:id/status ────────────────────
+/**
+ * @openapi
+ * /agents/scout/mission/{id}/status:
+ *   patch:
+ *     tags: [Scout]
+ *     summary: 更新任務狀態
+ *     description: 更新飛行任務狀態，任務完成後自動將服務費寫入 Accountant 帳本
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status: { type: string, enum: [planned, in_progress, completed, cancelled, aborted] }
+ *               actual_start: { type: string, format: date-time }
+ *               actual_end: { type: string, format: date-time }
+ *               flight_time_mins: { type: number }
+ *               weather_condition: { type: string }
+ *     responses:
+ *       200:
+ *         description: 任務狀態更新成功
+ *       404:
+ *         description: 任務不存在
+ */
 scoutRouter.patch('/mission/:id/status', async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { status, actual_start, actual_end, flight_time_mins,
@@ -352,6 +458,42 @@ scoutRouter.patch('/mission/:id/status', async (req: Request, res: Response) => 
 });
 
 // ── POST /agents/scout/equipment ─────────────────────────────
+/**
+ * @openapi
+ * /agents/scout/equipment:
+ *   post:
+ *     tags: [Scout]
+ *     summary: 新增無人機設備
+ *     description: 登錄新 UAV 設備，自動計算折舊現值，建議高單價設備投保機體損失險
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [brand, model, serial_no]
+ *             properties:
+ *               brand: { type: string, example: DJI }
+ *               model: { type: string, example: Matrice 350 RTK }
+ *               serial_no: { type: string }
+ *               purchase_price: { type: number, example: 350000 }
+ *               purchase_date: { type: string, format: date }
+ *     responses:
+ *       201:
+ *         description: 設備登錄成功（含折舊現值與保險提示）
+ *   get:
+ *     tags: [Scout]
+ *     summary: 設備清單（含折舊現值）
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [active, maintenance, retired, damaged] }
+ *     responses:
+ *       200:
+ *         description: 設備清單（即時折舊計算）
+ */
 scoutRouter.post('/equipment', async (req: Request, res: Response) => {
   const body = req.body as Partial<UAVEquipment>;
 
@@ -431,6 +573,37 @@ scoutRouter.get('/equipment', async (req: Request, res: Response) => {
 });
 
 // ── POST /agents/scout/pilot ──────────────────────────────────
+/**
+ * @openapi
+ * /agents/scout/pilot:
+ *   post:
+ *     tags: [Scout]
+ *     summary: 新增飛手資料
+ *     description: 登錄無人機飛手，自動核查執照狀態與到期警示
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, license_no, license_expiry]
+ *             properties:
+ *               name: { type: string, example: 陳小明 }
+ *               license_type: { type: string, enum: [basic, advanced, bvlos, other], default: basic }
+ *               license_no: { type: string }
+ *               license_expiry: { type: string, format: date, example: '2027-06-30' }
+ *     responses:
+ *       201:
+ *         description: 飛手登錄成功（含執照狀態）
+ *   get:
+ *     tags: [Scout]
+ *     summary: 飛手清單（含執照到期警示）
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: 飛手清單（聯絡資訊已遮罩）
+ */
 scoutRouter.post('/pilot', async (req: Request, res: Response) => {
   const body = req.body as Partial<UAVPilot>;
 
@@ -488,6 +661,30 @@ scoutRouter.get('/pilot', async (req: Request, res: Response) => {
 });
 
 // ── POST /agents/scout/permit/check ──────────────────────────
+/**
+ * @openapi
+ * /agents/scout/permit/check:
+ *   post:
+ *     tags: [Scout]
+ *     summary: 飛行許可核查（航空法規 RAG）
+ *     description: 輸入地點與任務類型，由 AI 查詢航空法規 RAG 分析所需許可與限制
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [location]
+ *             properties:
+ *               location: { type: string, example: '台北市信義區' }
+ *               mission_type: { type: string, example: 商業攝影 }
+ *               altitude_m: { type: integer, example: 120, description: '飛行高度（公尺）' }
+ *               operation_type: { type: string, enum: [visual, bvlos], default: visual }
+ *     responses:
+ *       200:
+ *         description: 飛行許可分析（AI 生成，含法規引用）
+ */
 scoutRouter.post('/permit/check', async (req: Request, res: Response) => {
   const { location, mission_type, altitude_m, operation_type } = req.body as {
     location?: string;
@@ -522,6 +719,31 @@ scoutRouter.post('/permit/check', async (req: Request, res: Response) => {
 });
 
 // ── POST /agents/scout/quote ──────────────────────────────────
+/**
+ * @openapi
+ * /agents/scout/quote:
+ *   post:
+ *     tags: [Scout]
+ *     summary: UAV 服務報價
+ *     description: 依服務類型、面積、架次數量計算 UAV 服務報價，含加值項目與 5% 營業稅
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [service_type]
+ *             properties:
+ *               service_type: { type: string, enum: [aerial_photo, inspection, agriculture, survey, rescue_support] }
+ *               area_sqm: { type: number, description: '作業面積（農業噴灑專用，平方公尺）' }
+ *               flight_sessions: { type: integer, default: 1 }
+ *               additional_services: { type: array, items: { type: string, enum: [post_processing, ortho_map, thermal] } }
+ *               client_name: { type: string }
+ *     responses:
+ *       200:
+ *         description: 報價單（含明細、稅額，有效期 30 天）
+ */
 scoutRouter.post('/quote', async (req: Request, res: Response) => {
   const { service_type, area_sqm, flight_sessions, additional_services, client_name } = req.body as {
     service_type: 'aerial_photo' | 'inspection' | 'agriculture' | 'survey' | 'rescue_support';
@@ -582,6 +804,24 @@ scoutRouter.post('/quote', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/scout/report/monthly ────────────────────────
+/**
+ * @openapi
+ * /agents/scout/report/monthly:
+ *   get:
+ *     tags: [Scout]
+ *     summary: 月度任務彙整報告
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: year
+ *         schema: { type: integer, example: 2026 }
+ *       - in: query
+ *         name: month
+ *         schema: { type: integer, example: 4 }
+ *     responses:
+ *       200:
+ *         description: 月度任務統計（含收入、飛時、類型分布、飛手執照警示）
+ */
 scoutRouter.get('/report/monthly', async (req: Request, res: Response) => {
   const { year, month } = req.query as { year?: string; month?: string };
   const y = parseInt(year ?? String(new Date().getFullYear()));
@@ -616,6 +856,18 @@ scoutRouter.get('/report/monthly', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/scout/health ──────────────────────────────────
+/**
+ * @openapi
+ * /agents/scout/health:
+ *   get:
+ *     tags: [Scout]
+ *     summary: Scout Agent 健康檢查
+ *     description: 回傳 Agent 狀態、任務/設備/飛手統計與執照到期警示
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Agent 健康狀態
+ */
 scoutRouter.get('/health', async (_req: Request, res: Response) => {
   const expiredPilots = PILOTS.filter(p => daysUntilExpiry(p.license_expiry) < 0);
   const expiringPilots = PILOTS.filter(p => {
@@ -641,3 +893,114 @@ scoutRouter.get('/health', async (_req: Request, res: Response) => {
     timestamp: now(),
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// ── C-1a: Scout → Lex 跨 Agent 協作（UAV 合約自動草稿）──────
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * POST /agents/scout/collab/lex
+ *
+ * 當高價 UAV 任務確認後，自動向 Lex 請求建立服務合約。
+ * 門檻：service_fee >= NT$20,000 即觸發合約草稿。
+ *
+ * 流程：
+ *   1. Scout 確認任務資料完整
+ *   2. 透過 QVP 佇列向 Lex 發送 Write Request
+ *   3. Lex 自動建立 service 類型合約
+ *
+ * @openapi
+ * /agents/scout/collab/lex:
+ *   post:
+ *     tags: [Scout]
+ *     summary: Scout → Lex 合約自動草稿
+ *     description: 高價 UAV 任務（≥ NT$20,000）完成確認後，透過 QVP 佇列向 Lex 發送建立服務合約的請求
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [mission_id]
+ *             properties:
+ *               mission_id: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: 合約請求已送入 QVP 佇列
+ *       400:
+ *         description: 任務不存在或金額未達門檻
+ */
+scoutRouter.post('/collab/lex', async (req: Request, res: Response) => {
+  const { mission_id } = req.body as { mission_id?: string };
+
+  if (!mission_id) {
+    res.status(400).json({ error: 'mission_id is required' });
+    return;
+  }
+
+  const mission = MISSIONS.find(m => m.mission_id === mission_id);
+  if (!mission) {
+    res.status(404).json({ error: 'Mission not found' });
+    return;
+  }
+
+  if (!mission.service_fee || mission.service_fee < 20000) {
+    res.status(400).json({
+      error: 'Mission service_fee must be >= NT$20,000 for contract auto-draft',
+      current_fee: mission.service_fee ?? 0,
+    });
+    return;
+  }
+
+  // 透過 QVP 佇列向 Lex 請求建立合約
+  try {
+    const { writeRequestQueue } = await import('../write-request-queue');
+
+    const idempotencyKey = `scout_lex_contract_${mission.mission_id}`;
+
+    const result = await writeRequestQueue.submit({
+      source_agent:    'scout',
+      target_agent:    'lex',
+      collection:      'lex_contracts',
+      operation:       'create',
+      idempotency_key: idempotencyKey,
+      entity_type:     'co_drone',
+      reason:          `UAV 任務 ${mission.title}（客戶：${mission.client_name}）金額 NT$${mission.service_fee.toLocaleString()} 需建立服務合約`,
+      data: {
+        entity_type:    'co_drone',
+        contract_type:  'service',
+        title:          `UAV 空拍服務合約 — ${mission.title}`,
+        counterparty:   mission.client_name,
+        total_amount:   mission.service_fee,
+        currency:       'NTD',
+        effective_date: mission.scheduled_start.slice(0, 10),
+        expiry_date:    mission.scheduled_end.slice(0, 10),
+        notes:          `Scout 自動建立 | 任務 ID: ${mission.mission_id} | 地點: ${mission.location}`,
+        milestone_labels:      ['簽約款', '完工款'],
+        milestone_percentages: [30, 70],
+      },
+    });
+
+    logger.info(`[Scout/collab/lex] Contract request sent: ${result.request_id} (${result.status})`);
+
+    res.json({
+      ok: result.ok,
+      request_id: result.request_id,
+      status: result.status,
+      message: result.ok
+        ? `已向 Lex 請求建立 UAV 服務合約（${mission.client_name}，NT$${mission.service_fee.toLocaleString()}）`
+        : result.message,
+      mission_id: mission.mission_id,
+      contract_details: {
+        title: `UAV 空拍服務合約 — ${mission.title}`,
+        counterparty: mission.client_name,
+        amount: mission.service_fee,
+      },
+    });
+  } catch (err) {
+    logger.error(`[Scout/collab/lex] Error: ${err}`);
+    res.status(500).json({ error: '合約請求異常', details: String(err) });
+  }
+});
+

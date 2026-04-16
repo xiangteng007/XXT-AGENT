@@ -19,6 +19,48 @@
             ]
         },
         {
+            "collectionGroup": "sessions",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "createdAt",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "write_requests",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "status",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "created_at",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "reconciliation_history",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "period",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "executed_at",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
             "collectionGroup": "logs",
             "queryScope": "COLLECTION",
             "fields": [

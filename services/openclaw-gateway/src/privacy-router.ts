@@ -98,19 +98,9 @@ export function classify(
   context?: string,
   agentId?: string,
 ): PrivacyClassification {
-  // 白名單 Agent（工程部門）永遠走 PUBLIC
-  if (agentId && PUBLIC_WHITELIST_AGENTS.includes(agentId)) {
-    return {
-      level: 'PUBLIC',
-      routeTo: PRIVACY_ENFORCE_LOCAL ? 'local' : 'cloud',
-      detectedKeywords: [],
-      reason: `Agent ${agentId} is whitelisted for public routing`,
-    };
-  }
-
   const text = `${prompt} ${context ?? ''}`.toLowerCase();
 
-  // 1. 加權掃描 PRIVATE 詞彙
+  // 1. 加權掃描 PRIVATE 詞彙 (Security First: 最優先攔截，無懼白名單)
   let privateScore = 0;
   const detectedKeywords: string[] = [];
   for (const { keyword, weight } of PRIVATE_SCORED_KEYWORDS) {
@@ -127,6 +117,16 @@ export function classify(
       routeTo: 'local',
       detectedKeywords,
       reason: `Sensitive score ${privateScore} >= ${PRIVATE_THRESHOLD}: ${detectedKeywords.slice(0, 3).join(', ')}`,
+    };
+  }
+
+  // 白名單 Agent（工程部門等）若無重度機密詞彙，預設走 PUBLIC
+  if (agentId && PUBLIC_WHITELIST_AGENTS.includes(agentId)) {
+    return {
+      level: 'PUBLIC',
+      routeTo: PRIVACY_ENFORCE_LOCAL ? 'local' : 'cloud',
+      detectedKeywords: [],
+      reason: `Agent ${agentId} is whitelisted for public routing`,
     };
   }
 

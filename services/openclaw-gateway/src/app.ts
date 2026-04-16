@@ -21,6 +21,8 @@ import { investRouter } from "./routes/invest";
 import { vramRouter } from "./routes/vram";
 import { systemRouter } from "./routes/system";
 import { agentBusRouter } from "./routes/agent-bus";
+import { aiCostRouter } from "./routes/cost";
+import { reconcileRouter } from "./routes/reconcile";
 import { auditRouter } from "./routes/audit";
 import { regulationRouter } from "./routes/regulation";
 import { accountantRouter } from "./routes/accountant";
@@ -33,6 +35,9 @@ import { scoutRouter } from "./routes/scout";
 import { zoraRouter } from "./routes/zora";
 import { lexRouter } from "./routes/lex";
 import { novaRouter } from "./routes/nova";         // E-1: Nova HR Agent
+import { sageRouter } from "./routes/sage";         // E-3: Sage Analytics Agent
+import { turnkeyRouter } from "./routes/turnkey-pipeline"; // Turnkey Delivery Engine
+import { kaizenRouter } from "./routes/kaizen";            // Kaizen Self-Improvement Engine
 import { firebaseAuthMiddleware } from "./middleware/firebase-auth";
 import { globalRateLimit, agentRateLimit, financeRateLimit, getRateLimitStats } from "./middleware/rate-limiter";
 import { requestIdMiddleware, globalErrorHandler, notFoundHandler } from "./middleware/error-handler";
@@ -122,6 +127,10 @@ app.get("/health", (_req: Request, res: Response) => {
 app.use("/vram", vramRouter);
 app.use("/system", systemRouter);
 app.use("/system/agent-bus", agentBusRouter);
+app.use("/system/ai-cost", aiCostRouter);
+app.use("/system/reconcile", reconcileRouter);   // C-1d: Accountant ↔ Finance 對帳
+app.use("/system/turnkey", turnkeyRouter);       // Turnkey Delivery State Machine
+app.use("/system/kaizen", kaizenRouter);         // Agent self-improvement framework
 
 // ── 保護路由（需 Firebase JWT）────────────────────────────────
 app.use("/events", firebaseAuthMiddleware, eventsRouter);
@@ -147,6 +156,7 @@ app.use("/agents/estimator", firebaseAuthMiddleware, estimatorRouter);
 app.use("/agents/scout", firebaseAuthMiddleware, agentRateLimit, scoutRouter);
 app.use("/agents/zora", firebaseAuthMiddleware, agentRateLimit, zoraRouter);
 app.use("/agents/lex", firebaseAuthMiddleware, agentRateLimit, lexRouter);
+app.use("/agents/sage", firebaseAuthMiddleware, agentRateLimit, sageRouter);
 
 // ── 404 + 全局 Error Handler（必須在所有路由之後）────────────────
 app.use(notFoundHandler);

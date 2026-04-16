@@ -82,7 +82,12 @@ export async function ollamaChat(
     options?: Record<string, unknown>,
     keepAlive: string = DEFAULT_KEEP_ALIVE,
     baseUrl: string = OLLAMA_BASE,    // A-2: 支援動態來源（Primary / Backup）
-): Promise<{ content: string; model: string; latency_ms: number }> {
+): Promise<{
+    content: string;
+    model: string;
+    latency_ms: number;
+    usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+}> {
     const start = Date.now();
 
     // ── Qwen3 Thinking Mode 防護 ──────────────────────────────
@@ -100,25 +105,36 @@ export async function ollamaChat(
         });
     }
 
-    // 從 options 中移除自定義的 thinking 旗標，避免傳入 Ollama
-    const { thinking: _thinking, ...ollamaOptions } = (options ?? {}) as Record<string, unknown>;
+    // 從 options 中移除自定義的 thinking/responseFormat 旗標，避免傳入 Ollama 參數中拋錯
+    const { 
+        thinking: _thinking, 
+        responseFormat, 
+        ...ollamaOptions 
+    } = (options ?? {}) as Record<string, unknown>;
 
     let response: Response;
     try {
+        const bodyParams: any = {
+            model,
+            messages: processedMessages,
+            stream: false,
+            keep_alive: keepAlive,
+            options: {
+                temperature: 0.7,
+                num_predict: 512,
+                ...ollamaOptions,
+            },
+        };
+
+        // N-1: 支援 Ollama 的 JSON mode
+        if (responseFormat === 'json') {
+            bodyParams.format = 'json';
+        }
+
         response = await fetch(`${baseUrl}/api/chat`, {   // A-2: 使用動態 baseUrl
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model,
-                messages: processedMessages,
-                stream: false,
-                keep_alive: keepAlive,
-                options: {
-                    temperature: 0.7,
-                    num_predict: 512,
-                    ...ollamaOptions,
-                },
-            }),
+            body: JSON.stringify(bodyParams),
             signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
         });
     } catch (err) {
@@ -139,12 +155,21 @@ export async function ollamaChat(
     }
 
     const latency_ms = Date.now() - start;
-    logger.info(`[Ollama] ${model} responded in ${latency_ms}ms (eval=${data.eval_count ?? '?'}, keep_alive=${keepAlive})`);
+    const prompt_tokens = (data as any).prompt_eval_count ?? 0;
+    const completion_tokens = data.eval_count ?? 0;
+    const total_tokens = prompt_tokens + completion_tokens;
+
+    logger.info(`[Ollama] ${model} responded in ${latency_ms}ms (tokens=${total_tokens}, keep_alive=${keepAlive})`);
 
     return {
         content: data.message.content,
         model: data.model,
         latency_ms,
+        usage: {
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        },
     };
 }
 

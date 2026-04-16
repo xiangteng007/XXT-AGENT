@@ -96,6 +96,27 @@ async function fetchAccountantData(entity_type?: EntityType, year?: number): Pro
 // ============================================================
 // ── GET /agents/guardian/health ─────────────────────────────
 // ============================================================
+/**
+ * @openapi
+ * /agents/guardian/health:
+ *   get:
+ *     tags: [Guardian (安盾)]
+ *     summary: Guardian Agent 健康檢查
+ *     description: 回傳 Guardian Agent 狀態、模型、推理路由、RAG 可用性與能力清單
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Agent 狀態正常
+ *         content:
+ *           application/json:
+ *             example:
+ *               agent_id: guardian
+ *               status: ready
+ *               model: qwen3:14b
+ *               inference_route: local
+ *               privacy_level: PRIVATE
+ *               rag_status: online
+ */
 guardianRouter.get('/health', async (_req: Request, res: Response) => {
   let ragStatus = 'offline';
   try {
@@ -126,6 +147,37 @@ guardianRouter.get('/health', async (_req: Request, res: Response) => {
 // ============================================================
 // ── POST /agents/guardian/chat ──────────────────────────────
 // ============================================================
+/**
+ * @openapi
+ * /agents/guardian/chat:
+ *   post:
+ *     tags: [Guardian (安盾)]
+ *     summary: 保險諮詢問答（AI）
+ *     description: 與安盾進行自由問答，支援保險法規 RAG 查詢，強制走本地 Ollama qwen3:14b
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/AgentChatRequest'
+ *           example:
+ *             message: 工程公司需要投保哪些強制保險？
+ *             context: 從事建築改造，員工12人
+ *     responses:
+ *       200:
+ *         description: AI 回覆
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AgentChatResponse'
+ *       400:
+ *         description: 缺少 message
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 guardianRouter.post('/chat', async (req: Request, res: Response) => {
   const { message, context } = req.body as { message?: string; context?: string };
   if (!message?.trim()) { res.status(400).json({ error: 'message required' }); return; }
@@ -169,6 +221,33 @@ guardianRouter.post('/chat', async (req: Request, res: Response) => {
 // ── POST /agents/guardian/calc/car ──────────────────────────
 // ── 工程保險費率試算（確定性計算，無 LLM）───────────────────
 // ============================================================
+/**
+ * @openapi
+ * /agents/guardian/calc/car:
+ *   post:
+ *     tags: [Guardian (安盾)]
+ *     summary: 工程綜合保險費率試算 (CAR)
+ *     description: 依工程合約金額、工期、人數試算工程綜合保險（CAR）＋公共責任險（PLI）＋職災保費，純公式計算無 LLM
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [contract_value, duration_months, workers]
+ *             properties:
+ *               contract_value: { type: number, example: 8500000, description: '工程合約金額（NT$）' }
+ *               duration_months: { type: integer, example: 18, description: '工期（月）' }
+ *               workers: { type: integer, example: 12, description: '施工人員數' }
+ *               project_name: { type: string, example: '台積電廠房整修工程' }
+ *               complexity: { type: string, enum: [low, medium, high], default: medium }
+ *     responses:
+ *       200:
+ *         description: 試算結果（含 CAR、PLI、職災分項保費）
+ *       400:
+ *         description: 缺少必要參數
+ */
 guardianRouter.post('/calc/car', async (req: Request, res: Response) => {
   const { contract_value, duration_months, workers, project_name, complexity } = req.body as {
     contract_value?: number; duration_months?: number; workers?: number;
@@ -201,6 +280,34 @@ guardianRouter.post('/calc/car', async (req: Request, res: Response) => {
 });
 
 // ── POST /agents/guardian/calc/life ─────────────────────────
+/**
+ * @openapi
+ * /agents/guardian/calc/life:
+ *   post:
+ *     tags: [Guardian (安盾)]
+ *     summary: DIME 法則壽險保額計算
+ *     description: 依 DIME 法則（Debt × Income × Mortgage × Education）計算建議最低壽險保額
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [annual_salary]
+ *             properties:
+ *               annual_salary: { type: number, example: 1440000 }
+ *               debts: { type: number, example: 500000 }
+ *               income_years: { type: integer, example: 20 }
+ *               mortgage: { type: number, example: 8000000 }
+ *               children: { type: integer, example: 2 }
+ *               education_per_child: { type: number, example: 1200000 }
+ *     responses:
+ *       200:
+ *         description: 建議壽險保額與月繳估算
+ *       400:
+ *         description: 缺少 annual_salary
+ */
 guardianRouter.post('/calc/life', async (req: Request, res: Response) => {
   const { annual_salary, debts, income_years, mortgage, children, education_per_child } = req.body as {
     annual_salary?: number; debts?: number; income_years?: number;
@@ -226,6 +333,28 @@ guardianRouter.post('/calc/life', async (req: Request, res: Response) => {
 });
 
 // ── POST /agents/guardian/calc/workers ──────────────────────
+/**
+ * @openapi
+ * /agents/guardian/calc/workers:
+ *   post:
+ *     tags: [Guardian (安盾)]
+ *     summary: 職災補償試算（勞基法§59）
+ *     description: 按月薪與人數試算最高職災補償總額（醫療費+工資補償+失能補償+死亡補償），無 LLM
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [monthly_salary]
+ *             properties:
+ *               monthly_salary: { type: number, example: 45000 }
+ *               workers: { type: integer, example: 12 }
+ *     responses:
+ *       200:
+ *         description: 職災補償試算結果
+ */
 guardianRouter.post('/calc/workers', async (req: Request, res: Response) => {
   const { monthly_salary, workers } = req.body as { monthly_salary?: number; workers?: number };
 
@@ -244,6 +373,18 @@ guardianRouter.post('/calc/workers', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/guardian/calc/premium ───────────────────────
+/**
+ * @openapi
+ * /agents/guardian/calc/premium:
+ *   get:
+ *     tags: [Guardian (安盾)]
+ *     summary: 年度保費彙整（各實體分類）
+ *     description: 彙整所有有效保單的年繳保費，依實體類型（公司/個人/家庭）分組統計
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: 年度保費彙整結果
+ */
 guardianRouter.get('/calc/premium', async (_req: Request, res: Response) => {
   const summary = await calcPremiumSummary();
   res.json({ ok: true, ...summary });
@@ -253,6 +394,27 @@ guardianRouter.get('/calc/premium', async (_req: Request, res: Response) => {
 // ── POST /agents/guardian/analyze ───────────────────────────
 // ── 三實體保障缺口分析（AI + 帳本整合）─────────────────────
 // ============================================================
+/**
+ * @openapi
+ * /agents/guardian/analyze:
+ *   post:
+ *     tags: [Guardian (安盾)]
+ *     summary: 三實體保障缺口分析（AI）
+ *     description: 整合帳本財務數據＋現有保單＋法規 RAG，由 AI 分析公司/個人/家庭的全方位保障缺口
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               year: { type: integer, example: 2026, description: '分析年度（預設當年）' }
+ *     responses:
+ *       200:
+ *         description: 三實體保障缺口分析報告
+ *       500:
+ *         description: AI 推理異常
+ */
 guardianRouter.post('/analyze', async (req: Request, res: Response) => {
   const { year } = req.body as { year?: number };
   const targetYear = year ?? new Date().getFullYear();
@@ -399,6 +561,26 @@ async function generatePlan(
   };
 }
 
+/**
+ * @openapi
+ * /agents/guardian/plan/company:
+ *   post:
+ *     tags: [Guardian (安盾)]
+ *     summary: 工程公司全方位保障規劃（AI）
+ *     description: 整合帳本數據，由 AI 生成工程公司量身保障規劃（強制險＋建議險＋費用分配）
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               annual_revenue: { type: number, example: 5000000 }
+ *               workers: { type: integer, example: 12 }
+ *     responses:
+ *       200:
+ *         description: 公司保障規劃報告（AI 生成）
+ */
 guardianRouter.post('/plan/company', async (req: Request, res: Response) => {
   const { annual_revenue, workers, projects } = req.body as {
     annual_revenue?: number; workers?: number; projects?: Array<{name: string; value: number}>;
@@ -426,6 +608,29 @@ guardianRouter.post('/plan/company', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @openapi
+ * /agents/guardian/plan/personal:
+ *   post:
+ *     tags: [Guardian (安盾)]
+ *     summary: 個人保障規劃（AI）
+ *     description: 依個人薪資、負債、房貸、子女數，整合 DIME 法則與現有保單，由 AI 生成個人保障規劃
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               annual_salary: { type: number, example: 1440000 }
+ *               debts: { type: number }
+ *               mortgage: { type: number }
+ *               children: { type: integer }
+ *               age: { type: integer }
+ *     responses:
+ *       200:
+ *         description: 個人保障規劃（AI 生成，含 DIME 摘要）
+ */
 guardianRouter.post('/plan/personal', async (req: Request, res: Response) => {
   const { annual_salary, debts, mortgage, children, age } = req.body as {
     annual_salary?: number; debts?: number; mortgage?: number; children?: number; age?: number;
@@ -455,6 +660,28 @@ guardianRouter.post('/plan/personal', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @openapi
+ * /agents/guardian/plan/family:
+ *   post:
+ *     tags: [Guardian (安盾)]
+ *     summary: 家庭保障規劃（AI）
+ *     description: 依家庭成員、房屋價值、車輛數量，由 AI 生成住宅/長照/子女等家庭保障規劃
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               members: { type: integer, example: 4 }
+ *               house_value: { type: number, example: 10000000 }
+ *               mortgage: { type: number }
+ *               vehicle_count: { type: integer }
+ *     responses:
+ *       200:
+ *         description: 家庭保障規劃（AI 生成）
+ */
 guardianRouter.post('/plan/family', async (req: Request, res: Response) => {
   const { members, house_value, mortgage, vehicle_count } = req.body as {
     members?: number; house_value?: number; mortgage?: number; vehicle_count?: number;
@@ -480,6 +707,25 @@ guardianRouter.post('/plan/family', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @openapi
+ * /agents/guardian/plan/full:
+ *   post:
+ *     tags: [Guardian (安盾)]
+ *     summary: 三實體統合保障規劃（AI，最完整）
+ *     description: 整合公司＋個人＋家庭的全量帳本數據及現有保單，由 AI 產出最完整的跨實體統合保障規劃
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               year: { type: integer, example: 2026 }
+ *     responses:
+ *       200:
+ *         description: 三實體統合規劃報告（AI 生成）
+ */
 guardianRouter.post('/plan/full', async (req: Request, res: Response) => {
   const { year } = req.body as { year?: number };
   const targetYear = year ?? new Date().getFullYear();
@@ -522,6 +768,56 @@ guardianRouter.post('/plan/full', async (req: Request, res: Response) => {
 // ── 保單 CRUD ────────────────────────────────────────────────
 // ── POST /agents/guardian/policy — 新增保單 ─────────────────
 // ============================================================
+/**
+ * @openapi
+ * /agents/guardian/policy:
+ *   post:
+ *     tags: [Guardian (安盾)]
+ *     summary: 新增保單記錄
+ *     description: 登錄新保單至 Guardian 保單庫（保單號碼僅存後4碼）
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [entity_type, category, insurer, insured_name, sum_insured, annual_premium, start_date]
+ *             properties:
+ *               entity_type: { type: string, enum: [personal, family, co_construction, co_renovation, co_design, co_drone, assoc_rescue] }
+ *               category: { type: string, example: workers_comp, description: '保單類別（見 CATEGORY_ZH）' }
+ *               insurer: { type: string, example: 新光產險 }
+ *               insured_name: { type: string, example: 張大明 }
+ *               sum_insured: { type: number, example: 5000000 }
+ *               annual_premium: { type: number, example: 24000 }
+ *               start_date: { type: string, format: date, example: '2026-01-01' }
+ *     responses:
+ *       201:
+ *         description: 保單登錄成功
+ *       400:
+ *         description: 缺少必要欄位
+ *   get:
+ *     tags: [Guardian (安盾)]
+ *     summary: 查詢保單列表
+ *     description: 依實體類型、保單類別、狀態篩選保單，含保費彙總
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: entity_type
+ *         schema: { type: string }
+ *       - in: query
+ *         name: category
+ *         schema: { type: string }
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [active, expired, cancelled], default: active }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 100 }
+ *     responses:
+ *       200:
+ *         description: 保單列表（含彙總統計）
+ */
 guardianRouter.post('/policy', async (req: Request, res: Response) => {
   const {
     entity_type, category, insurer, policy_no_masked, insured_name, beneficiary,
@@ -609,6 +905,24 @@ guardianRouter.get('/policy', async (req: Request, res: Response) => {
 });
 
 // ── DELETE /agents/guardian/policy/:id ──────────────────────
+/**
+ * @openapi
+ * /agents/guardian/policy/{id}:
+ *   delete:
+ *     tags: [Guardian (安盾)]
+ *     summary: 刪除保單
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: 保單已刪除
+ *       404:
+ *         description: 保單不存在
+ */
 guardianRouter.delete('/policy/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   const existed = await deletePolicy(id);
@@ -620,6 +934,18 @@ guardianRouter.delete('/policy/:id', async (req: Request, res: Response) => {
 // ============================================================
 // ── GET /agents/guardian/report/gap — 缺口分析報告 ──────────
 // ============================================================
+/**
+ * @openapi
+ * /agents/guardian/report/gap:
+ *   get:
+ *     tags: [Guardian (安盾)]
+ *     summary: 保障缺口分析報告
+ *     description: 靜態規則比對現有保單，生成缺口評分、行動優先序與強制合規狀態（無 LLM）
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: 缺口分析報告（含評分、CRITICAL/HIGH/OK 告警等級）
+ */
 guardianRouter.get('/report/gap', async (_req: Request, res: Response) => {
   const [activePolicies, mandatoryGap, coData, peData] = await Promise.all([
     queryPolicies({ status: 'active', limit: 200 }),
@@ -721,6 +1047,18 @@ guardianRouter.get('/report/gap', async (_req: Request, res: Response) => {
 });
 
 // ── GET /agents/guardian/report/premium — 保費核對帳本 ──────
+/**
+ * @openapi
+ * /agents/guardian/report/premium:
+ *   get:
+ *     tags: [Guardian (安盾)]
+ *     summary: 保費核對帳本
+ *     description: 比對 Guardian 保單年繳保費總額與 Accountant 帳本 life_insurance 科目，偵測差異
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: 保費核對結果（MATCHED / DISCREPANCY）
+ */
 guardianRouter.get('/report/premium', async (_req: Request, res: Response) => {
   const [premiumSummary, activePolicies] = await Promise.all([
     calcPremiumSummary(),
@@ -771,6 +1109,27 @@ guardianRouter.get('/report/premium', async (_req: Request, res: Response) => {
 });
 
 // ── POST /agents/guardian/collab/accountant — Agent 協作 ────
+/**
+ * @openapi
+ * /agents/guardian/collab/accountant:
+ *   post:
+ *     tags: [Guardian (安盾)]
+ *     summary: 向鳴鑫請求財務資料（Agent 協作）
+ *     description: Guardian 向 Accountant 請求特定實體與年度的帳本財務彙整數據，用於保障分析
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               entity_type: { type: string, description: '法人實體 ID' }
+ *               year: { type: integer, example: 2026 }
+ *               purpose: { type: string, example: '保障缺口分析' }
+ *     responses:
+ *       200:
+ *         description: 帳本財務彙整數據
+ */
 guardianRouter.post('/collab/accountant', async (req: Request, res: Response) => {
   const { entity_type, year, purpose } = req.body as {
     entity_type?: EntityType; year?: number; purpose?: string;
@@ -785,3 +1144,115 @@ guardianRouter.post('/collab/accountant', async (req: Request, res: Response) =>
     note: '資料來自鳴鑫會計師帳本（PRIVATE, 本地推理）',
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// ── C-1b: Guardian → Accountant 保費自動記帳 ────────────────
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * POST /agents/guardian/collab/auto-booking
+ *
+ * 保單登錄後，自動將年繳保費寫入 Accountant 帳本。
+ * 門檻：annual_premium >= NT$5,000 才觸發自動入帳。
+ *
+ * 流程：
+ *   1. Guardian 確認保單存在
+ *   2. 透過 QVP 佇列向 Accountant 發送 Write Request
+ *   3. Accountant 自動建立 expense (life_insurance/insurance) 帳本記錄
+ */
+guardianRouter.post('/collab/auto-booking', async (req: Request, res: Response) => {
+  const { policy_id } = req.body as { policy_id?: string };
+
+  if (!policy_id) {
+    res.status(400).json({ error: 'policy_id is required' });
+    return;
+  }
+
+  const policy = await getPolicyById(policy_id);
+  if (!policy) {
+    res.status(404).json({ error: 'Policy not found' });
+    return;
+  }
+
+  if (policy.ledger_linked) {
+    res.json({
+      ok: true,
+      status: 'already_linked',
+      message: `保單 ${policy_id} 已連結帳本，無需重複入帳`,
+    });
+    return;
+  }
+
+  if (policy.annual_premium < 5000) {
+    res.status(400).json({
+      error: 'Annual premium must be >= NT$5,000 for auto-booking',
+      current_premium: policy.annual_premium,
+    });
+    return;
+  }
+
+  try {
+    const { writeRequestQueue } = await import('../write-request-queue');
+
+    const idempotencyKey = `guardian_premium_${policy.policy_id}_${new Date().getFullYear()}`;
+
+    const categoryMap: Record<string, string> = {
+      life_term: 'life_insurance',
+      life_whole: 'life_insurance',
+      accident: 'insurance',
+      medical: 'insurance',
+      car_insurance: 'insurance',
+      pli: 'insurance',
+      workers_comp: 'insurance',
+    };
+
+    const ledgerCategory = categoryMap[policy.category] ?? 'insurance';
+
+    const result = await writeRequestQueue.submit({
+      source_agent:    'guardian',
+      target_agent:    'accountant',
+      collection:      'accountant_ledger',
+      operation:       'create',
+      idempotency_key: idempotencyKey,
+      entity_type:     policy.entity_type,
+      reason:          `安盾保費自動入帳：${CATEGORY_ZH[policy.category]}（${policy.insurer}）`,
+      data: {
+        type:             'expense',
+        category:         ledgerCategory,
+        description:      `保險費：${CATEGORY_ZH[policy.category]}（${policy.insurer}）— 被保人 ${policy.insured_name}`,
+        amount_taxed:     policy.annual_premium,
+        amount_untaxed:   policy.annual_premium,
+        tax_amount:       0,
+        tax_rate:         0,
+        is_tax_exempt:    true,
+        entity_type:      policy.entity_type,
+        counterparty_name: policy.insurer,
+        transaction_date: policy.start_date,
+        is_deductible:    true,
+        notes:            `Guardian 自動入帳 | 保單 ${policy.policy_no_masked} | ${policy.payment_frequency}`,
+      },
+    });
+
+    logger.info(`[Guardian/collab/auto-booking] Premium booking sent: ${result.request_id} (${result.status})`);
+
+    res.json({
+      ok: result.ok,
+      request_id: result.request_id,
+      status: result.status,
+      message: result.ok
+        ? `已向鳴鑫請求記入保費 NT$${policy.annual_premium.toLocaleString()}（${CATEGORY_ZH[policy.category]}）`
+        : result.message,
+      policy_id: policy.policy_id,
+      booking_details: {
+        category: CATEGORY_ZH[policy.category],
+        insurer: policy.insurer,
+        premium: policy.annual_premium,
+        entity: ENTITY_ZH[policy.entity_type],
+      },
+    });
+  } catch (err) {
+    logger.error(`[Guardian/collab/auto-booking] Error: ${err}`);
+    res.status(500).json({ error: '保費入帳異常', details: String(err) });
+  }
+});
+

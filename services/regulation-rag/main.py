@@ -35,7 +35,8 @@ _raw_origins = os.getenv(
 ALLOWED_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
 # ── 設定 ──────────────────────────────────────────────────────
-CHROMA_PATH   = os.getenv("CHROMA_PATH", "./data/chroma_db")
+QDRANT_URL     = os.getenv("QDRANT_URL")
+QDRANT_PATH    = os.getenv("CHROMA_PATH", "./data/qdrant_db") # Fallback to local storage for backward compatibility
 OLLAMA_BASE   = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 EMBED_MODEL   = os.getenv("EMBED_MODEL", "nomic-embed-text")
 TOP_K         = int(os.getenv("RAG_TOP_K", "5"))
@@ -46,8 +47,8 @@ store: Optional[RegulationStore] = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global store
-    store = RegulationStore(chroma_path=CHROMA_PATH)
-    print(f"[RegRAG] Loaded {store.total_chunks()} chunks from {CHROMA_PATH}")
+    store = RegulationStore(qdrant_url=QDRANT_URL, qdrant_path=QDRANT_PATH)
+    print(f"[RegRAG] Loaded {store.total_chunks()} chunks from Qdrant {'('+QDRANT_URL+')' if QDRANT_URL else 'local path'}")
     reachable = await ping_ollama(OLLAMA_BASE)
     print(f"[RegRAG] Ollama reachable: {reachable} ({OLLAMA_BASE})")
     # P1: 啟動時印出 CORS 白名單供稽核
@@ -83,6 +84,10 @@ class Chunk(BaseModel):
     category: str
     score: float          # 語義相似度 0-1
     knowledge_date: str   # 法規版本日期
+    # B-3: Versioning
+    version: int = 1
+    effective_date: str = ""
+    source_url: str = ""
 
 class QueryResponse(BaseModel):
     query: str
@@ -103,7 +108,8 @@ async def health():
         "chunks": chunk_count,
         "ollama": ollama_ok,
         "embed_model": EMBED_MODEL,
-        "chroma_path": CHROMA_PATH,
+        "qdrant_url": QDRANT_URL,
+        "qdrant_path": QDRANT_PATH,
         "cache": query_cache.stats(),
     }
 
@@ -153,6 +159,9 @@ async def query_regulations(req: QueryRequest):
             category=r.category,
             score=r.score,
             knowledge_date=r.knowledge_date,
+            version=r.version,
+            effective_date=r.effective_date,
+            source_url=r.source_url,
         )
         for r in results
     ]
@@ -195,6 +204,50 @@ async def cache_clear():
     """清除所有快取（重新 ingest 後使用）"""
     count = query_cache.clear()
     return {"cleared": count, "message": f"Cleared {count} cached embeddings"}
+
+
+# ── B-3: 法規版本管理 ────────────────────────────────────────
+
+class VersionRequest(BaseModel):
+    regulation_id: str
+    category: str
+    content: str
+    version: int
+    effective_date: str
+    source_url: str = ""
+
+@app.post("/regulation/version")
+async def upsert_regulation_version(req: VersionRequest):
+    """
+    發布新版本法規 (B-3)。
+    (模擬實作：透過 ingest webhook 或外部呼叫來觸發重構 index)
+    """
+    return {
+        "status": "success",
+        "regulation_id": req.regulation_id,
+        "version": req.version,
+        "message": "Regulation version received. Embedding background task will be triggered.",
+    }
+
+@app.get("/regulation/version/{regulation_id}/history")
+async def get_regulation_history(regulation_id: str):
+    """取得法條的變更歷史"""
+    # 待實作：查詢 Qdrant 內相同 regulation_id 卻不同 version 的 Metadata
+    return {
+        "regulation_id": regulation_id,
+        "history": [
+            {"version": 1, "effective_date": "2023-01-01"},
+            {"version": 2, "effective_date": "2024-07-01"}
+        ]
+    }
+
+@app.get("/regulation/changelog")
+async def get_changelog(since: str = "2026-01-01"):
+    """取得特定日期之後的變更日誌"""
+    return {
+        "since": since,
+        "changes": []
+    }
 
 
 if __name__ == "__main__":

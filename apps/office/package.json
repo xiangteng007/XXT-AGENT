@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@types/three": "^0.183.1",
-    "@xxt-agent/types": "file:../../packages/types",
+    "@xxt-agent/types": "workspace:*",
     "pixi.js": "^8.5.0",
     "three": "^0.183.2"
   },

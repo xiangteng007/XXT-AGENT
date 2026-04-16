@@ -19,16 +19,18 @@ Chunk 策略：
 """
 
 import argparse
-import os
 import sys
 import re
 import hashlib
+import uuid
 from pathlib import Path
 from datetime import datetime
 import time
+import os
 
 # ── 設定 ──────────────────────────────────────────────────────
-CHROMA_PATH   = os.getenv("CHROMA_PATH", "./data/chroma_db")
+QDRANT_URL     = os.getenv("QDRANT_URL")
+QDRANT_PATH    = os.getenv("CHROMA_PATH", "./data/qdrant_db")
 OLLAMA_BASE   = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 EMBED_MODEL   = os.getenv("EMBED_MODEL", "nomic-embed-text")
 MAX_CHUNK_LEN = int(os.getenv("MAX_CHUNK_LEN", "800"))   # 最大 chunk 字數
@@ -213,7 +215,7 @@ def ingest_directory(
     dry_run: bool = False,
 ) -> dict:
     """
-    掃描目錄，提取所有法規文件並寫入 Chroma
+    掃描目錄，提取所有法規文件並寫入 Qdrant
 
     Returns:
         {"files": int, "chunks": int, "skipped": int}
@@ -268,9 +270,9 @@ def ingest_directory(
 
             for j, (chunk, vec) in enumerate(zip(batch, vecs)):
                 chunk_idx = batch_start + j
-                # 穩定唯一 ID：基於來源檔案 + 條文號 + 位置
+                # 穩定唯一 ID：基於來源檔案 + 條文號 + 位置 (必須是合法 UUID 填入 Qdrant)
                 uid_src = f"{category}::{filepath.name}::{chunk['article']}::{chunk_idx}"
-                chunk_id = hashlib.md5(uid_src.encode()).hexdigest()[:16]
+                chunk_id = str(uuid.UUID(hex=hashlib.md5(uid_src.encode()).hexdigest()))
 
                 all_records.append({
                     "id": chunk_id,
@@ -290,7 +292,7 @@ def ingest_directory(
             time.sleep(0.1)  # 避免 Ollama 過載
 
         written = store.upsert_chunks(all_records)
-        print(f"  → {written} chunks written to Chroma")
+        print(f"  → {written} chunks written to Qdrant")
         stats["chunks"] += written
         stats["files"] += 1
 
@@ -307,10 +309,10 @@ def main():
     args = parser.parse_args()
 
     from regulation_store import RegulationStore
-    store = RegulationStore(chroma_path=CHROMA_PATH)
+    store = RegulationStore(qdrant_url=QDRANT_URL, qdrant_path=QDRANT_PATH)
 
     if args.list:
-        print(f"\n=== 知識庫現有內容（{CHROMA_PATH}）===")
+        print(f"\n=== 知識庫現有內容（{QDRANT_URL or QDRANT_PATH}）===")
         print(f"總 chunks: {store.total_chunks()}")
         for cat in store.list_categories():
             count = store.total_chunks(category=cat)
@@ -337,7 +339,7 @@ def main():
 
     print(f"\n{'[DRY RUN] ' if args.dry_run else ''}開始 Ingest 法規知識庫")
     print(f"Ollama: {OLLAMA_BASE} | Model: {EMBED_MODEL}")
-    print(f"Chroma: {CHROMA_PATH}")
+    print(f"Qdrant: {QDRANT_URL or QDRANT_PATH}")
     print("=" * 60)
 
     # 先確認 Ollama 可達，並確保 nomic-embed-text 已安裝

@@ -221,6 +221,24 @@ async function writeToFundAccounting(
 }
 
 // ── POST /agents/zora/chat ────────────────────────────────────
+/**
+ * @openapi
+ * /agents/zora/chat:
+ *   post:
+ *     tags: [Zora (公益)]
+ *     summary: 公益法規諮詢問答（AI）
+ *     description: 與 Zora 進行非營利法規、公益管理、志工對話，自動查詢 nonprofit RAG
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/AgentChatRequest'
+ *     responses:
+ *       200:
+ *         description: AI 回覆
+ */
 zoraRouter.post('/chat', async (req: Request, res: Response) => {
   const { message, session_id } = req.body as { message?: string; session_id?: string };
 
@@ -249,6 +267,53 @@ zoraRouter.post('/chat', async (req: Request, res: Response) => {
 });
 
 // ── POST /agents/zora/donation ────────────────────────────────
+/**
+ * @openapi
+ * /agents/zora/donation:
+ *   post:
+ *     tags: [Zora (公益)]
+ *     summary: 登錄捐款
+ *     description: 登錄捐款記錄，自動寫入基金會計，捐款者個資為 CRITICAL 等級
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [donor_name, amount, donation_date]
+ *             properties:
+ *               donor_name: { type: string, example: '王大明' }
+ *               amount: { type: number, example: 10000 }
+ *               donation_date: { type: string, format: date }
+ *               donation_type: { type: string, enum: [one_time, recurring], default: one_time }
+ *               payment_method: { type: string, enum: [bank_transfer, cash, check, online, other] }
+ *               purpose: { type: string }
+ *     responses:
+ *       201:
+ *         description: 捐款登錄成功（含稅務提示）
+ *   get:
+ *     tags: [Zora (公益)]
+ *     summary: 查詢捐款記錄
+ *     description: 捐款者職輝資訊已遮罩
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: from
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: to
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: project_id
+ *         schema: { type: string }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 50 }
+ *     responses:
+ *       200:
+ *         description: 捐款列表（含總金額）
+ */
 zoraRouter.post('/donation', async (req: Request, res: Response) => {
   const body = req.body as Partial<DonationRecord>;
 
@@ -333,6 +398,25 @@ zoraRouter.get('/donation', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/zora/donation/:id/receipt ─────────────────────
+/**
+ * @openapi
+ * /agents/zora/donation/{id}/receipt:
+ *   get:
+ *     tags: [Zora (公益)]
+ *     summary: 產生捐款收據
+ *     description: 依荐款 ID 產生符合所得稅法 §17 格式的捐款收據，含 CRITICAL 隙私賧標記
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: 捐款收據（包含捐款者全名）
+ *       404:
+ *         description: 捐款不存在
+ */
 zoraRouter.get('/donation/:id/receipt', async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const donation = DONATIONS.find(d => d.donation_id === id);
@@ -367,6 +451,21 @@ zoraRouter.get('/donation/:id/receipt', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/zora/donation/report/annual ───────────────────
+/**
+ * @openapi
+ * /agents/zora/donation/report/annual:
+ *   get:
+ *     tags: [Zora (公益)]
+ *     summary: 年度捐款彙整報告
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: year
+ *         schema: { type: integer, example: 2026 }
+ *     responses:
+ *       200:
+ *         description: 年度捐款統計（按月、按專案分布）
+ */
 zoraRouter.get('/donation/report/annual', async (req: Request, res: Response) => {
   const { year } = req.query as { year?: string };
   const y = parseInt(year ?? String(new Date().getFullYear()));
@@ -398,6 +497,42 @@ zoraRouter.get('/donation/report/annual', async (req: Request, res: Response) =>
 });
 
 // ── POST /agents/zora/volunteer ───────────────────────────────
+/**
+ * @openapi
+ * /agents/zora/volunteer:
+ *   post:
+ *     tags: [Zora (公益)]
+ *     summary: 新增志工
+ *     description: 登錄新志工資料，自動提示投保團體意外保險與培訓要求
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, id_no_masked, join_date]
+ *             properties:
+ *               name: { type: string, example: '李小花' }
+ *               id_no_masked: { type: string, example: 'A123****78' }
+ *               join_date: { type: string, format: date }
+ *               skills: { type: array, items: { type: string } }
+ *     responses:
+ *       201:
+ *         description: 志工登錄成功（含保險與培訓提示）
+ *   get:
+ *     tags: [Zora (公益)]
+ *     summary: 志工清單
+ *     description: 職輝資訊已遮罩，自動警示未投保志工
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: active_only
+ *         schema: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: 志工清單（含保險警示）
+ */
 zoraRouter.post('/volunteer', async (req: Request, res: Response) => {
   const body = req.body as Partial<VolunteerProfile>;
 
@@ -454,6 +589,35 @@ zoraRouter.get('/volunteer', async (req: Request, res: Response) => {
 });
 
 // ── PATCH /agents/zora/volunteer/:id/service ─────────────────
+/**
+ * @openapi
+ * /agents/zora/volunteer/{id}/service:
+ *   patch:
+ *     tags: [Zora (公益)]
+ *     summary: 記錄志工服務時數
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [date, hours, activity]
+ *             properties:
+ *               date: { type: string, format: date }
+ *               hours: { type: number, example: 4 }
+ *               activity: { type: string, example: 山岳搜救行動 }
+ *     responses:
+ *       200:
+ *         description: 服務時數記錄成功
+ *       404:
+ *         description: 志工不存在
+ */
 zoraRouter.patch('/volunteer/:id/service', async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { date, hours, activity, notes } = req.body as {
@@ -487,6 +651,39 @@ zoraRouter.patch('/volunteer/:id/service', async (req: Request, res: Response) =
 });
 
 // ── POST /agents/zora/mission ────────────────────────────────
+/**
+ * @openapi
+ * /agents/zora/mission:
+ *   post:
+ *     tags: [Zora (公益)]
+ *     summary: 新增救難任務
+ *     description: 建立救難任務記錄，自動警示未投保出勤志工，可要求 Scout 無人機协作
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [title, location, start_time]
+ *             properties:
+ *               title: { type: string, example: '宜蘭县山岳失蹤搜救' }
+ *               location: { type: string }
+ *               start_time: { type: string, format: date-time }
+ *               mission_type: { type: string, enum: [search_and_rescue, disaster_relief, training, support] }
+ *               volunteer_ids: { type: array, items: { type: string, format: uuid } }
+ *               uav_requested: { type: boolean, default: false }
+ *     responses:
+ *       201:
+ *         description: 任務建立成功（含保險警示與 Scout 协作提示）
+ *   get:
+ *     tags: [Zora (公益)]
+ *     summary: 救難任務清單
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: 任務清單
+ */
 zoraRouter.post('/mission', async (req: Request, res: Response) => {
   const body = req.body as Partial<RescueMission>;
 
@@ -537,6 +734,22 @@ zoraRouter.post('/mission', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/zora/report/finance ──────────────────────────
+/**
+ * @openapi
+ * /agents/zora/report/finance:
+ *   get:
+ *     tags: [Zora (公益)]
+ *     summary: 非營利基金收支報告
+ *     description: 符合內政部格式的非營利基金收支報告
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: year
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: 基金收支報告（一般基金 + 專案基金）
+ */
 zoraRouter.get('/report/finance', async (req: Request, res: Response) => {
   const { year } = req.query as { year?: string };
   const y = parseInt(year ?? String(new Date().getFullYear()));
@@ -575,6 +788,18 @@ zoraRouter.get('/report/finance', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/zora/health ───────────────────────────────────
+/**
+ * @openapi
+ * /agents/zora/health:
+ *   get:
+ *     tags: [Zora (公益)]
+ *     summary: Zora Agent 健康檢查
+ *     description: 回傳捐款/志工/專案/任務統計與未投保志工警示
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Zora Agent 健康狀態
+ */
 zoraRouter.get('/health', async (_req: Request, res: Response) => {
   const uninsuredVolunteers = VOLUNTEERS.filter(v => v.is_active && !v.insurance_enrolled);
   const activeMissions = MISSIONS.filter(m => m.status === 'active' || m.status === 'mobilized');

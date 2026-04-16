@@ -1,22 +1,13 @@
 """
-Regulation Store — 純 Python/numpy 向量搜尋實作
-無需 C++ 編譯器，相容 Python 3.13+
-
-設計：
-  - 使用 numpy 計算餘弦相似度（效能足夠用於 <10萬 chunks）
-  - 資料以 JSON + .npy 格式持久化到磁碟
-  - 支援 category 過濾
-  - 若 numpy 不可用，降級到線性點積搜尋
-
-與 Chroma 相容的相同 API，方便未來升級
+Regulation Store — Qdrant 向量搜尋實作
+取代舊版 Python/numpy 實作，支援 GCP Cloud Run 部署
 """
 
-import json
 import os
-import math
-from pathlib import Path
 from typing import Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
+from qdrant_client import QdrantClient
+from qdrant_client.http.models import Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
 
 
 @dataclass
@@ -26,87 +17,82 @@ class ChunkResult:
     category: str
     score: float
     knowledge_date: str
+    # B-3: Versioning support
+    version: int = 1
+    effective_date: str = ""
+    source_url: str = ""
 
 
 class RegulationStore:
     """
-    純 Python 向量資料庫
-
-    儲存格式（data/vector_db/）：
-      metadata.json   - 所有 chunk 的 id/content/metadata
-      vectors.json    - 所有 embedding 向量（list of list）
+    Qdrant 向量資料庫
     """
 
-    def __init__(self, chroma_path: str = "./data/chroma_db"):
-        # 相容 chroma_path 參數名，但實際存在 vector_db/
-        self.db_dir = Path(chroma_path).parent / "vector_db"
-        self.db_dir.mkdir(parents=True, exist_ok=True)
-
-        self.meta_file = self.db_dir / "metadata.json"
-        self.vec_file  = self.db_dir / "vectors.json"
-
-        self._load()
-
-    def _load(self):
-        """從磁碟載入資料"""
-        if self.meta_file.exists():
-            with open(self.meta_file, encoding="utf-8") as f:
-                self._metadata: list[dict] = json.load(f)
+    def __init__(self, qdrant_url: Optional[str] = None, qdrant_path: str = "./data/qdrant_db"):
+        self.collection_name = "regulations"
+        
+        # 連線設定：優先使用 url，若無則降級為本地資料夾
+        if qdrant_url:
+            self.client = QdrantClient(url=qdrant_url)
         else:
-            self._metadata = []
+            os.makedirs(qdrant_path, exist_ok=True)
+            self.client = QdrantClient(path=qdrant_path)
 
-        if self.vec_file.exists():
-            with open(self.vec_file, encoding="utf-8") as f:
-                self._vectors: list[list[float]] = json.load(f)
-        else:
-            self._vectors = []
+        self._ensure_collection()
 
-    def _save(self):
-        """持久化到磁碟"""
-        with open(self.meta_file, "w", encoding="utf-8") as f:
-            json.dump(self._metadata, f, ensure_ascii=False, indent=2)
-        with open(self.vec_file, "w", encoding="utf-8") as f:
-            json.dump(self._vectors, f)
-
-    def _cosine_similarity(self, a: list[float], b: list[float]) -> float:
-        """計算兩個向量的餘弦相似度"""
-        try:
-            import numpy as np
-            na, nb = np.array(a), np.array(b)
-            denom = np.linalg.norm(na) * np.linalg.norm(nb)
-            if denom == 0:
-                return 0.0
-            return float(np.dot(na, nb) / denom)
-        except ImportError:
-            # numpy 不可用，純 Python fallback
-            dot = sum(x * y for x, y in zip(a, b))
-            norm_a = math.sqrt(sum(x * x for x in a))
-            norm_b = math.sqrt(sum(x * x for x in b))
-            if norm_a == 0 or norm_b == 0:
-                return 0.0
-            return dot / (norm_a * norm_b)
+    def _ensure_collection(self):
+        """確認 Collection 存在，若無則建立 (Nomic embed text 為 768 維度)"""
+        collections = [c.name for c in self.client.get_collections().collections]
+        if self.collection_name not in collections:
+            self.client.create_collection(
+                collection_name=self.collection_name,
+                vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+            )
 
     def total_chunks(self, category: Optional[str] = None) -> int:
         if category:
-            return sum(1 for m in self._metadata if m.get("category") == category)
-        return len(self._metadata)
+            q_filter = Filter(must=[FieldCondition(key="category", match=MatchValue(value=category))])
+            return self.client.count(collection_name=self.collection_name, count_filter=q_filter).count
+        return self.client.count(collection_name=self.collection_name).count
 
     def list_categories(self) -> list[str]:
-        return sorted(set(m.get("category", "unknown") for m in self._metadata))
+        # Qdrant 不支援原生的 DISTINCT 查詢，這裡用 scroll 取出有限數量的 metadata 來推導
+        categories = set()
+        records, _ = self.client.scroll(
+            collection_name=self.collection_name,
+            limit=10000,
+            with_payload=["category"],
+            with_vectors=False
+        )
+        for r in records:
+            cat = r.payload.get("category")
+            if cat:
+                categories.add(cat)
+        return sorted(categories)
 
     def list_sources(self, category: Optional[str] = None) -> list[dict]:
+        q_filter = None
+        if category:
+            q_filter = Filter(must=[FieldCondition(key="category", match=MatchValue(value=category))])
+            
+        records, _ = self.client.scroll(
+            collection_name=self.collection_name,
+            scroll_filter=q_filter,
+            limit=10000,
+            with_payload=["source_doc", "category", "knowledge_date"],
+            with_vectors=False
+        )
+        
         seen = set()
         sources = []
-        for m in self._metadata:
-            if category and m.get("category") != category:
-                continue
-            key = m.get("source_doc", "")
-            if key not in seen:
+        for r in records:
+            key = r.payload.get("source_doc")
+            if key and key not in seen:
                 seen.add(key)
                 sources.append({
                     "source": key,
-                    "category": m.get("category", ""),
-                    "knowledge_date": m.get("knowledge_date", ""),
+                    "category": r.payload.get("category", ""),
+                    "knowledge_date": r.payload.get("knowledge_date", ""),
                 })
         return sources
 
@@ -116,77 +102,68 @@ class RegulationStore:
         category: Optional[str] = None,
         top_k: int = 5,
     ) -> list[ChunkResult]:
-        """向量相似度搜尋"""
-        if not self._vectors:
-            return []
+        """Qdrant 向量相似度搜尋"""
+        q_filter = None
+        if category:
+            q_filter = Filter(must=[FieldCondition(key="category", match=MatchValue(value=category))])
 
-        scores: list[tuple[int, float]] = []
-        for i, (meta, vec) in enumerate(zip(self._metadata, self._vectors)):
-            if category and meta.get("category") != category:
-                continue
-            sim = self._cosine_similarity(query_vec, vec)
-            scores.append((i, sim))
-
-        # 按相似度排序，取前 top_k
-        scores.sort(key=lambda x: x[1], reverse=True)
-        top = scores[:top_k]
+        search_result = self.client.search(
+            collection_name=self.collection_name,
+            query_vector=query_vec,
+            query_filter=q_filter,
+            limit=top_k,
+        )
 
         results = []
-        for idx, score in top:
-            m = self._metadata[idx]
+        for hit in search_result:
             results.append(ChunkResult(
-                content=m.get("content", ""),
-                source=m.get("source", "未知法規"),
-                category=m.get("category", ""),
-                score=round(score, 4),
-                knowledge_date=m.get("knowledge_date", ""),
+                content=hit.payload.get("content", ""),
+                source=hit.payload.get("source", "未知法規"),
+                category=hit.payload.get("category", ""),
+                score=round(hit.score, 4),
+                knowledge_date=hit.payload.get("knowledge_date", ""),
+                version=hit.payload.get("version", 1),
+                effective_date=hit.payload.get("effective_date", ""),
+                source_url=hit.payload.get("source_url", ""),
             ))
         return results
 
     def upsert_chunks(self, chunks: list[dict]) -> int:
-        """批次寫入/更新 chunks"""
+        """批次寫入/更新 chunks 到 Qdrant"""
         if not chunks:
             return 0
 
-        # 建立 ID → index 的查找表
-        id_to_idx = {m["id"]: i for i, m in enumerate(self._metadata)}
-
+        points = []
         for chunk in chunks:
-            cid = chunk["id"]
-            meta_entry = {
-                "id": cid,
+            payload = {
                 "content": chunk["content"],
                 **chunk["metadata"],
             }
-            vec = chunk["embedding"]
+            points.append(
+                PointStruct(
+                    id=chunk["id"], # 目前 id 已被 ingest.py 改為合法 UUID str
+                    vector=chunk["embedding"],
+                    payload=payload
+                )
+            )
 
-            if cid in id_to_idx:
-                # 更新
-                idx = id_to_idx[cid]
-                self._metadata[idx] = meta_entry
-                self._vectors[idx] = vec
-            else:
-                # 新增
-                id_to_idx[cid] = len(self._metadata)
-                self._metadata.append(meta_entry)
-                self._vectors.append(vec)
-
-        self._save()
+        self.client.upsert(
+            collection_name=self.collection_name,
+            points=points
+        )
         return len(chunks)
 
     def delete_by_source(self, source_doc: str) -> int:
         """刪除指定文件的所有 chunks"""
-        keep_meta = []
-        keep_vecs = []
-        deleted = 0
-        for m, v in zip(self._metadata, self._vectors):
-            if m.get("source_doc") == source_doc:
-                deleted += 1
-            else:
-                keep_meta.append(m)
-                keep_vecs.append(v)
-        self._metadata = keep_meta
-        self._vectors = keep_vecs
-        if deleted:
-            self._save()
-        return deleted
+        q_filter = Filter(must=[FieldCondition(key="source_doc", match=MatchValue(value=source_doc))])
+        
+        # 先計算將會刪除幾筆
+        count = self.client.count(collection_name=self.collection_name, count_filter=q_filter).count
+        
+        if count > 0:
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=q_filter
+            )
+            
+        return count

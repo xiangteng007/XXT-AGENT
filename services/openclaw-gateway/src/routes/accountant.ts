@@ -96,7 +96,22 @@ function detectRagCategory(
 
 // ── POST /agents/accountant/chat ──────────────────────────────
 /**
- * 通用會計師問答（自動決定是否查詢 RAG）
+ * @openapi
+ * /agents/accountant/chat:
+ *   post:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: 會計師 AI 問答（自動 RAG 法規查詢）
+ *     description: 與 Kay 鳴鑫進行賦務/帳務問答，涉及冠稅決算/勞健保關鍵字自動查詢 RAG
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/AgentChatRequest'
+ *     responses:
+ *       200:
+ *         description: AI 回覆
  */
 accountantRouter.post('/chat', async (req: Request, res: Response) => {
   const { message, session_id, user_id, context } = req.body as {
@@ -165,8 +180,28 @@ accountantRouter.post('/chat', async (req: Request, res: Response) => {
 
 // ── POST /agents/accountant/invoice ──────────────────────────
 /**
- * 發票計算：含稅金額 ↔ 未稅金額 轉換 + 合規建議
- * Body: { amount: number, type: "taxed"|"untaxed", tax_rate?: number }
+ * @openapi
+ * /agents/accountant/invoice:
+ *   post:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: 發票計算與合規建議
+ *     description: 含稅金額與未稅金額相互轉換，自動建議發票種類（二/三職式）
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [amount]
+ *             properties:
+ *               amount: { type: number, example: 105000 }
+ *               type: { type: string, enum: [taxed, untaxed], default: taxed }
+ *               tax_rate: { type: number, default: 5 }
+ *               note: { type: string }
+ *     responses:
+ *       200:
+ *         description: 發票計算結果與品種建議
  */
 accountantRouter.post('/invoice', async (req: Request, res: Response) => {
   const { amount, type = 'taxed', tax_rate = 5, note } = req.body as {
@@ -223,8 +258,31 @@ accountantRouter.post('/invoice', async (req: Request, res: Response) => {
 
 // ── POST /agents/accountant/payment ──────────────────────────
 /**
- * 工程請款審查：
- * 驗證請款金額、保留款比例、預付款扣回是否符合合約邏輯
+ * @openapi
+ * /agents/accountant/payment:
+ *   post:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: 工程請款審查
+ *     description: 驗證請款金額、保留款比例、預付款扣回是否符合合約邏輯
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [contract_amount, current_progress_pct]
+ *             properties:
+ *               contract_amount: { type: number }
+ *               current_progress_pct: { type: number, example: 30 }
+ *               advance_paid: { type: number, default: 0 }
+ *               advance_deduct_rate: { type: number, default: 10 }
+ *               retention_rate: { type: number, default: 10 }
+ *               previous_claimed: { type: number, default: 0 }
+ *               items: { type: array, items: { type: object, properties: { description: { type: string }, amount: { type: number } } } }
+ *     responses:
+ *       200:
+ *         description: 請款計算結果與警示
  */
 accountantRouter.post('/payment', async (req: Request, res: Response) => {
   const {
@@ -296,8 +354,27 @@ accountantRouter.post('/payment', async (req: Request, res: Response) => {
 
 // ── POST /agents/accountant/tax ───────────────────────────────
 /**
- * 稅額試算：個人所得稅、公司稅、勞健保費試算
- * Body: { type: "personal"|"corporate"|"labor", amount: number, ...params }
+ * @openapi
+ * /agents/accountant/tax:
+ *   post:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: 稅額試算
+ *     description: 支援個人綜所稅、公司営所稅、勞健保費試算，自動查詢稅務法規 RAG
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [type, annual_income]
+ *             properties:
+ *               type: { type: string, enum: [personal, corporate, labor] }
+ *               annual_income: { type: number, description: '勞健保 type 用月薪', example: 600000 }
+ *               dependents: { type: integer, default: 0 }
+ *     responses:
+ *       200:
+ *         description: 稅額試算結果（含法源）
  */
 accountantRouter.post('/tax', async (req: Request, res: Response) => {
   const { type, annual_income, dependents = 0 } = req.body as {
@@ -432,6 +509,18 @@ accountantRouter.post('/tax', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/accountant/health ─────────────────────────────
+/**
+ * @openapi
+ * /agents/accountant/health:
+ *   get:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: Accountant Agent 健康檢查
+ *     description: 回傳 Kay 鳴鑫 Agent 狀態、RAG 可用性與能力清單
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Agent 健康狀態
+ */
 accountantRouter.get('/health', async (_req: Request, res: Response) => {
   // 測試 RAG 連線
   let ragStatus = 'unknown';
@@ -466,6 +555,58 @@ accountantRouter.get('/health', async (_req: Request, res: Response) => {
 // ============================================================
 
 // ── POST /agents/accountant/ledger ── 新增收支記錄 ───────────
+/**
+ * @openapi
+ * /agents/accountant/ledger:
+ *   post:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: 新增收支記錄
+ *     description: 將收入/支出記錄寫入帳本，支援多公司實體分類、自動計算稅額
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [type, category, description, amount]
+ *             properties:
+ *               type: { type: string, enum: [income, expense] }
+ *               category: { type: string, example: engineering_payment }
+ *               description: { type: string, example: '台北公館工程請款' }
+ *               amount: { type: number }
+ *               amount_type: { type: string, enum: [taxed, untaxed], default: taxed }
+ *               entity_type: { type: string, default: co_construction }
+ *               transaction_date: { type: string, format: date }
+ *               invoice_no: { type: string }
+ *   get:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: 查詢收支明細
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: type
+ *         schema: { type: string, enum: [income, expense, all] }
+ *       - in: query
+ *         name: period
+ *         schema: { type: string, example: '202605' }
+ *       - in: query
+ *         name: entity_type
+ *         schema: { type: string }
+ *       - in: query
+ *         name: year
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 100 }
+ *     responses:
+ *       200:
+ *         description: 收支明細（含小計）
+ *       201:
+ *         description: 帳目成功建立
+ */
+
+
 accountantRouter.post('/ledger', async (req: Request, res: Response) => {
   const {
     type, category, description, amount,
@@ -575,6 +716,22 @@ accountantRouter.get('/ledger', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/accountant/report/summary ── 期間彙總 ────────
+/**
+ * @openapi
+ * /agents/accountant/report/summary:
+ *   get:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: 期間收支彙總表
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         required: true
+ *         schema: { type: string, example: '202605', description: 'YYYYMM' }
+ *     responses:
+ *       200:
+ *         description: 期間彙總（收入/支出/發票）
+ */
 accountantRouter.get('/report/summary', async (req: Request, res: Response) => {
   const { period } = req.query as { period?: string };
   if (!period || !/^\d{6}$/.test(period)) {
@@ -585,6 +742,29 @@ accountantRouter.get('/report/summary', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/accountant/report/401 ── 401 申報表 ──────────
+/**
+ * @openapi
+ * /agents/accountant/report/401:
+ *   get:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: 營業稅 401 申報表
+ *     description: 自動生成符合財政部格式的 401 申報表（需核對實際發票）
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         required: true
+ *         schema: { type: string, example: '202605' }
+ *       - in: query
+ *         name: company_name
+ *         schema: { type: string }
+ *       - in: query
+ *         name: tax_id
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: 401 申報表格式 JSON
+ */
 accountantRouter.get('/report/401', async (req: Request, res: Response) => {
   const {
     period,
@@ -609,6 +789,21 @@ accountantRouter.get('/report/401', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/accountant/report/annual ── 年度彙總 ─────────
+/**
+ * @openapi
+ * /agents/accountant/report/annual:
+ *   get:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: 年度收支彙總
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: year
+ *         schema: { type: integer, example: 2026 }
+ *     responses:
+ *       200:
+ *         description: 年度收支彙總（按月與實體分布）
+ */
 accountantRouter.get('/report/annual', async (req: Request, res: Response) => {
   const { year } = req.query as { year?: string };
   const y = year ? parseInt(year) : new Date().getFullYear();
@@ -620,6 +815,30 @@ accountantRouter.get('/report/annual', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/accountant/export/csv ── CSV 匯出 ─────────────
+/**
+ * @openapi
+ * /agents/accountant/export/csv:
+ *   get:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: 收支明細表 CSV 匯出
+ *     description: CSV 含 UTF-8 BOM，可直接在 Excel 開啟繁體中文
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema: { type: string, example: '202605' }
+ *       - in: query
+ *         name: year
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: CSV 檔案
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
 accountantRouter.get('/export/csv', async (req: Request, res: Response) => {
   const { period, year } = req.query as { period?: string; year?: string };
   if (!period && !year) {
@@ -640,6 +859,31 @@ accountantRouter.get('/export/csv', async (req: Request, res: Response) => {
 // ────────────────────────────────────────────────────────────────
 
 // ── POST /agents/accountant/bank/account ── 新增銀行帳戶 ────────
+/**
+ * @openapi
+ * /agents/accountant/bank/account:
+ *   post:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: 新增銀行帳戶
+ *     description: 新增銀行帳戶，帳號自動遮罩（如 ****5678）
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [bank_name, account_no, account_holder]
+ *             properties:
+ *               bank_name: { type: string, example: '臺灣銀行' }
+ *               account_no: { type: string }
+ *               account_holder: { type: string }
+ *               entity_type: { type: string }
+ *               current_balance: { type: number, default: 0 }
+ *     responses:
+ *       201:
+ *         description: 銀行帳戶已新增
+ */
 accountantRouter.post('/bank/account', async (req: Request, res: Response) => {
   const b = req.body as {
     bank_name?: string; bank_code?: string; account_no?: string;
@@ -673,6 +917,25 @@ accountantRouter.post('/bank/account', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/accountant/bank/accounts ── 查詢帳戶列表 ────────
+/**
+ * @openapi
+ * /agents/accountant/bank/accounts:
+ *   get:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: 查詢銀行帳戶列表
+ *     description: 帳號已遮罩，可依實體體過濾
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: entity_type
+ *         schema: { type: string }
+ *       - in: query
+ *         name: active_only
+ *         schema: { type: boolean, default: true }
+ *     responses:
+ *       200:
+ *         description: 帳戶列表
+ */
 accountantRouter.get('/bank/accounts', async (req: Request, res: Response) => {
   const { entity_type, active_only } = req.query as { entity_type?: string; active_only?: string };
   const validEntities: EntityType[] = ['personal', 'family', 'co_drone', 'co_construction', 'co_renovation', 'co_design', 'assoc_rescue'];
@@ -688,6 +951,18 @@ accountantRouter.get('/bank/accounts', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/accountant/bank/balance ── 餘額彙總 ─────────────
+/**
+ * @openapi
+ * /agents/accountant/bank/balance:
+ *   get:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: 各帳戶餘額彙總
+ *     description: 將所有銀行帳戶餘額依實體分組彙總，並提供總餘額
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: 各帳戶餘額（包含円台安幣總額）
+ */
 accountantRouter.get('/bank/balance', async (_req: Request, res: Response) => {
   const summaries = await getBankBalanceSummary();
   const grand_total = summaries.reduce((s, x) => s + x.total_balance_twd, 0);
@@ -701,6 +976,49 @@ accountantRouter.get('/bank/balance', async (_req: Request, res: Response) => {
 });
 
 // ── POST /agents/accountant/bank/txn ── 記錄銀行往來（雙寫帳本）──
+/**
+ * @openapi
+ * /agents/accountant/bank/txn:
+ *   post:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: 記錄銀行往來（雙寫帳本）
+ *     description: 新增銀行交易，若指定 ledger_category 則同時寫入帳本
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [type, amount, description]
+ *             properties:
+ *               type: { type: string, enum: [credit, debit] }
+ *               amount: { type: number }
+ *               description: { type: string }
+ *               account_no_masked: { type: string }
+ *               account_id: { type: string, format: uuid }
+ *               ledger_category: { type: string }
+ *               counterparty: { type: string }
+ *   get:
+ *     tags: [Accountant (鳴鑫)]
+ *     summary: 查詢銀行往來明細
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: account_id
+ *         schema: { type: string }
+ *       - in: query
+ *         name: type
+ *         schema: { type: string, enum: [credit, debit] }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 30 }
+ *     responses:
+ *       200:
+ *         description: 銀行往來明細
+ *       201:
+ *         description: 交易已記錄（含帳本雙寫狀態）
+ */
 accountantRouter.post('/bank/txn', async (req: Request, res: Response) => {
   const b = req.body as {
     account_no_masked?: string; account_id?: string; type?: string; amount?: number;

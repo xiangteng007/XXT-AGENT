@@ -72,6 +72,18 @@ async function fetchAccountantData(entity_type?: EntityType): Promise<{
 // ============================================================
 // ── GET /agents/finance/health ──────────────────────────────
 // ============================================================
+/**
+ * @openapi
+ * /agents/finance/health:
+ *   get:
+ *     tags: [Finance (融鑫)]
+ *     summary: Finance Agent 健康檢查
+ *     description: 回傳 Finance Agent 狀態、模型、推理路由、可用銀行利率資料數量
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Agent 狀態正常
+ */
 financeRouter.get('/health', (_req: Request, res: Response) => {
   res.json({
     agent_id: AGENT_ID,
@@ -96,6 +108,26 @@ financeRouter.get('/health', (_req: Request, res: Response) => {
 // ============================================================
 // ── POST /agents/finance/chat ───────────────────────────────
 // ============================================================
+/**
+ * @openapi
+ * /agents/finance/chat:
+ *   post:
+ *     tags: [Finance (融鑫)]
+ *     summary: 貸款/融資諮詢問答（AI）
+ *     description: 與融鑫進行自由問答，內容涵蓋房貸、車貸、公司融資、負債整合諮詢，強制本地 Ollama qwen3:14b
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/AgentChatRequest'
+ *     responses:
+ *       200:
+ *         description: AI 回覆
+ *       400:
+ *         description: 缺少 message
+ */
 financeRouter.post('/chat', async (req: Request, res: Response) => {
   const { message, context } = req.body as { message?: string; context?: string };
   if (!message?.trim()) { res.status(400).json({ error: 'message required' }); return; }
@@ -126,6 +158,33 @@ financeRouter.post('/chat', async (req: Request, res: Response) => {
 // ── POST /agents/finance/calc/mortgage ──────────────────────
 // ── 房貸試算（含 LTV / DSR / 銀行比較）─────────────────────
 // ============================================================
+/**
+ * @openapi
+ * /agents/finance/calc/mortgage:
+ *   post:
+ *     tags: [Finance (融鑫)]
+ *     summary: 房貸試算（含 LTV / DSR）
+ *     description: 依房屋價值、貸款金額、年利率計算 LTV、DSR、月繳金額與利息成本，純公式計算無 LLM
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [property_value, loan_amount, annual_rate]
+ *             properties:
+ *               property_value: { type: number, example: 15000000 }
+ *               loan_amount: { type: number, example: 10000000 }
+ *               annual_rate: { type: number, example: 2.17, description: '年利率（%）' }
+ *               loan_months: { type: integer, default: 360 }
+ *               monthly_income: { type: number, example: 80000 }
+ *               is_first_house: { type: boolean, default: true }
+ *               repayment_method: { type: string, enum: [equal_payment, equal_principal, interest_only, balloon], default: equal_payment }
+ *     responses:
+ *       200:
+ *         description: 房貸試算結果（含 LTV、DSR、月繳、總利息）
+ */
 financeRouter.post('/calc/mortgage', async (req: Request, res: Response) => {
   const {
     property_value, loan_amount, annual_rate, loan_months = 360,
@@ -172,6 +231,30 @@ financeRouter.post('/calc/mortgage', async (req: Request, res: Response) => {
 });
 
 // ── POST /agents/finance/calc/car ────────────────────────────
+/**
+ * @openapi
+ * /agents/finance/calc/car:
+ *   post:
+ *     tags: [Finance (融鑫)]
+ *     summary: 車貸試算
+ *     description: 依車價、頭期款、年利率計算車貸月繳與利息
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [vehicle_price, annual_rate]
+ *             properties:
+ *               vehicle_price: { type: number, example: 1200000 }
+ *               down_payment: { type: number, example: 240000 }
+ *               annual_rate: { type: number, example: 3.5 }
+ *               loan_months: { type: integer, default: 60 }
+ *     responses:
+ *       200:
+ *         description: 車貸試算結果
+ */
 financeRouter.post('/calc/car', async (req: Request, res: Response) => {
   const { vehicle_price, down_payment, annual_rate, loan_months = 60 } = req.body as {
     vehicle_price?: number; down_payment?: number; annual_rate?: number; loan_months?: number;
@@ -195,6 +278,31 @@ financeRouter.post('/calc/car', async (req: Request, res: Response) => {
 });
 
 // ── POST /agents/finance/calc/loan — 通用貸款試算 ───────────
+/**
+ * @openapi
+ * /agents/finance/calc/loan:
+ *   post:
+ *     tags: [Finance (融鑫)]
+ *     summary: 通用貸款試算
+ *     description: 依本金、年利率、期數、還款方式計算任意貸款月繳與利息
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [principal, annual_rate, loan_months]
+ *             properties:
+ *               principal: { type: number, example: 5000000 }
+ *               annual_rate: { type: number, example: 3.5 }
+ *               loan_months: { type: integer, example: 36 }
+ *               repayment_method: { type: string, enum: [equal_payment, equal_principal, interest_only, balloon], default: equal_payment }
+ *               grace_period_months: { type: integer, default: 0 }
+ *     responses:
+ *       200:
+ *         description: 試算結果（月繳、總利息、利息占比）
+ */
 financeRouter.post('/calc/loan', async (req: Request, res: Response) => {
   const {
     principal, annual_rate, loan_months,
@@ -230,6 +338,37 @@ financeRouter.post('/calc/loan', async (req: Request, res: Response) => {
 });
 
 // ── POST /agents/finance/calc/compare — 多方案比較 ──────────
+/**
+ * @openapi
+ * /agents/finance/calc/compare:
+ *   post:
+ *     tags: [Finance (融鑫)]
+ *     summary: 多方案貸款比較（最多4個）
+ *     description: 比較最多 4 個貸款方案，龍出最低利息、最低月繳瀏蹴者
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               plans:
+ *                 type: array
+ *                 minItems: 2
+ *                 maxItems: 4
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     label: { type: string, example: 方案A（土地銀行） }
+ *                     principal: { type: number }
+ *                     annual_rate: { type: number }
+ *                     loan_months: { type: integer }
+ *                     repayment_method: { type: string }
+ *     responses:
+ *       200:
+ *         description: 方案比較結果（含最优建議）
+ */
 financeRouter.post('/calc/compare', async (req: Request, res: Response) => {
   const { plans } = req.body as {
     plans?: Array<{
@@ -261,6 +400,18 @@ financeRouter.post('/calc/compare', async (req: Request, res: Response) => {
 });
 
 // ── GET /agents/finance/calc/summary — 貸款彙整 ─────────────
+/**
+ * @openapi
+ * /agents/finance/calc/summary:
+ *   get:
+ *     tags: [Finance (融鑫)]
+ *     summary: 三實體貸款彙整
+ *     description: 彙整所有有效貸款的未還余額與月繳，依實體類型分組統計
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: 貸款彙整（分實體）
+ */
 financeRouter.get('/calc/summary', async (_req: Request, res: Response) => {
   const summary = await calcLoanSummary();
   res.json({ ok: true, ...summary });
@@ -269,6 +420,27 @@ financeRouter.get('/calc/summary', async (_req: Request, res: Response) => {
 // ============================================================
 // ── POST /agents/finance/analyze — AI 資金壓力分析 ──────────
 // ============================================================
+/**
+ * @openapi
+ * /agents/finance/analyze:
+ *   post:
+ *     tags: [Finance (融鑫)]
+ *     summary: AI 資金壓力缺口分析
+ *     description: 整合帳本財務數據＋現有貸款，由 AI 分析 DSR、積債風險與資金缺口
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               year: { type: integer, example: 2026 }
+ *     responses:
+ *       200:
+ *         description: 三實體資金壓力分析報告
+ *       500:
+ *         description: AI 推理異常
+ */
 financeRouter.post('/analyze', async (req: Request, res: Response) => {
   const { year } = req.body as { year?: number };
   const targetYear = year ?? new Date().getFullYear();
@@ -392,6 +564,18 @@ async function generateFinancePlan(
   return { plan: content.replace(/<think>[\s\S]*?<\/think>/g, '').trim(), latency_ms };
 }
 
+/**
+ * @openapi
+ * /agents/finance/plan/company:
+ *   post:
+ *     tags: [Finance (融鑫)]
+ *     summary: 工程公司融資規劃（AI）
+ *     description: 整合帳本數據與現有貸款，由 AI 生成公司融資規劃
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: 公司融資規劃（AI 生成）
+ */
 financeRouter.post('/plan/company', async (req: Request, res: Response) => {
   const traceId = crypto.randomUUID();
   const [coData, loans] = await Promise.all([
@@ -414,6 +598,25 @@ financeRouter.post('/plan/company', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @openapi
+ * /agents/finance/plan/personal:
+ *   post:
+ *     tags: [Finance (融鑫)]
+ *     summary: 個人貸款規劃（AI）
+ *     description: 依個人收入與現有貸款，由 AI 生成個人貸款規劃，含 DSR 分析
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               monthly_income: { type: number, example: 80000 }
+ *     responses:
+ *       200:
+ *         description: 個人貸款規劃（AI 生成）
+ */
 financeRouter.post('/plan/personal', async (req: Request, res: Response) => {
   const { monthly_income } = req.body as { monthly_income?: number };
   const traceId = crypto.randomUUID();
@@ -441,6 +644,18 @@ financeRouter.post('/plan/personal', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @openapi
+ * /agents/finance/plan/family:
+ *   post:
+ *     tags: [Finance (融鑫)]
+ *     summary: 家庭貸款規劃（AI）
+ *     description: 依家庭支出與房貸/車貸現况，由 AI 生成家庭貸款規劃
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: 家庭貸款規劃（AI 生成）
+ */
 financeRouter.post('/plan/family', async (req: Request, res: Response) => {
   const traceId = crypto.randomUUID();
   const [faData, loans] = await Promise.all([
@@ -463,6 +678,26 @@ financeRouter.post('/plan/family', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @openapi
+ * /agents/finance/plan/consolidation:
+ *   post:
+ *     tags: [Finance (融鑫)]
+ *     summary: 負債整合分析（AI）
+ *     description: 計算負債整合忩賽加權平均利率，評估整合可行性與民年節省，由 AI 生成完整負債整合規劃
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               consolidation_rate: { type: number, default: 3.0, description: '整合貸年利率（%）' }
+ *               consolidation_months: { type: integer, default: 120 }
+ *     responses:
+ *       200:
+ *         description: 負債整合分析（含 AI 規劃）
+ */
 financeRouter.post('/plan/consolidation', async (req: Request, res: Response) => {
   const { consolidation_rate = 3.0, consolidation_months = 120 } = req.body as {
     consolidation_rate?: number; consolidation_months?: number;
@@ -499,6 +734,54 @@ financeRouter.post('/plan/consolidation', async (req: Request, res: Response) =>
 // ── 貸款 CRUD ────────────────────────────────────────────────
 // ── POST /agents/finance/loan — 新增貸款 ────────────────────
 // ============================================================
+/**
+ * @openapi
+ * /agents/finance/loan:
+ *   post:
+ *     tags: [Finance (融鑫)]
+ *     summary: 新增貸款記錄
+ *     description: 登錄新貸款至 Finance 貸款庫，未提供月繳時自動計算
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [entity_type, category, bank, principal, annual_rate, loan_months, start_date]
+ *             properties:
+ *               entity_type: { type: string }
+ *               category: { type: string, description: '貸款類別（見 LOAN_CATEGORY_ZH）' }
+ *               bank: { type: string, example: 土地銀行 }
+ *               principal: { type: number, example: 10000000 }
+ *               annual_rate: { type: number, example: 2.17 }
+ *               loan_months: { type: integer, example: 360 }
+ *               start_date: { type: string, format: date }
+ *               repayment_method: { type: string, enum: [equal_payment, equal_principal, interest_only, balloon] }
+ *     responses:
+ *       201:
+ *         description: 貸款登錄成功
+ *   get:
+ *     tags: [Finance (融鑫)]
+ *     summary: 查詢貸款列表
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: entity_type
+ *         schema: { type: string }
+ *       - in: query
+ *         name: category
+ *         schema: { type: string }
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [active, paid_off, written_off], default: active }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 100 }
+ *     responses:
+ *       200:
+ *         description: 貸款列表（含彙總統計）
+ */
 financeRouter.post('/loan', async (req: Request, res: Response) => {
   const {
     entity_type, category, bank, loan_name,
@@ -604,6 +887,24 @@ financeRouter.get('/loan', async (req: Request, res: Response) => {
 });
 
 // ── DELETE /agents/finance/loan/:id ─────────────────────────
+/**
+ * @openapi
+ * /agents/finance/loan/{id}:
+ *   delete:
+ *     tags: [Finance (融鑫)]
+ *     summary: 刪除貸款記錄
+ *     security: [{ FirebaseAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: 貸款已刪除
+ *       404:
+ *         description: 貸款不存在
+ */
 financeRouter.delete('/loan/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   const existed = await deleteLoan(id);
@@ -615,6 +916,18 @@ financeRouter.delete('/loan/:id', async (req: Request, res: Response) => {
 // ============================================================
 // ── GET /agents/finance/report/cashflow — 資金壓力報告 ──────
 // ============================================================
+/**
+ * @openapi
+ * /agents/finance/report/cashflow:
+ *   get:
+ *     tags: [Finance (融鑫)]
+ *     summary: 資金壓力報告
+ *     description: 評估 DSR、公司負債比，產生 CRITICAL/WARNING/OK 告警與就樂動清單（無 LLM）
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: 資金壓力分析報告
+ */
 financeRouter.get('/report/cashflow', async (_req: Request, res: Response) => {
   const [loanSummary, coData, peData, faData] = await Promise.all([
     calcLoanSummary(),
@@ -671,6 +984,18 @@ financeRouter.get('/report/cashflow', async (_req: Request, res: Response) => {
 });
 
 // ── GET /agents/finance/report/debt — 負債總覽 ───────────────
+/**
+ * @openapi
+ * /agents/finance/report/debt:
+ *   get:
+ *     tags: [Finance (融鑫)]
+ *     summary: 負債總覽報告
+ *     description: 列出所有有效貸款，計算加權平均利率與優先還款建議
+ *     security: [{ FirebaseAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: 負債總覽（含分實體、高利率貸款警示）
+ */
 financeRouter.get('/report/debt', async (_req: Request, res: Response) => {
   const loans = await queryLoans({ status: 'active', limit: 200 });
   const totalOutstanding = loans.reduce((s, l) => s + l.outstanding_balance, 0);
@@ -715,6 +1040,26 @@ financeRouter.get('/report/debt', async (_req: Request, res: Response) => {
 });
 
 // ── POST /agents/finance/collab/accountant ───────────────────
+/**
+ * @openapi
+ * /agents/finance/collab/accountant:
+ *   post:
+ *     tags: [Finance (融鑫)]
+ *     summary: 向鳴鑫請求財務數據（Agent 協作）
+ *     description: Finance 向 Accountant 請求特定實體的帳本財務彙整，用於融資分析
+ *     security: [{ FirebaseAuth: [] }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               entity_type: { type: string }
+ *               purpose: { type: string }
+ *     responses:
+ *       200:
+ *         description: 帳本財務數據
+ */
 financeRouter.post('/collab/accountant', async (req: Request, res: Response) => {
   const { entity_type, purpose } = req.body as { entity_type?: EntityType; purpose?: string };
   const data = await fetchAccountantData(entity_type);
