@@ -24,34 +24,26 @@ jobs:
               uses: actions/setup-node@v4
               with:
                   node-version: "20"
-                  cache: "npm"
-                  cache-dependency-path: apps/functions/package-lock.json
+
+            - name: Install pnpm
+              uses: pnpm/action-setup@v4
+
+            - name: Install dependencies (monorepo root)
+              run: pnpm install --frozen-lockfile
 
             # Functions audit
-            - name: Install Functions dependencies
-              run: npm ci
-              working-directory: apps/functions
-
             - name: Run npm audit (Functions)
-              run: npm audit --audit-level=high || true
+              run: pnpm audit --audit-level=high || true
               working-directory: apps/functions
 
             # Dashboard audit
-            - name: Install Dashboard dependencies
-              run: npm ci --legacy-peer-deps
-              working-directory: apps/dashboard
-
             - name: Run npm audit (Dashboard)
-              run: npm audit --audit-level=high || true
+              run: pnpm audit --audit-level=high || true
               working-directory: apps/dashboard
 
             # Gateway audit (M-10: 之前遺漏)
-            - name: Install Gateway dependencies
-              run: npm ci
-              working-directory: services/openclaw-gateway
-
             - name: Run npm audit (Gateway)
-              run: npm audit --audit-level=high || true
+              run: pnpm audit --audit-level=high || true
               working-directory: services/openclaw-gateway
 
     codeql-analysis:
