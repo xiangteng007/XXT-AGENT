@@ -21,7 +21,7 @@ env:
 jobs:
   # ── Terraform Plan (PR only) ──────────────────────────────
   terraform-plan:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
