@@ -48,6 +48,32 @@ def parse_command(text: str) -> tuple[str, list[str]]:
 
 # format_analyze_result removed as we now use multi-agent streaming format.
 
+async def call_agent_and_reply(gateway_url: str, bot_token: str, chat_id: str, agent_path: str, msg: str, prefix: str):
+    """Helper to call OpenClaw gateway agent and send reply back to Telegram asynchronously."""
+    if not gateway_url:
+        await send_message(bot_token, chat_id, "❌ Gateway URL not configured.")
+        return
+
+    try:
+        timeout = ClientTimeout(total=60)
+        async with ClientSession(timeout=timeout) as session:
+            async with session.post(
+                f"{gateway_url}{agent_path}",
+                json={"message": msg, "session_id": f"tg-{chat_id}"},
+                headers={"Authorization": "Bearer dev-local-bypass"},
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    reply = data.get("reply") or data.get("answer") or "無回應"
+                    # Truncate if too long for Telegram (max 4096)
+                    if len(reply) > 4000:
+                        reply = reply[:4000] + "...\n(截斷)"
+                    await send_message(bot_token, chat_id, f"{prefix}\n\n{reply}", parse_mode="HTML")
+                else:
+                    await send_message(bot_token, chat_id, f"❌ Gateway error: HTTP {resp.status}")
+    except Exception as e:
+        await send_message(bot_token, chat_id, f"❌ Request failed: {e}")
+
 async def handle_telegram(request: web.Request) -> web.Response:
     """Handle Telegram webhook updates."""
     settings: Settings = request.app["settings"]
@@ -91,7 +117,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                     json={
                         "model": settings.ollama_model,
                         "messages": [
-                            {"role": "system", "content": "你是一個意圖分發器。如果使用者的訊息與「股票、台積電、行情、分析」有關，回覆『INVEST: 股票代碼(若無明確代碼則輸出2330.TW或SPY)』。如果是會計、報稅，回覆『ACC』。如果是法規、法律，回覆『REG』。其他一般閒聊或投資外的事務請回覆『CHAT』。"},
+                            {"role": "system", "content": "你是一個意圖分發器。如果使用者的訊息與「股票、台積電、行情、分析」有關，回覆『INVEST: 股票代碼(若無明確代碼則輸出2330.TW或SPY)』。如果是會計、報稅，回覆『ACC』。如果是法規、法律，回覆『REG』。如果是保險，回覆『INS』。如果是貸款、融資，回覆『LOAN』。如果是個人資訊、公司資訊或客戶資訊，回覆『INFO』。如果是車輛保養資料，回覆『VEHICLE』。如果是工程進度、BIM或營造管理，回覆『ENG』。其他閒聊請回覆『CHAT』。"},
                             {"role": "user", "content": user_text + "\n/no_think"}
                         ],
                         "temperature": 0.1
@@ -113,38 +139,58 @@ async def handle_telegram(request: web.Request) -> web.Response:
             elif intent_result.startswith("REG"):
                 cmd = "/reg"
                 args = [user_text]
+            elif intent_result.startswith("INS"):
+                cmd = "/ins"
+                args = [user_text]
+            elif intent_result.startswith("LOAN"):
+                cmd = "/loan"
+                args = [user_text]
+            elif intent_result.startswith("INFO"):
+                cmd = "/info"
+                args = [user_text]
+            elif intent_result.startswith("VEHICLE"):
+                cmd = "/vehicle"
+                args = [user_text]
+            elif intent_result.startswith("ENG"):
+                cmd = "/eng"
+                args = [user_text]
             else:
                 cmd = "/ai"
                 args = [user_text]
                 
         except Exception as e:
             logger.error(f"Intent routing failed: {e}")
-            cmd = "/ai"
-            args = [user_text]
+            import re
+            if re.search(r'(2603|2330|股票|台積電|長榮|大盤|分析|行情|買|賣|線型|風險|財報)', user_text):
+                match = re.search(r'\d{4}', user_text)
+                sym = match.group(0) + ".TW" if match else "2330.TW"
+                cmd = "/analyze"
+                args = [sym]
+            else:
+                cmd = "/ai"
+                args = [user_text]
     
     # /start, /help
     if cmd in ("/help", "/start"):
         await send_message(
             settings.telegram_bot_token,
             chat_id,
-            "🤖 <b>XXT-AGENT 智能助理 (NemoClaw v2)</b>\n\n"
-            "<b>📊 市場分析：</b>\n"
+            "🤖 <b>XXT-AGENT 總部大廳 (Lobby Portal)</b>\n\n"
+            "<b>🏢 企業與個人管理 (Nova)：</b>\n"
+            "• /info &lt;問題&gt; - 查詢客戶、公司與個人資訊\n"
+            "• /vehicle &lt;問題&gt; - 查詢車輛保養資料\n\n"
+            "<b>🏗️ 工程管理 (Titan & Rusty)：</b>\n"
+            "• /eng &lt;問題&gt; - 查詢工程進度、BIM與營造管理\n\n"
+            "<b>🛡️ 財務與保險 (Kay & Guardian)：</b>\n"
+            "• /acc &lt;問題&gt; - 稅務/帳務自由問答\n"
+            "• /loan &lt;問題&gt; - 貸款融資諮詢\n"
+            "• /ins &lt;問題&gt; - 保單與保險諮詢\n\n"
+            "<b>📊 市場分析 (Investment Brain)：</b>\n"
             "• /analyze &lt;SYM&gt; - Triple Fusion 深度分析\n"
             "• /watch add &lt;SYM&gt; - 追蹤股票\n"
             "• /watchlist - 查看監控清單\n\n"
-            "<b>🦉 會計師幕僚（本地 AI，PRIVATE）：</b>\n"
-            "• /acc &lt;問題&gt; - 稅務/帳務自由問答\n"
-            "• /acc invoice &lt;金額&gt; - 發票含稅/未稅拆算\n"
-            "• /acc tax personal|corporate|labor - 稅額試算\n"
-            "• /acc ledger add - 新增收支記錄\n"
-            "• /acc ledger [期間] - 查詢收支明細\n"
-            "• /acc report &lt;YYYYMM&gt; - 期間彙總 / 401 申報表\n"
-            "• /acc export &lt;YYYYMM&gt; - 下載 CSV 收支明細\n\n"
-            "<b>📚 法規查詢（本地 RAG）：</b>\n"
-            "• /reg &lt;問題&gt; - 全分類法規語義搜尋\n"
-            "• /reg building|fire|tax|cns|labor &lt;問題&gt; - 分類搜尋\n\n"
-            "<b>🧠 本地 AI（qwen3:14b）：</b>\n"
-            "• /ai &lt;問題&gt; - 直接問本地 AI\n\n"
+            "<b>📚 法規查詢 (本地 RAG)：</b>\n"
+            "• /reg &lt;問題&gt; - 全分類法規語義搜尋\n\n"
             "<b>⚙️ 系統狀態：</b>\n"
             "• /system - GPU / Ollama 狀態監控\n",
             parse_mode="HTML"
@@ -262,6 +308,35 @@ async def handle_telegram(request: web.Request) -> web.Response:
             )
             await send_message(settings.telegram_bot_token, chat_id, titan_msg, parse_mode="HTML")
 
+    # /info — 企業與個人管理 (Nova)
+    if cmd == "/info":
+        user_msg = " ".join(args)
+        await send_message(settings.telegram_bot_token, chat_id, "🏢 <b>Nova (行政客服)</b>\n收到您的資訊查詢請求，正在為您檢索 CRM 系統...", parse_mode="HTML")
+        asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/nova/chat", f"[查詢客戶與公司資訊] {user_msg}", "🏢 <b>Nova (行政客服) 回覆：</b>"))
+        return web.Response(status=204)
+
+    # /vehicle — 車輛保養資料
+    if cmd == "/vehicle":
+        user_msg = " ".join(args)
+        await send_message(settings.telegram_bot_token, chat_id, "🚗 <b>Nova (總務代理)</b>\n正在為您查詢車輛保養與調度資料...", parse_mode="HTML")
+        asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/nova/chat", f"[查詢車輛保養與調度] {user_msg}", "🚗 <b>Nova (總務代理) 回覆：</b>"))
+        return web.Response(status=204)
+
+    # /eng — 工程與營造管理 (Titan/Rusty)
+    if cmd == "/eng":
+        user_msg = " ".join(args)
+        await send_message(settings.telegram_bot_token, chat_id, "🏗️ <b>Titan & Rusty (工程管理)</b>\n收到您的工程查詢請求，正在檢索 BIM 與估算資料...", parse_mode="HTML")
+        asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/bim/chat", f"[工程管理查詢] {user_msg}", "🏗️ <b>Titan (BIM/工程管理) 回覆：</b>"))
+        return web.Response(status=204)
+
+    # /ai — 本地 AI 自由問答 (Fallback)
+    if cmd == "/ai":
+        await send_message(settings.telegram_bot_token, chat_id, "🤖 <b>[系統]</b> 收到您的訊息，處理中...\n(目前 /ai 與 /reg 功能尚未完整實作，若為投資問題請重新輸入，或輸入 /help 查看可用指令)", parse_mode="HTML")
+        return web.Response(status=204)
+
+    # /reg — 法規查詢
+    if cmd == "/reg":
+        await send_message(settings.telegram_bot_token, chat_id, "📚 <b>[系統]</b> 法規查詢功能 (RAG) 正在建置中，請稍候...", parse_mode="HTML")
         return web.Response(status=204)
 
     # /loan — 融鑫財務顧問（Finance，NemoClaw PRIVATE 本地推理）
