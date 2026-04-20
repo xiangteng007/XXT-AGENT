@@ -23,3 +23,4 @@ class Settings(BaseModel):
     ollama_model: str = Field(default_factory=lambda: os.getenv("OLLAMA_L1_MODEL", "qwen3:14b"))
     # OpenClaw Gateway
     openclaw_gateway_url: str = Field(default_factory=lambda: os.getenv("OPENCLAW_GATEWAY_URL", "http://localhost:3100"))
+    internal_secret: str = Field(default_factory=lambda: os.getenv("INTERNAL_SECRET", ""))

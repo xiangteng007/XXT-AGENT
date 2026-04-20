@@ -17,7 +17,8 @@ from aiohttp import web, ClientSession, ClientTimeout
 from .config import Settings
 from .redis_watch import WatchStore
 from .tg_api import send_message
-from .trade_planner_client import analyze
+from .investment_brain_client import analyze_via_gateway
+import asyncio
 
 
 logging.basicConfig(
@@ -35,71 +36,17 @@ def get_secret_header(request: web.Request) -> str:
 def parse_command(text: str) -> tuple[str, list[str]]:
     """Parse command and arguments from message text."""
     t = (text or "").strip()
-    if not t.startswith("/"):
+    if not t:
         return "", []
+    if not t.startswith("/"):
+        return "NATURAL_LANGUAGE", [t]
     parts = t.split()
     cmd = parts[0].lower().split("@")[0]  # Handle /cmd@botname format
     args = parts[1:]
     return cmd, args
 
 
-def format_analyze_result(symbol: str, result: dict) -> str:
-    """Format trade planner result for Telegram message."""
-    action = ((result.get("suggested_action") or {}).get("action")) or "WATCH"
-    confidence = ((result.get("suggested_action") or {}).get("confidence")) or 0
-    timing = ((result.get("suggested_action") or {}).get("timing_window")) or "-"
-    risk_flags = ((result.get("suggested_action") or {}).get("risk_flags")) or []
-    invalidations = ((result.get("suggested_action") or {}).get("invalidation_rules")) or []
-    
-    snapshot = result.get("snapshot") or {}
-    price = snapshot.get("price") or 0
-    vol_regime = snapshot.get("volatility_regime") or "-"
-    
-    catalysts = result.get("catalysts") or {}
-    news = catalysts.get("news_top3") or []
-    social = catalysts.get("social_top3") or []
-    
-    market = result.get("market_structure") or {}
-    trend = market.get("trend") or "-"
-    
-    # Format message
-    lines = [
-        f"📊 <b>{symbol} Analysis</b>",
-        f"━━━━━━━━━━━━━━━",
-        f"💰 Price: ${price:.2f}" if price else "",
-        f"📈 Trend: {trend} | Vol: {vol_regime}",
-        f"",
-        f"🎯 <b>Action: {action}</b>",
-        f"📊 Confidence: {confidence}%",
-        f"⏰ Timing: {timing}",
-    ]
-    
-    if risk_flags:
-        lines.append(f"⚠️ Risks: {', '.join(risk_flags[:3])}")
-    
-    if invalidations:
-        lines.append(f"")
-        lines.append(f"❌ Invalidation:")
-        for inv in invalidations[:2]:
-            lines.append(f"  • {inv[:50]}")
-    
-    if news or social:
-        lines.append(f"")
-        lines.append(f"🔍 <b>Catalysts (Triple Fusion):</b>")
-        if news:
-            lines.append(f" 📰 <i>News:</i>")
-            for n in news[:2]:
-                lines.append(f"  • {n[:60]}...")
-        if social:
-            lines.append(f" 💬 <i>Social:</i>")
-            for s in social[:2]:
-                lines.append(f"  • {s[:60]}...")
-    
-    lines.append(f"")
-    lines.append(f"⚠️ <i>Decision support only, not financial advice.</i>")
-    
-    return "\n".join(filter(None, lines))
-
+# format_analyze_result removed as we now use multi-agent streaming format.
 
 async def handle_telegram(request: web.Request) -> web.Response:
     """Handle Telegram webhook updates."""
@@ -127,6 +74,53 @@ async def handle_telegram(request: web.Request) -> web.Response:
         return web.Response(status=204)
 
     cmd, args = parse_command(text)
+    
+    # ── NATURAL LANGUAGE ROUTER (WAR ROOM LOBBY) ──
+    if cmd == "NATURAL_LANGUAGE":
+        user_text = args[0]
+        if len(user_text) < 2:
+            return web.Response(status=204)
+            
+        await send_message(settings.telegram_bot_token, chat_id, "🤖 <b>[大廳管家]</b> 收到大廳訊息，意圖分發中...", parse_mode="HTML")
+        
+        try:
+            timeout = ClientTimeout(total=20)
+            async with ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    f"{settings.ollama_base_url}/v1/chat/completions",
+                    json={
+                        "model": settings.ollama_model,
+                        "messages": [
+                            {"role": "system", "content": "你是一個意圖分發器。如果使用者的訊息與「股票、台積電、行情、分析」有關，回覆『INVEST: 股票代碼(若無明確代碼則輸出2330.TW或SPY)』。如果是會計、報稅，回覆『ACC』。如果是法規、法律，回覆『REG』。其他一般閒聊或投資外的事務請回覆『CHAT』。"},
+                            {"role": "user", "content": user_text + "\n/no_think"}
+                        ],
+                        "temperature": 0.1
+                    }
+                ) as resp_intent:
+                    data = await resp_intent.json()
+                    
+            intent_result = data.get("choices", [{}])[0].get("message", {}).get("content", "CHAT").strip()
+            
+            if intent_result.startswith("INVEST:"):
+                sym = intent_result.replace("INVEST:", "").strip()
+                if not sym:
+                    sym = "2330.TW"
+                cmd = "/analyze"
+                args = [sym]
+            elif intent_result.startswith("ACC"):
+                cmd = "/acc"
+                args = [user_text]
+            elif intent_result.startswith("REG"):
+                cmd = "/reg"
+                args = [user_text]
+            else:
+                cmd = "/ai"
+                args = [user_text]
+                
+        except Exception as e:
+            logger.error(f"Intent routing failed: {e}")
+            cmd = "/ai"
+            args = [user_text]
     
     # /start, /help
     if cmd in ("/help", "/start"):
@@ -205,22 +199,69 @@ async def handle_telegram(request: web.Request) -> web.Response:
         
         sym = args[0].upper()
         
-        if not settings.trade_planner_url:
-            await send_message(settings.telegram_bot_token, chat_id, "❌ Trade planner not configured.")
+        if not settings.openclaw_gateway_url:
+            await send_message(settings.telegram_bot_token, chat_id, "❌ Gateway URL not configured.")
             return web.Response(status=204)
 
-        await send_message(settings.telegram_bot_token, chat_id, f"🔄 Analyzing {sym} with Triple Fusion...")
+        await send_message(settings.telegram_bot_token, chat_id, f"🤖 <b>[系統]</b> 啟動多智能體投資分析 (標的: {sym})...", parse_mode="HTML")
         
-        resp = await analyze(settings.trade_planner_url, sym, timeframe="15m")
+        resp = await analyze_via_gateway(settings.openclaw_gateway_url, settings.internal_secret, sym, timeframe="15m")
         
-        if not resp.get("ok"):
+        if not resp.get("ok", True) and "error" in resp:
             await send_message(settings.telegram_bot_token, chat_id, f"❌ Analysis failed: {resp.get('error', 'unknown error')}")
             return web.Response(status=204)
         
-        result = resp.get("result") or {}
-        msg_text = format_analyze_result(sym, result)
-        await send_message(settings.telegram_bot_token, chat_id, msg_text, parse_mode="HTML")
+        # Simulation of agent message sequence
         
+        # 1. Nova (Market Analyst)
+        market = resp.get("market_insight", {})
+        if market:
+            nova_msg = (
+                f"🧠 <b>Nova (市場分析師)</b>:\n"
+                f"體制: {market.get('regime', 'N/A')} | 趨勢: {market.get('trend', 'N/A')}\n"
+                f"催化劑: {', '.join(market.get('catalysts', []))}"
+            )
+            await send_message(settings.telegram_bot_token, chat_id, nova_msg, parse_mode="HTML")
+            await asyncio.sleep(1)
+            
+        # 2. Argus (Information Verifier)
+        verification = resp.get("verification", {})
+        if verification:
+            credibility = verification.get("credibility_score", 50)
+            status_icon = "🟢" if credibility >= 70 else ("🟡" if credibility >= 40 else "🔴")
+            argus_msg = (
+                f"👁️ <b>Argus (情報驗證員)</b>:\n"
+                f"資訊可信度: {status_icon} {credibility}/100\n"
+                f"情緒背離: {'⚠️ 是' if verification.get('sentiment_divergence') else '否'}\n"
+                f"驗證摘要: {verification.get('summary', '無')}"
+            )
+            await send_message(settings.telegram_bot_token, chat_id, argus_msg, parse_mode="HTML")
+            await asyncio.sleep(1)
+            
+        # 3. Guardian (Risk Manager)
+        risk = resp.get("risk_assessment", {})
+        if risk:
+            flags_text = "\n".join([f"• {f}" for f in risk.get('risk_flags', [])[:3]]) if risk.get('risk_flags') else "無特殊警告"
+            guardian_msg = (
+                f"🛡️ <b>Guardian (風控專家)</b>:\n"
+                f"風險評分: {risk.get('risk_score', 'N/A')}/100\n"
+                f"警告事項:\n{flags_text}"
+            )
+            await send_message(settings.telegram_bot_token, chat_id, guardian_msg, parse_mode="HTML")
+            await asyncio.sleep(1)
+            
+        # 4. Titan (Strategy Planner)
+        plan = resp.get("investment_plan", {})
+        if plan:
+            titan_msg = (
+                f"⚡ <b>Titan (策略規劃師)</b>:\n"
+                f"建議行動: {plan.get('action', 'N/A')} (信心: {plan.get('confidence_score', 0)}%)\n"
+                f"進場: {plan.get('entry_price', 'N/A')} | 止損: {plan.get('stop_loss', 'N/A')} | 止盈: {plan.get('take_profit', 'N/A')}\n\n"
+                f"判斷依據:\n{plan.get('basis_of_judgment', 'N/A')}\n\n"
+                f"<i>{plan.get('advisory_disclaimer', '⚠️ 決策支援僅供參考，不構成投資建議。')}</i>"
+            )
+            await send_message(settings.telegram_bot_token, chat_id, titan_msg, parse_mode="HTML")
+
         return web.Response(status=204)
 
     # /loan — 融鑫財務顧問（Finance，NemoClaw PRIVATE 本地推理）
