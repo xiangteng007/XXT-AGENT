@@ -1,0 +1,67 @@
+{
+  "description": "Output of Execution Simulator Agent.",
+  "properties": {
+    "trade_id": {
+      "title": "Trade Id",
+      "type": "string"
+    },
+    "symbol": {
+      "title": "Symbol",
+      "type": "string"
+    },
+    "action": {
+      "title": "Action",
+      "type": "string"
+    },
+    "entry_price": {
+      "title": "Entry Price",
+      "type": "number"
+    },
+    "exit_price": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Exit Price"
+    },
+    "pnl": {
+      "title": "Pnl",
+      "type": "number"
+    },
+    "pnl_pct": {
+      "title": "Pnl Pct",
+      "type": "number"
+    },
+    "status": {
+      "enum": [
+        "open",
+        "closed",
+        "stopped_out",
+        "take_profit"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "opened_at": {
+      "title": "Opened At",
+      "type": "string"
+    },
+    "closed_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Closed At"
+    }
+  },
+  "title": "TradeResult",
+  "type": "object"
+}

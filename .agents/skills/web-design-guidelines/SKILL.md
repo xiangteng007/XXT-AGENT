@@ -1,36 +1,19 @@
 ---
 name: web-design-guidelines
-description: Review UI code for Web Interface Guidelines compliance. Use when asked to "review my UI", "check accessibility", "audit design", "review UX", or "check my site against best practices".
-argument-hint: <file-or-pattern>
+description: Web accessibility (A11y), responsive design, and modern UX guidelines. Use to ensure UI meets enterprise quality.
 ---
 
-# Web Interface Guidelines
+# Web Design Guidelines
 
-Review files for compliance with Web Interface Guidelines.
+## Responsive Web Design (RWD)
+- **Mobile First**: Always design core CSS for mobile targets first, overriding with `md:`, `lg:`, `xl:` breakpoints using Tailwind CSS.
+- **Fluid Typography**: Utilize robust rem-based spacing instead of hard pixel values.
 
-## How It Works
+## Accessibility (A11y)
+- **Semantic HTML**: strictly use `<button>` for actions, `<a>` for navigation, and `<nav>`, `<main>`, `<article>` appropriately.
+- **ARIA Attributes**: Apply `aria-label`, `aria-hidden`, and `aria-expanded` on interactive dynamic UI elements (like Modals and War Room Interfaces).
+- **Contrast**: Ensure text passes standard WCAG AAA contrast checks against the background.
 
-1. Fetch the latest guidelines from the source URL below
-2. Read the specified files (or prompt user for files/pattern)
-3. Check against all rules in the fetched guidelines
-4. Output findings in the terse `file:line` format
-
-## Guidelines Source
-
-Fetch fresh guidelines before each review:
-
-```
-https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md
-```
-
-Use WebFetch to retrieve the latest rules. The fetched content contains all the rules and output format instructions.
-
-## Usage
-
-When a user provides a file or pattern argument:
-1. Fetch guidelines from the source URL above
-2. Read the specified files
-3. Apply all rules from the fetched guidelines
-4. Output findings using the format specified in the guidelines
-
-If no files specified, ask the user which files to review.
+## UI Feedback
+- Provide distinct visual states for `Hover`, `Focus`, `Active`, and `Disabled`.
+- Always wrap non-instant actions with Loading Spinners or Skeleton loaders.

@@ -194,7 +194,38 @@ async def risk_manager_node(state: InvestmentAgentState) -> dict:
 
     # ── Determine approval ─────────────────────────────────
     approved = len(all_violations) == 0
-    risk_score = min(100, len(all_violations) * 30 + len(all_warnings) * 10)
+
+    # Q-03: Weighted severity scoring — different violation types carry different weights
+    # Hard violations (position limits, stop-loss, daily loss, drawdown) = HIGH weight
+    # Soft warnings (R:R ratio, concentration) = LOW weight
+    VIOLATION_WEIGHTS = {
+        "位置大小":   40,  # position size breach — severe
+        "停損":       35,  # missing stop-loss — severe
+        "日損失":     30,  # daily loss limit — severe
+        "最大回撤":   40,  # max drawdown — severe (trading must stop)
+    }
+    WARNING_WEIGHTS = {
+        "風報比":     10,  # poor R:R ratio — advisory
+        "集中度":      8,  # concentration — advisory
+    }
+    DEFAULT_VIOLATION_WEIGHT = 25
+    DEFAULT_WARNING_WEIGHT = 8
+
+    raw_score = 0
+    for v in all_violations:
+        weight = next(
+            (w for k, w in VIOLATION_WEIGHTS.items() if k in v),
+            DEFAULT_VIOLATION_WEIGHT,
+        )
+        raw_score += weight
+    for w in all_warnings:
+        weight = next(
+            (wt for k, wt in WARNING_WEIGHTS.items() if k in w),
+            DEFAULT_WARNING_WEIGHT,
+        )
+        raw_score += weight
+
+    risk_score = min(100, raw_score)
 
     # ── Build adjustments for violations ───────────────────
     adjustments = []
@@ -217,11 +248,7 @@ async def risk_manager_node(state: InvestmentAgentState) -> dict:
 
     status = "✅ 通過" if approved else f"❌ 拒絕 ({len(all_violations)} 項違規)"
     next_step = "execute" if approved else "plan"  # Send back to planner if rejected
-
-    # If rejected, cap retry at 1 (avoid infinite loop)
-    if not approved and state.get("iteration", 0) >= 1:
-        next_step = "complete"
-        risk_assessment["approved"] = False
+    # P1-03: max_iterations enforcement moved to supervisor.route_after_risk_check
 
     logger.info(
         f"[Risk Manager] {symbol}: {status}, "

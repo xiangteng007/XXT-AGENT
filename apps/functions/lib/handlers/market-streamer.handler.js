@@ -6,10 +6,11 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleMarketStreamer = handleMarketStreamer;
+const v2_1 = require("firebase-functions/v2");
 const market_streamer_service_1 = require("../services/market-streamer.service");
 const error_handling_1 = require("../utils/error-handling");
 async function handleMarketStreamer(req, res) {
-    console.log('[Market Streamer Handler] Triggered');
+    v2_1.logger.info('[Market Streamer Handler] Triggered');
     try {
         const result = await (0, market_streamer_service_1.runMarketStreamer)();
         res.status(200).json({
@@ -19,7 +20,7 @@ async function handleMarketStreamer(req, res) {
         });
     }
     catch (error) {
-        console.error('[Market Streamer Handler] Error:', error);
+        v2_1.logger.error('[Market Streamer Handler] Error:', error);
         res.status(500).json({
             success: false,
             error: (0, error_handling_1.getErrorMessage)(error),

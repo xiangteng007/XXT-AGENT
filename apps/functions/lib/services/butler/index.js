@@ -5,7 +5,7 @@
  * Exports all Personal Butler System services for unified access.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.businessService = exports.BusinessService = exports.scheduleService = exports.ScheduleService = exports.JIMNY_MODIFICATIONS = exports.JIMNY_JB74_SPECS = exports.vehicleService = exports.VehicleService = exports.openBankingAdapter = exports.TaiwanOpenBankingAdapter = exports.TRANSACTION_CATEGORIES = exports.TAIWAN_BANKS = exports.financeService = exports.FinanceService = exports.processAppleHealthSync = exports.garminAdapter = exports.GarminConnectAdapter = exports.HEALTH_CONSTANTS = exports.healthService = exports.HealthService = exports.butlerService = exports.ButlerService = void 0;
+exports.getButlerContext = exports.businessService = exports.BusinessService = exports.scheduleService = exports.ScheduleService = exports.JIMNY_MODIFICATIONS = exports.JIMNY_JB74_SPECS = exports.vehicleService = exports.VehicleService = exports.openBankingAdapter = exports.TaiwanOpenBankingAdapter = exports.TRANSACTION_CATEGORIES = exports.TAIWAN_BANKS = exports.financeService = exports.FinanceService = exports.processAppleHealthSync = exports.garminAdapter = exports.GarminConnectAdapter = exports.HEALTH_CONSTANTS = exports.healthService = exports.HealthService = exports.butlerService = exports.ButlerService = void 0;
 // Core Services
 var butler_service_1 = require("../butler.service");
 Object.defineProperty(exports, "ButlerService", { enumerable: true, get: function () { return butler_service_1.ButlerService; } });
@@ -41,4 +41,7 @@ Object.defineProperty(exports, "scheduleService", { enumerable: true, get: funct
 var business_service_1 = require("../business.service");
 Object.defineProperty(exports, "BusinessService", { enumerable: true, get: function () { return business_service_1.BusinessService; } });
 Object.defineProperty(exports, "businessService", { enumerable: true, get: function () { return business_service_1.businessService; } });
+// Butler Data Aggregation
+var butler_data_service_1 = require("../butler-data.service");
+Object.defineProperty(exports, "getButlerContext", { enumerable: true, get: function () { return butler_data_service_1.getButlerContext; } });
 //# sourceMappingURL=index.js.map

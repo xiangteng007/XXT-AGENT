@@ -1,0 +1,63 @@
+{
+  "description": "Output of Market Analyst Agent.",
+  "properties": {
+    "regime": {
+      "enum": [
+        "bull",
+        "bear",
+        "range",
+        "volatile",
+        "unknown"
+      ],
+      "title": "Regime",
+      "type": "string"
+    },
+    "trend": {
+      "enum": [
+        "up",
+        "down",
+        "range"
+      ],
+      "title": "Trend",
+      "type": "string"
+    },
+    "signals": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Signals",
+      "type": "array"
+    },
+    "conviction": {
+      "title": "Conviction",
+      "type": "integer"
+    },
+    "key_levels": {
+      "additionalProperties": true,
+      "title": "Key Levels",
+      "type": "object"
+    },
+    "catalysts": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Catalysts",
+      "type": "array"
+    },
+    "summary": {
+      "title": "Summary",
+      "type": "string"
+    },
+    "judgment_basis": {
+      "title": "Judgment Basis",
+      "type": "string"
+    },
+    "uncertainty_warning": {
+      "title": "Uncertainty Warning",
+      "type": "string"
+    }
+  },
+  "title": "MarketInsight",
+  "type": "object"
+}

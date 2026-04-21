@@ -412,8 +412,8 @@ class WriteRequestQueue {
         headers: {
           'Content-Type':  'application/json',
           'Authorization': `Bearer ${process.env['OPENCLAW_API_KEY'] ?? 'dev-secret-key'}`,
-          'X-QVP-Source':  request.source_agent,
-          'X-QVP-Key':     request.idempotency_key,
+          'X-QVP-Source':  encodeURIComponent(request.source_agent),
+          'X-QVP-Key':     encodeURIComponent(request.idempotency_key),
         },
         body:   JSON.stringify(request.data),
         signal: controller.signal,

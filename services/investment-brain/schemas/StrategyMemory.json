@@ -1,0 +1,30 @@
+{
+  "description": "Past strategy performance for learning.",
+  "properties": {
+    "successful_patterns": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Successful Patterns",
+      "type": "array"
+    },
+    "failed_patterns": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Failed Patterns",
+      "type": "array"
+    },
+    "regime_preferences": {
+      "additionalProperties": true,
+      "title": "Regime Preferences",
+      "type": "object"
+    },
+    "last_updated": {
+      "title": "Last Updated",
+      "type": "string"
+    }
+  },
+  "title": "StrategyMemory",
+  "type": "object"
+}

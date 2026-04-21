@@ -40,6 +40,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendAlertsForEvent = sendAlertsForEvent;
+const v2_1 = require("firebase-functions/v2");
 const admin = __importStar(require("firebase-admin"));
 const audit_service_1 = require("./audit.service");
 const metrics_service_1 = require("./metrics.service");
@@ -48,12 +49,12 @@ const db = admin.firestore();
  * Process and send alerts for a fused event
  */
 async function sendAlertsForEvent(event) {
-    console.log(`[Alert Engine] Processing event: ${event.id}`);
+    v2_1.logger.info(`[Alert Engine] Processing event: ${event.id}`);
     const result = { sent: 0, failed: 0, channels: [] };
     try {
         // Get all matching notification settings
         const settings = await getMatchingNotifications(event);
-        console.log(`[Alert Engine] Found ${settings.length} matching notification settings`);
+        v2_1.logger.info(`[Alert Engine] Found ${settings.length} matching notification settings`);
         for (const setting of settings) {
             try {
                 await sendNotification(setting, event);
@@ -72,7 +73,7 @@ async function sendAlertsForEvent(event) {
                 });
             }
             catch (err) {
-                console.error(`[Alert Engine] Failed to send via ${setting.channel}:`, err);
+                v2_1.logger.error(`[Alert Engine] Failed to send via ${setting.channel}:`, err);
                 result.failed++;
             }
         }
@@ -86,7 +87,7 @@ async function sendAlertsForEvent(event) {
         return result;
     }
     catch (err) {
-        console.error('[Alert Engine] Fatal error:', err);
+        v2_1.logger.error('[Alert Engine] Fatal error:', err);
         return result;
     }
 }
@@ -123,7 +124,7 @@ async function sendNotification(setting, event) {
             break;
         case 'email':
             // Email implementation would require SMTP or SendGrid
-            console.log('[Alert Engine] Email not implemented yet');
+            v2_1.logger.info('[Alert Engine] Email not implemented yet');
             break;
         default:
             throw new Error(`Unknown channel: ${setting.channel}`);

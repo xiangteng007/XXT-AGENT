@@ -41,6 +41,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.processCollectJob = processCollectJob;
 exports.generateDedupHash = generateDedupHash;
+const v2_1 = require("firebase-functions/v2");
 const admin = __importStar(require("firebase-admin"));
 const crypto = __importStar(require("crypto"));
 const rss_adapter_1 = require("./adapters/rss.adapter");
@@ -61,7 +62,7 @@ const adapters = {
  * Process a collect job
  */
 async function processCollectJob(job) {
-    console.log(`[Social Collector] Processing job: ${job.tenantId}/${job.sourceId}`);
+    v2_1.logger.info(`[Social Collector] Processing job: ${job.tenantId}/${job.sourceId}`);
     const result = { fetched: 0, inserted: 0, deduplicated: 0, errors: [] };
     try {
         // Load source configuration
@@ -98,7 +99,7 @@ async function processCollectJob(job) {
         // Fetch delta
         const fetchResult = await adapter.fetchDelta(cursor, source.config);
         result.fetched = fetchResult.items.length;
-        console.log(`[Social Collector] Fetched ${result.fetched} items from ${source.platform}`);
+        v2_1.logger.info(`[Social Collector] Fetched ${result.fetched} items from ${source.platform}`);
         // Process each item
         for (const item of fetchResult.items) {
             try {
@@ -120,7 +121,7 @@ async function processCollectJob(job) {
                 }
             }
             catch (itemErr) {
-                console.error('[Social Collector] Error processing item:', itemErr);
+                v2_1.logger.error('[Social Collector] Error processing item:', itemErr);
                 result.errors.push((0, error_handling_1.getErrorMessage)(itemErr));
             }
         }
@@ -135,11 +136,11 @@ async function processCollectJob(job) {
         // Log metrics
         await (0, metrics_service_1.incrementMetric)(job.tenantId, 'social_posts_fetched', result.fetched);
         await (0, metrics_service_1.incrementMetric)(job.tenantId, 'social_posts_inserted', result.inserted);
-        console.log('[Social Collector] Job complete:', result);
+        v2_1.logger.info('[Social Collector] Job complete:', result);
         return result;
     }
     catch (err) {
-        console.error('[Social Collector] Job failed:', err);
+        v2_1.logger.error('[Social Collector] Job failed:', err);
         // Update cursor error state
         const cursorId = `${job.tenantId}_${job.sourceId}`;
         await db.collection('social_cursors').doc(cursorId).set({
@@ -204,7 +205,7 @@ async function enrichPost(post) {
         };
     }
     catch (err) {
-        console.warn('[Social Collector] Gemini enrichment failed, using raw data:', err);
+        v2_1.logger.warn('[Social Collector] Gemini enrichment failed, using raw data:', err);
         return post;
     }
 }
@@ -246,7 +247,7 @@ async function createFusedEvent(post) {
         ...event,
         ts: admin.firestore.FieldValue.serverTimestamp(),
     });
-    console.log(`[Social Collector] Created fused event: ${eventType}`);
+    v2_1.logger.info(`[Social Collector] Created fused event: ${eventType}`);
 }
 /**
  * Generate dedup hash

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRBAC, Role } from '@/contexts/RBACContext';
 import { CanShow, RoleBadge } from '@/components/auth/ProtectedRoute';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -31,13 +31,7 @@ export default function TeamMembersPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [showInviteModal, setShowInviteModal] = useState(false);
 
-    useEffect(() => {
-        if (currentTeamId) {
-            loadMembers();
-        }
-    }, [currentTeamId]);
-
-    async function loadMembers() {
+    const loadMembers = useCallback(async () => {
         try {
             setIsLoading(true);
             const response = await fetch(`/api/teams/${currentTeamId}/members`, {
@@ -52,7 +46,13 @@ export default function TeamMembersPage() {
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [currentTeamId]);
+
+    useEffect(() => {
+        if (currentTeamId) {
+            loadMembers();
+        }
+    }, [currentTeamId, loadMembers]);
 
     async function updateRole(userId: string, newRole: Role) {
         try {

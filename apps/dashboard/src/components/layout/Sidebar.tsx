@@ -199,6 +199,7 @@ interface NavItem {
    ================================ */
 const mainNav: NavItem[] = [
     { href: '/', label: '總覽', icon: <HomeIcon /> },
+    { href: '/agents', label: 'Agents Directory', icon: <UsersIcon /> },
     {
         href: '/butler', label: '個人管家', icon: <SparklesIcon />,
         children: [
@@ -253,6 +254,14 @@ const mainNav: NavItem[] = [
         children: [
             { href: '/ai', label: 'AI 總覽' },
             { href: '/ai/analysis', label: '🧠 AI 分析' },
+        ],
+    },
+    {
+        href: '/guardian', label: '保險守衛', icon: <ShieldIcon />,
+        children: [
+            { href: '/guardian', label: '🛡️ 守衛總覽' },
+            { href: '/guardian/policies', label: '📋 保單列表' },
+            { href: '/guardian/bookings', label: '📅 自動預約' },
         ],
     },
 ];

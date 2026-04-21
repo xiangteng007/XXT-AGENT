@@ -13,7 +13,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "vitest run --config tests/e2e/vitest.e2e.config.ts"
+    "test:e2e": "vitest run --config tests/e2e/vitest.e2e.config.ts",
+    "pretest:e2e:real": "docker-compose -f docker-compose.e2e.yml up -d",
+    "test:e2e:real": "cross-env E2E_REAL_DEPENDENCIES=true vitest run --config tests/e2e/vitest.e2e.config.ts",
+    "posttest:e2e:real": "docker-compose -f docker-compose.e2e.yml down"
   },
   "dependencies": {
     "@xxt-agent/types": "file:../../packages/types",
@@ -21,6 +24,7 @@
     "express": "^4.18.2",
     "firebase-admin": "^12.0.0",
     "helmet": "^8.1.0",
+    "ioredis": "^5.10.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "ws": "^8.16.0"
@@ -32,6 +36,7 @@
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "@types/ws": "^8.5.10",
+    "cross-env": "^10.1.0",
     "supertest": "^7.2.2",
     "tsx": "^4.7.0",
     "typescript": "^5.4.5",

@@ -173,7 +173,7 @@ describe('C-1b: Guardian → Accountant Collaboration', () => {
       .send({ policy_id: policyId });
     expect(collabRes.status).toBe(200);
     expect(collabRes.body.ok).toBe(true);
-    expect(collabRes.body.request_id).toBeDefined();
+    expect(collabRes.body.request_ids).toBeDefined();
     expect(collabRes.body.status).toBeDefined();
   });
 

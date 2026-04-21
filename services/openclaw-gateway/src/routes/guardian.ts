@@ -35,6 +35,7 @@ import {
   addPolicy, queryPolicies, getPolicyById, deletePolicy,
   calcPremiumSummary, getMandatoryGap,
   calcCarPremium, calcLifeInsurance, calcWorkersComp,
+  markLedgerLinked,
   CATEGORY_ZH, ENTITY_ZH, MANDATORY_CATEGORIES,
   type InsurancePolicy, type PolicyCategory, type EntityType, type PolicyStatus,
 } from '../insurance-store';
@@ -91,6 +92,25 @@ async function fetchAccountantData(entity_type?: EntityType, year?: number): Pro
   } catch {
     return { income: 0, expense: 0, net: 0 };
   }
+}
+
+function handleGuardianError(req: Request, res: Response, contextMsg: string, err: unknown) {
+  const traceId = crypto.randomUUID();
+  logger.error(`[Guardian] ${contextMsg} Error: ${err}`, {
+    traceId,
+    method: req.method,
+    url: req.originalUrl,
+    bodySummary: req.body ? Object.keys(req.body) : undefined,
+    stack: err instanceof Error ? err.stack : undefined
+  });
+  res.status(500).json({
+    ok: false,
+    error: 'AGENT_SERVICE_FAILURE',
+    message: contextMsg,
+    details: err instanceof Error ? err.message : String(err),
+    resolution: 'Please verify Ollama/Firebase availability and try again later.',
+    trace_id: traceId
+  });
 }
 
 // ============================================================
@@ -213,7 +233,7 @@ guardianRouter.post('/chat', async (req: Request, res: Response) => {
       reply: reply.replace(/<think>[\s\S]*?<\/think>/g, '').trim(),
     });
   } catch (err) {
-    res.status(500).json({ error: '保險諮詢 AI 異常', details: String(err) });
+    handleGuardianError(req, res, '保險諮詢 AI 異常', err);
   }
 });
 
@@ -506,7 +526,7 @@ ${ragContext}
       disclaimer: '以上分析依帳本資料自動生成，實際投保需諮詢持照保險業務員，不構成法律或投保建議。',
     });
   } catch (err) {
-    res.status(500).json({ error: '缺口分析 AI 異常', details: String(err) });
+    handleGuardianError(req, res, '缺口分析 AI 異常', err);
   }
 });
 
@@ -604,7 +624,7 @@ guardianRouter.post('/plan/company', async (req: Request, res: Response) => {
     res.json({ ok: true, entity: 'co_construction', trace_id: traceId, latency_ms, privacy_level: 'PRIVATE', plan,
       disclaimer: '規劃建議依帳本資料自動生成，實際投保請諮詢持照業務員，不構成保險建議。' });
   } catch (err) {
-    res.status(500).json({ error: '規劃 AI 異常', details: String(err) });
+    handleGuardianError(req, res, '規劃 AI 異常', err);
   }
 });
 
@@ -656,7 +676,7 @@ guardianRouter.post('/plan/personal', async (req: Request, res: Response) => {
     res.json({ ok: true, entity: 'personal', trace_id: traceId, latency_ms, privacy_level: 'PRIVATE', plan,
       dime_summary: dime, disclaimer: '規劃建議依帳本資料自動生成，實際投保請諮詢持照業務員。' });
   } catch (err) {
-    res.status(500).json({ error: '規劃 AI 異常', details: String(err) });
+    handleGuardianError(req, res, '規劃 AI 異常', err);
   }
 });
 
@@ -703,7 +723,7 @@ guardianRouter.post('/plan/family', async (req: Request, res: Response) => {
     res.json({ ok: true, entity: 'family', trace_id: traceId, latency_ms, privacy_level: 'PRIVATE', plan,
       disclaimer: '規劃建議自動生成，不構成保險建議。' });
   } catch (err) {
-    res.status(500).json({ error: '規劃 AI 異常', details: String(err) });
+    handleGuardianError(req, res, '規劃 AI 異常', err);
   }
 });
 
@@ -760,7 +780,7 @@ guardianRouter.post('/plan/full', async (req: Request, res: Response) => {
       disclaimer: '三實體整合規劃依帳本資料自動生成，實際投保請諮詢持照業務員，不構成保險建議。',
     });
   } catch (err) {
-    res.status(500).json({ error: '統合規劃 AI 異常', details: String(err) });
+    handleGuardianError(req, res, '統合規劃 AI 異常', err);
   }
 });
 
@@ -1003,10 +1023,29 @@ guardianRouter.get('/report/gap', async (_req: Request, res: Response) => {
   const recommendedLifeCoverage = peData.income * 10;
   const lifeCoverageGap = Math.max(0, recommendedLifeCoverage - lifeCoverage);
 
+  const overallScore = Math.round((coveredCount / gapItems.length) * 100);
+  const prompt = `${guardianSystemPrompt.template}
+
+請針對以下保障缺口與財務狀況，撰寫一段 100~150 字的專業保險顧問質性建議。
+【目前得分】${overallScore}分
+【強制缺口】${mandatoryGap.missing.map(c => CATEGORY_ZH[c]).join(', ') || '無'}
+【重大缺口】${criticalGaps.map(g => g.category).join(', ') || '無'}
+【壽險缺口】${lifeCoverageGap > 0 ? `NT$${lifeCoverageGap.toLocaleString()}` : '充足'}`;
+
+  let qualitative_advice = '';
+  let latency_ms = 0;
+  try {
+    const { content, latency_ms: ms } = await ollamaChat([{ role: 'user', content: prompt }], MODEL, { temperature: 0.2, num_predict: 500 });
+    qualitative_advice = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    latency_ms = ms;
+  } catch (e) {
+    qualitative_advice = 'AI 質性建議暫時無法提供。';
+  }
+
   res.json({
     ok: true,
     generated_at: new Date().toISOString(),
-    overall_score: Math.round((coveredCount / gapItems.length) * 100),
+    overall_score: overallScore,
     alert_level: criticalGaps.length > 0 ? 'CRITICAL' : highGaps.length > 0 ? 'WARNING' : 'OK',
     gap_summary: {
       critical_gaps: criticalGaps.length,
@@ -1026,6 +1065,8 @@ guardianRouter.get('/report/gap', async (_req: Request, res: Response) => {
     },
     gap_details: gapItems,
     premium_summary: { total_annual: totalPremium, policies_count: activePolicies.length },
+    qualitative_advice,
+    latency_ms,
     action_items: [
       ...mandatoryGap.missing.map(c => ({
         priority: 'CRITICAL',
@@ -1065,21 +1106,43 @@ guardianRouter.get('/report/premium', async (_req: Request, res: Response) => {
     queryPolicies({ status: 'active', limit: 200 }),
   ]);
 
-  // 嘗試從帳本取 life_insurance 支出
-  let ledgerLifePremium = 0;
+  const ledgerBreakdown: Record<string, number> = {};
+  let ledgerTotal = 0;
+
   try {
     const resp = await fetch(
-      `${ACCOUNTANT_URL}/agents/accountant/ledger?category=life_insurance&limit=50`,
+      `${ACCOUNTANT_URL}/agents/accountant/ledger?limit=500`,
       { headers: { 'Authorization': 'Bearer dev-local-bypass' }, signal: AbortSignal.timeout(5000) },
     );
     if (resp.ok) {
-      const data = await resp.json() as { summary: { total_expense: number } };
-      ledgerLifePremium = data.summary?.total_expense ?? 0;
+      const data = await resp.json() as { entries: Array<{category: string; type: string; entity_type: string; amount_taxed: number}> };
+      if (data.entries) {
+        for (const entry of data.entries) {
+          if (entry.type === 'expense' && (entry.category === 'life_insurance' || entry.category === 'insurance')) {
+             const et = entry.entity_type || 'unknown';
+             ledgerBreakdown[et] = (ledgerBreakdown[et] || 0) + entry.amount_taxed;
+             ledgerTotal += entry.amount_taxed;
+          }
+        }
+      }
     }
   } catch { /* ignore */ }
 
   const registeredPremium = premiumSummary.grand_total;
-  const delta = Math.abs(ledgerLifePremium - registeredPremium);
+  const delta = Math.abs(ledgerTotal - registeredPremium);
+
+  const entityDiscrepancies = premiumSummary.by_entity.map(e => {
+      const ledgerEntityPremium = ledgerBreakdown[e.entity_type] || 0;
+      const entityDelta = Math.abs(ledgerEntityPremium - e.total_annual_premium);
+      return {
+          entity_type: e.entity_type,
+          entity_label: e.entity_label,
+          registered_premium: e.total_annual_premium,
+          ledger_premium: ledgerEntityPremium,
+          delta: entityDelta,
+          status: entityDelta < 5000 ? 'MATCHED' : 'DISCREPANCY'
+      };
+  });
 
   res.json({
     ok: true,
@@ -1093,17 +1156,19 @@ guardianRouter.get('/report/premium', async (_req: Request, res: Response) => {
         annual_premium: e.total_annual_premium,
       })),
     },
-    ledger_life_insurance: {
-      annual_expense: ledgerLifePremium,
-      note: '帳本 life_insurance 科目年度支出',
+    ledger_insurance: {
+      annual_expense: ledgerTotal,
+      by_entity: ledgerBreakdown,
+      note: '帳本 life_insurance 及 insurance 科目年度支出彙總',
     },
     reconciliation: {
       delta,
       status: delta < 5000 ? 'MATCHED' : 'DISCREPANCY',
       label: delta < 5000
         ? '✅ 帳本與保單記錄相符'
-        : `⚠️ 差異 NT$${delta.toLocaleString()}（可能有未登錄保單）`,
-      action: delta > 5000 ? '建議使用 /ins policy add 補錄未登錄保單' : null,
+        : `⚠️ 總差異 NT$${delta.toLocaleString()}（可能有未登錄保單）`,
+      action: delta > 5000 ? '建議詳查各實體紀錄並使用 /ins policy add 補錄未登錄保單' : null,
+      breakdown: entityDiscrepancies,
     },
   });
 });
@@ -1194,7 +1259,14 @@ guardianRouter.post('/collab/auto-booking', async (req: Request, res: Response) 
   try {
     const { writeRequestQueue } = await import('../write-request-queue');
 
-    const idempotencyKey = `guardian_premium_${policy.policy_id}_${new Date().getFullYear()}`;
+    let installments = 1;
+    let periodMonths = 12;
+    if (policy.payment_frequency === 'monthly') { installments = 12; periodMonths = 1; }
+    else if (policy.payment_frequency === 'quarterly') { installments = 4; periodMonths = 3; }
+    else if (policy.payment_frequency === 'semi_annual') { installments = 2; periodMonths = 6; }
+
+    const installmentAmount = Math.round(policy.annual_premium / installments);
+    const startDate = new Date(policy.start_date);
 
     const categoryMap: Record<string, string> = {
       life_term: 'life_insurance',
@@ -1208,40 +1280,57 @@ guardianRouter.post('/collab/auto-booking', async (req: Request, res: Response) 
 
     const ledgerCategory = categoryMap[policy.category] ?? 'insurance';
 
-    const result = await writeRequestQueue.submit({
-      source_agent:    'guardian',
-      target_agent:    'accountant',
-      collection:      'accountant_ledger',
-      operation:       'create',
-      idempotency_key: idempotencyKey,
-      entity_type:     policy.entity_type,
-      reason:          `安盾保費自動入帳：${CATEGORY_ZH[policy.category]}（${policy.insurer}）`,
-      data: {
-        type:             'expense',
-        category:         ledgerCategory,
-        description:      `保險費：${CATEGORY_ZH[policy.category]}（${policy.insurer}）— 被保人 ${policy.insured_name}`,
-        amount_taxed:     policy.annual_premium,
-        amount_untaxed:   policy.annual_premium,
-        tax_amount:       0,
-        tax_rate:         0,
-        is_tax_exempt:    true,
-        entity_type:      policy.entity_type,
-        counterparty_name: policy.insurer,
-        transaction_date: policy.start_date,
-        is_deductible:    true,
-        notes:            `Guardian 自動入帳 | 保單 ${policy.policy_no_masked} | ${policy.payment_frequency}`,
-      },
-    });
+    const submissions = [];
+    for (let i = 0; i < installments; i++) {
+      const idempotencyKey = `guardian_premium_${policy.policy_id}_${new Date().getFullYear()}_${i}`;
+      const transactionDate = new Date(startDate);
+      transactionDate.setMonth(transactionDate.getMonth() + (i * periodMonths));
+      const formattedDate = transactionDate.toISOString().split('T')[0];
 
-    logger.info(`[Guardian/collab/auto-booking] Premium booking sent: ${result.request_id} (${result.status})`);
+      submissions.push(writeRequestQueue.submit({
+        source_agent:    'guardian',
+        target_agent:    'accountant',
+        collection:      'accountant_ledger',
+        operation:       'create',
+        idempotency_key: idempotencyKey,
+        entity_type:     policy.entity_type,
+        reason:          `安盾保費自動入帳 (${i+1}/${installments})：${CATEGORY_ZH[policy.category]}（${policy.insurer}）`,
+        data: {
+          type:             'expense',
+          category:         ledgerCategory,
+          description:      `保險費 (${i+1}/${installments})：${CATEGORY_ZH[policy.category]}（${policy.insurer}）— 被保人 ${policy.insured_name}`,
+          amount_taxed:     installmentAmount,
+          amount_untaxed:   installmentAmount,
+          tax_amount:       0,
+          tax_rate:         0,
+          is_tax_exempt:    true,
+          entity_type:      policy.entity_type,
+          counterparty_name: policy.insurer,
+          transaction_date: formattedDate,
+          is_deductible:    true,
+          notes:            `Guardian 自動入帳 | 保單 ${policy.policy_no_masked} | ${policy.payment_frequency} 第 ${i+1} 期`,
+        },
+      }));
+    }
+
+    const results = await Promise.all(submissions);
+    const allOk = results.every(r => r.ok);
+
+    logger.info(`[Guardian/collab/auto-booking] Premium booking sent: ${installments} requests, allOk: ${allOk}`);
+
+    if (allOk) {
+      await markLedgerLinked(policy.policy_id);
+      logger.info(`[Guardian] Policy ${policy.policy_id} marked as ledger_linked`);
+    }
 
     res.json({
-      ok: result.ok,
-      request_id: result.request_id,
-      status: result.status,
-      message: result.ok
-        ? `已向鳴鑫請求記入保費 NT$${policy.annual_premium.toLocaleString()}（${CATEGORY_ZH[policy.category]}）`
-        : result.message,
+      ok: allOk,
+      installments_created: installments,
+      request_ids: results.map(r => r.request_id),
+      status: allOk ? 'success' : 'partial_failure',
+      message: allOk
+        ? `已向鳴鑫請求記入保費 NT$${policy.annual_premium.toLocaleString()}（分 ${installments} 期，每期約 NT$${installmentAmount.toLocaleString()}）`
+        : '部分或全部入帳請求失敗',
       policy_id: policy.policy_id,
       booking_details: {
         category: CATEGORY_ZH[policy.category],
@@ -1251,8 +1340,7 @@ guardianRouter.post('/collab/auto-booking', async (req: Request, res: Response) 
       },
     });
   } catch (err) {
-    logger.error(`[Guardian/collab/auto-booking] Error: ${err}`);
-    res.status(500).json({ error: '保費入帳異常', details: String(err) });
+    handleGuardianError(req, res, '保費入帳異常', err);
   }
 });
 

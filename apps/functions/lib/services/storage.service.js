@@ -9,6 +9,7 @@ exports.deleteOldImages = deleteOldImages;
  * Images from LINE are downloaded and uploaded to Cloud Storage,
  * then the public URL is used in Notion.
  */
+const v2_1 = require("firebase-functions/v2");
 const storage_1 = require("@google-cloud/storage");
 const line_service_1 = require("./line.service");
 // Initialize Cloud Storage client
@@ -26,7 +27,7 @@ async function uploadLineImage(messageId, integrationId, tenantId) {
         // Download from LINE
         const content = await (0, line_service_1.getMessageContent)(messageId, integrationId);
         if (!content) {
-            console.error(`[Storage] Failed to download image ${messageId}`);
+            v2_1.logger.error(`[Storage] Failed to download image ${messageId}`);
             return null;
         }
         // Generate file path
@@ -49,11 +50,11 @@ async function uploadLineImage(messageId, integrationId, tenantId) {
         // Make public (or use signed URL for private)
         await file.makePublic();
         const publicUrl = `https://storage.googleapis.com/${bucketName}/${filename}`;
-        console.log(`[Storage] Image uploaded: ${publicUrl}`);
+        v2_1.logger.info(`[Storage] Image uploaded: ${publicUrl}`);
         return publicUrl;
     }
     catch (error) {
-        console.error('[Storage] Upload error:', error);
+        v2_1.logger.error('[Storage] Upload error:', error);
         return null;
     }
 }
@@ -72,7 +73,7 @@ async function getSignedUrl(filename, expirationMinutes = 60) {
         return url;
     }
     catch (error) {
-        console.error('[Storage] Signed URL error:', error);
+        v2_1.logger.error('[Storage] Signed URL error:', error);
         return null;
     }
 }
@@ -97,11 +98,11 @@ async function deleteOldImages(tenantId, olderThanDays = 30) {
                 deletedCount++;
             }
         }
-        console.log(`[Storage] Deleted ${deletedCount} old images for ${tenantId}`);
+        v2_1.logger.info(`[Storage] Deleted ${deletedCount} old images for ${tenantId}`);
         return deletedCount;
     }
     catch (error) {
-        console.error('[Storage] Cleanup error:', error);
+        v2_1.logger.error('[Storage] Cleanup error:', error);
         return 0;
     }
 }

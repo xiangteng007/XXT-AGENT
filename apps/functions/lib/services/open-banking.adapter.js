@@ -48,6 +48,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.openBankingAdapter = exports.TaiwanOpenBankingAdapter = void 0;
+const v2_1 = require("firebase-functions/v2");
 const admin = __importStar(require("firebase-admin"));
 const finance_service_1 = require("./finance.service");
 const db = admin.firestore();
@@ -156,7 +157,7 @@ class TaiwanOpenBankingAdapter {
                 return newTokens;
             }
             catch {
-                console.error('Token refresh failed, user needs to re-authorize');
+                v2_1.logger.error('Token refresh failed, user needs to re-authorize');
                 return null;
             }
         }
@@ -298,7 +299,7 @@ class TaiwanOpenBankingAdapter {
                 }
             }
             catch (error) {
-                console.error(`Failed to fetch balance for ${bankCode}:`, error);
+                v2_1.logger.error(`Failed to fetch balance for ${bankCode}:`, error);
             }
         }
         return balances;

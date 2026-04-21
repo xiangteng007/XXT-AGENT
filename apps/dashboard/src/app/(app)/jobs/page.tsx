@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import styles from './jobs.module.css';
 
@@ -20,7 +20,7 @@ export default function JobsPage() {
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('');
 
-    const loadJobs = async () => {
+    const loadJobs = useCallback(async () => {
         setLoading(true);
         const token = await getIdToken();
         const params = new URLSearchParams();
@@ -35,9 +35,9 @@ export default function JobsPage() {
             setJobs(data.jobs);
         }
         setLoading(false);
-    };
+    }, [getIdToken, statusFilter]);
 
-    useEffect(() => { loadJobs(); }, [statusFilter, getIdToken]);
+    useEffect(() => { loadJobs(); }, [loadJobs]);
 
     const handleRequeue = async (jobId: string) => {
         const token = await getIdToken();

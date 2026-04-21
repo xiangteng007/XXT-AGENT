@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.rateLimiters = void 0;
 exports.rateLimiter = rateLimiter;
 exports.cleanupRateLimits = cleanupRateLimits;
+const v2_1 = require("firebase-functions/v2");
 const firestore_1 = require("firebase-admin/firestore");
 // Rate limit configuration
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
@@ -93,7 +94,7 @@ function rateLimiter(options) {
         }
         catch (error) {
             // On error, allow request but log warning
-            console.warn('[RateLimiter] Error checking rate limit:', error);
+            v2_1.logger.warn('[RateLimiter] Error checking rate limit:', error);
             next();
         }
     };
@@ -114,7 +115,7 @@ async function cleanupRateLimits() {
     const batch = db.batch();
     snapshot.docs.forEach(doc => batch.delete(doc.ref));
     await batch.commit();
-    console.log(`[RateLimiter] Cleaned up ${snapshot.size} expired records`);
+    v2_1.logger.info(`[RateLimiter] Cleaned up ${snapshot.size} expired records`);
     return snapshot.size;
 }
 /**

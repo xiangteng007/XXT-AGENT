@@ -13,6 +13,7 @@ exports.runAllCleanup = runAllCleanup;
  * - Delete old logs
  * - Clean up orphaned images
  */
+const v2_1 = require("firebase-functions/v2");
 const firebase_1 = require("../config/firebase");
 const storage_service_1 = require("./storage.service");
 const JOBS_RETENTION_DAYS = 7; // Keep completed jobs for 7 days
@@ -63,10 +64,10 @@ async function cleanupOldJobs() {
                 errors++;
             }
         }
-        console.log(`[Cleanup] Jobs: deleted ${deleted}, errors ${errors}`);
+        v2_1.logger.info(`[Cleanup] Jobs: deleted ${deleted}, errors ${errors}`);
     }
     catch (error) {
-        console.error('[Cleanup] Jobs cleanup error:', error);
+        v2_1.logger.error('[Cleanup] Jobs cleanup error:', error);
         errors++;
     }
     return { deleted, errors };
@@ -94,10 +95,10 @@ async function cleanupOldLogs() {
                 errors++;
             }
         }
-        console.log(`[Cleanup] Logs: deleted ${deleted}, errors ${errors}`);
+        v2_1.logger.info(`[Cleanup] Logs: deleted ${deleted}, errors ${errors}`);
     }
     catch (error) {
-        console.error('[Cleanup] Logs cleanup error:', error);
+        v2_1.logger.error('[Cleanup] Logs cleanup error:', error);
         errors++;
     }
     return { deleted, errors };
@@ -125,10 +126,10 @@ async function cleanupProcessedEvents() {
                 errors++;
             }
         }
-        console.log(`[Cleanup] ProcessedEvents: deleted ${deleted}, errors ${errors}`);
+        v2_1.logger.info(`[Cleanup] ProcessedEvents: deleted ${deleted}, errors ${errors}`);
     }
     catch (error) {
-        console.error('[Cleanup] ProcessedEvents cleanup error:', error);
+        v2_1.logger.error('[Cleanup] ProcessedEvents cleanup error:', error);
         errors++;
     }
     return { deleted, errors };
@@ -144,10 +145,10 @@ async function cleanupOldImages(tenantIds) {
             totalDeleted += deleted;
         }
         catch (error) {
-            console.error(`[Cleanup] Images cleanup error for ${tenantId}:`, error);
+            v2_1.logger.error(`[Cleanup] Images cleanup error for ${tenantId}:`, error);
         }
     }
-    console.log(`[Cleanup] Images: deleted ${totalDeleted} total`);
+    v2_1.logger.info(`[Cleanup] Images: deleted ${totalDeleted} total`);
     return { totalDeleted };
 }
 /**
@@ -160,7 +161,7 @@ async function getAllTenantIds() {
         return snapshot.docs.map(doc => doc.id);
     }
     catch (error) {
-        console.error('[Cleanup] Failed to get tenant IDs:', error);
+        v2_1.logger.error('[Cleanup] Failed to get tenant IDs:', error);
         return [];
     }
 }
@@ -168,7 +169,7 @@ async function getAllTenantIds() {
  * Run all cleanup tasks
  */
 async function runAllCleanup() {
-    console.log('[Cleanup] Starting scheduled cleanup...');
+    v2_1.logger.info('[Cleanup] Starting scheduled cleanup...');
     const [jobs, logs, events] = await Promise.all([
         cleanupOldJobs(),
         cleanupOldLogs(),
@@ -177,7 +178,7 @@ async function runAllCleanup() {
     // Get tenant IDs for image cleanup
     const tenantIds = await getAllTenantIds();
     const images = await cleanupOldImages(tenantIds);
-    console.log('[Cleanup] Completed:', { jobs, logs, events, images });
+    v2_1.logger.info('[Cleanup] Completed:', { jobs, logs, events, images });
     return { jobs, logs, events, images };
 }
 //# sourceMappingURL=cleanup.service.js.map

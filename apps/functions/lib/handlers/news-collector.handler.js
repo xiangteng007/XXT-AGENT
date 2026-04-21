@@ -7,8 +7,10 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleNewsCollector = handleNewsCollector;
+const v2_1 = require("firebase-functions/v2");
 const firestore_1 = require("firebase-admin/firestore");
 const rss_service_1 = require("../services/rss.service");
+const openclaw_emitter_service_1 = require("../services/openclaw-emitter.service");
 const MARKET_NEWS_COLLECTION = 'market_news';
 const RECENT_HOURS = 24; // Only keep URLs from last 24 hours for dedup
 /**
@@ -27,7 +29,7 @@ async function getRecentUrls() {
         if (url)
             urls.add(url);
     });
-    console.log(`Found ${urls.size} recent URLs for deduplication`);
+    v2_1.logger.info(`Found ${urls.size} recent URLs for deduplication`);
     return urls;
 }
 /**
@@ -54,14 +56,14 @@ async function writeNewsToFirestore(items) {
         count++;
     }
     await batch.commit();
-    console.log(`Wrote ${count} news items to Firestore`);
+    v2_1.logger.info(`Wrote ${count} news items to Firestore`);
     return count;
 }
 /**
  * Main handler for scheduled news collection
  */
 async function handleNewsCollector() {
-    console.log('[News Collector] Starting collection...');
+    v2_1.logger.info('[News Collector] Starting collection...');
     try {
         // 1. Fetch RSS feeds
         const allItems = await (0, rss_service_1.fetchAllRssFeeds)();
@@ -71,17 +73,19 @@ async function handleNewsCollector() {
         const newItems = (0, rss_service_1.deduplicateItems)(allItems, recentUrls);
         // 4. Write to Firestore
         const written = await writeNewsToFirestore(newItems);
+        // 5. [OpenClaw] Notify Office (fire-and-forget)
+        void openclaw_emitter_service_1.ocEmit.newsIngested(written, allItems.map(i => i.source).filter((v, i, a) => a.indexOf(v) === i).slice(0, 5));
         const result = {
             ok: true,
             fetched: allItems.length,
             written: written,
             skipped: allItems.length - newItems.length,
         };
-        console.log('[News Collector] Complete:', result);
+        v2_1.logger.info('[News Collector] Complete:', result);
         return result;
     }
     catch (error) {
-        console.error('[News Collector] Error:', error);
+        v2_1.logger.error('[News Collector] Error:', error);
         return {
             ok: false,
             fetched: 0,

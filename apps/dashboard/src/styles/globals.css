@@ -8,54 +8,54 @@
 @layer base {
   :root {
     /* ================================
-       碳黑金尊 - Carbon Black Gold Theme
+       V1 Minimalist Modern Light Phase
        International Premium Design
        ================================ */
     
     /* Core Colors - HSL format for shadcn/ui */
-    --background: 0 0% 5%;          /* #0C0C0C */
-    --foreground: 0 0% 98%;          /* #FAFAFA */
-    --card: 0 0% 9%;                  /* #161616 */
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 12%;              /* #1E1E1E */
-    --popover-foreground: 0 0% 98%;
+    --background: 0 0% 98%;          /* #FAFAFA */
+    --foreground: 0 0% 5%;           /* #0C0C0C */
+    --card: 0 0% 100%;               /* #FFFFFF */
+    --card-foreground: 0 0% 5%;
+    --popover: 0 0% 100%;            /* #FFFFFF */
+    --popover-foreground: 0 0% 5%;
     
     /* Gold Accent - Primary */
     --primary: 46 69% 52%;            /* #D4AF37 */
-    --primary-foreground: 0 0% 5%;
+    --primary-foreground: 0 0% 100%;  /* #FFFFFF */
     
-    /* Secondary - Darker Gold */
-    --secondary: 43 77% 38%;          /* #B8860B */
-    --secondary-foreground: 0 0% 98%;
+    /* Secondary - Light Beige */
+    --secondary: 43 50% 90%;          /* Light gold base */
+    --secondary-foreground: 43 77% 38%; /* #B8860B */
     
     /* Muted - Subtle grays */
-    --muted: 0 0% 15%;                /* #262626 */
-    --muted-foreground: 0 0% 60%;     /* #999999 */
+    --muted: 0 0% 95%;                /* #F2F2F2 */
+    --muted-foreground: 0 0% 45%;     /* #737373 */
     
     /* Accent - Gold highlight */
     --accent: 46 69% 52%;             /* #D4AF37 */
-    --accent-foreground: 0 0% 5%;
+    --accent-foreground: 0 0% 100%;
     
     /* Status Colors */
-    --destructive: 0 72% 51%;         /* #DC2626 */
+    --destructive: 0 84% 60%;         /* Red */
     --destructive-foreground: 0 0% 100%;
     
     /* Borders and Inputs */
-    --border: 0 0% 18%;               /* #2E2E2E */
-    --input: 0 0% 18%;
+    --border: 0 0% 90%;               /* #E5E5E5 */
+    --input: 0 0% 90%;
     --ring: 46 69% 52%;               /* Gold ring */
     
     /* Radius */
-    --radius: 0.625rem;
+    --radius: 0.75rem;                /* Softer rounded corners */
 
     /* ================================
        Extended Color Palette
        ================================ */
-    --bg-primary: #0C0C0C;
-    --bg-secondary: #161616;
-    --bg-tertiary: #1E1E1E;
-    --bg-elevated: #262626;
-    --bg-hover: #2A2A2A;
+    --bg-primary: #F9F9F9;
+    --bg-secondary: #FFFFFF;
+    --bg-tertiary: #F2F2F2;
+    --bg-elevated: #FFFFFF;
+    --bg-hover: #F0F0F0;
     
     --gold-primary: #D4AF37;
     --gold-secondary: #B8860B;
@@ -63,59 +63,60 @@
     --gold-light: #F4D03F;
     --gold-glow: rgba(212, 175, 55, 0.15);
     
-    --text-primary: #FAFAFA;
-    --text-secondary: #A0A0A0;
-    --text-muted: #666666;
+    --text-primary: #0C0C0C;
+    --text-secondary: #666666;
+    --text-muted: #999999;
     --text-gold: #D4AF37;
     
-    --success: #4ADE80;
-    --warning: #FCD34D;
-    --danger: #DC2626;
-    --info: #60A5FA;
+    --success: #22C55E;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+    --info: #3B82F6;
     
-    --border-color: #2E2E2E;
-    --border-gold: rgba(212, 175, 55, 0.3);
-    --border-radius: 10px;
-    --border-radius-lg: 14px;
-    --border-radius-xl: 18px;
+    --border-color: #E5E5E5;
+    --border-gold: rgba(212, 175, 55, 0.4);
+    --border-radius: 12px;
+    --border-radius-lg: 16px;
+    --border-radius-xl: 20px;
     
-    /* Shadows - Premium depth */
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-    --shadow-gold: 0 0 20px rgba(212, 175, 55, 0.15);
-    --shadow-gold-strong: 0 0 40px rgba(212, 175, 55, 0.25);
-    --shadow-gold-glow: 0 4px 20px rgba(212, 175, 55, 0.2);
+    /* Shadows - Premium soft depth (Minimalist vibe) */
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.04);
+    --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.06); /* Immense drop shadow */
+    --shadow-gold: 0 0 20px rgba(212, 175, 55, 0.2);
+    --shadow-gold-strong: 0 0 40px rgba(212, 175, 55, 0.4);
+    --shadow-gold-glow: 0 4px 20px rgba(212, 175, 55, 0.3);
     
     /* Enhanced Gradients */
-    --gold-gradient: linear-gradient(135deg, #D4AF37 0%, #F4D03F 50%, #D4AF37 100%);
-    --gold-gradient-subtle: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, rgba(244, 208, 63, 0.05) 100%);
+    --gold-gradient: linear-gradient(135deg, #FFDF73 0%, #D4AF37 50%, #B8860B 100%);
+    --gold-gradient-subtle: linear-gradient(135deg, rgba(212, 175, 55, 0.08) 0%, rgba(244, 208, 63, 0.03) 100%);
     
     /* Glassmorphism */
-    --glass-bg: rgba(22, 22, 22, 0.8);
-    --glass-border: rgba(255, 255, 255, 0.08);
-    --glass-blur: blur(12px);
+    --glass-bg: rgba(255, 255, 255, 0.85);
+    --glass-border: rgba(255, 255, 255, 0.6);
+    --glass-blur: blur(16px);
   }
 
   .dark {
-    --background: 0 0% 5%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 12%;
-    --popover-foreground: 0 0% 98%;
+    /* We keep dark mode configured to similar aesthetic in case it's triggered, but the system relies on Minimal Light */
+    --background: 0 0% 98%;
+    --foreground: 0 0% 5%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 5%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 5%;
     --primary: 46 69% 52%;
-    --primary-foreground: 0 0% 5%;
-    --secondary: 43 77% 38%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 43 50% 90%;
+    --secondary-foreground: 43 77% 38%;
+    --muted: 0 0% 95%;
+    --muted-foreground: 0 0% 45%;
     --accent: 46 69% 52%;
-    --accent-foreground: 0 0% 5%;
-    --destructive: 0 72% 51%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 18%;
-    --input: 0 0% 18%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
     --ring: 46 69% 52%;
   }
 }
@@ -159,11 +160,12 @@
 
 /* ================================
    Premium Component Styles
+   V1 Minimalist Glassmorphism
    ================================ */
 
 /* Sidebar Premium */
 .sidebar {
-  background: linear-gradient(180deg, #0C0C0C 0%, #0F0F0F 100%);
+  background: var(--bg-secondary);
   border-right: 1px solid var(--border-color);
 }
 
@@ -173,31 +175,32 @@
 }
 
 .sidebar-item:hover {
-  background: var(--gold-glow);
-  color: var(--gold-primary);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .sidebar-item.active {
-  background: linear-gradient(135deg, rgba(212, 175, 55, 0.15) 0%, rgba(184, 134, 11, 0.1) 100%);
+  background: var(--gold-glow);
   color: var(--gold-primary);
   border-left: 3px solid var(--gold-primary);
 }
 
-/* Card Premium */
+/* Card Premium - Soft Glass Focus */
 .card {
   @apply rounded-xl p-6 transition-all duration-300;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-sm);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-md);
 }
 
 .card:hover {
-  border-color: var(--border-gold);
-  box-shadow: var(--shadow-gold);
+  box-shadow: var(--shadow-lg);
 }
 
 .card-gold {
-  background: linear-gradient(135deg, rgba(212, 175, 55, 0.08) 0%, rgba(184, 134, 11, 0.05) 100%);
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.05) 0%, rgba(212, 175, 55, 0.01) 100%);
   border: 1px solid var(--border-gold);
 }
 
@@ -207,24 +210,26 @@
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--gold-primary) 0%, var(--gold-secondary) 100%);
-  color: #0C0C0C;
-  box-shadow: 0 4px 14px rgba(212, 175, 55, 0.3);
+  background: var(--gold-primary);
+  color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(212, 175, 55, 0.2);
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
+  background: var(--gold-light);
+  box-shadow: 0 6px 20px rgba(212, 175, 55, 0.35);
 }
 
 .btn-secondary {
   @apply border border-border text-foreground;
-  background: var(--bg-tertiary);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-secondary:hover {
   background: var(--bg-hover);
-  border-color: var(--gold-primary);
+  border-color: var(--border-color);
 }
 
 .btn-ghost {
@@ -233,8 +238,8 @@
 }
 
 .btn-ghost:hover {
-  background: var(--gold-glow);
-  color: var(--gold-primary);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .btn-danger {
@@ -244,7 +249,7 @@
 /* Input Premium */
 .input {
   @apply w-full px-4 py-3 rounded-xl text-sm transition-all duration-200;
-  background: var(--bg-tertiary);
+  background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
 }
@@ -271,24 +276,24 @@
 
 .badge-gold {
   background: var(--gold-glow);
-  color: var(--gold-primary);
+  color: var(--gold-dark);
   border: 1px solid var(--border-gold);
 }
 
 .badge-success {
-  @apply bg-green-500/15 text-green-400 border border-green-500/30;
+  @apply bg-green-500/10 text-green-600 border border-green-500/20;
 }
 
 .badge-warning {
-  @apply bg-yellow-500/15 text-yellow-400 border border-yellow-500/30;
+  @apply bg-yellow-500/10 text-yellow-600 border border-yellow-500/20;
 }
 
 .badge-error {
-  @apply bg-red-500/15 text-red-400 border border-red-500/30;
+  @apply bg-red-500/10 text-red-600 border border-red-500/20;
 }
 
 .badge-info {
-  @apply bg-blue-500/15 text-blue-400 border border-blue-500/30;
+  @apply bg-blue-500/10 text-blue-600 border border-blue-500/20;
 }
 
 /* Table Premium */
@@ -303,7 +308,7 @@ th, td {
 
 th {
   @apply font-semibold text-xs uppercase tracking-wider;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   background: var(--bg-tertiary);
 }
 
@@ -322,17 +327,17 @@ tr:hover td {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-color);
+  background: #D1D5DB; /* light gray indicator */
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--gold-dark);
+  background: var(--gold-primary);
 }
 
 /* Selection */
 ::selection {
-  background: rgba(212, 175, 55, 0.3);
+  background: rgba(212, 175, 55, 0.2);
   color: var(--text-primary);
 }
 
@@ -361,19 +366,13 @@ tr:hover td {
   outline-offset: 2px;
 }
 
-/* ================================
-   M-05: CSS Custom Property Utilities
-   Data-driven dynamic styles via --mascot-color
-   ================================ */
-
-/* Mascot accent glow — uses --mascot-color set via style attr */
+/* Mascot features styling */
 [style*="--mascot-color"] {
   background-color: var(--mascot-color, #6366f1);
 }
 
-/* Mascot badge — icon container with tinted background */
 .mascot-badge {
   background-color: color-mix(in srgb, var(--mascot-color, #6366f1) 12%, transparent);
   color: var(--mascot-color, #6366f1);
   border: 1px solid color-mix(in srgb, var(--mascot-color, #6366f1) 25%, transparent);
-}
+}

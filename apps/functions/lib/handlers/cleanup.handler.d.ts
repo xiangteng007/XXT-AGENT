@@ -1,6 +1,3 @@
-/**
- * Cleanup Handler - Scheduled function entry point
- */
 import { Request, Response } from 'express';
 /**
  * HTTP handler for cleanup (can also be triggered manually)

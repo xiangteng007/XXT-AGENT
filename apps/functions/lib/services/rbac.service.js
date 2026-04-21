@@ -5,6 +5,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.rbacService = void 0;
+const v2_1 = require("firebase-functions/v2");
 const firestore_1 = require("firebase-admin/firestore");
 const auth_1 = require("firebase-admin/auth");
 const rbac_types_1 = require("../types/rbac.types");
@@ -50,7 +51,7 @@ class RBACService {
             return context;
         }
         catch (error) {
-            console.error('Failed to get user context:', error);
+            v2_1.logger.error('Failed to get user context:', error);
             return null;
         }
     }
@@ -82,7 +83,7 @@ class RBACService {
             }
         }
         catch (error) {
-            console.error('Failed to get team memberships:', error);
+            v2_1.logger.error('Failed to get team memberships:', error);
         }
         return memberships;
     }
@@ -171,7 +172,7 @@ class RBACService {
             this.userCache.delete(userId);
         }
         catch (error) {
-            console.error('Failed to set user claims:', error);
+            v2_1.logger.error('Failed to set user claims:', error);
             throw error;
         }
     }

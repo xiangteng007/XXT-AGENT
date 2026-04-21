@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import styles from './rules.module.css';
 
@@ -37,7 +37,7 @@ export default function RulesPage() {
         tags: '',
     });
 
-    const loadTenants = async () => {
+    const loadTenants = useCallback(async () => {
         const token = await getIdToken();
         const res = await fetch('/api/admin/tenants', {
             headers: { Authorization: `Bearer ${token}` },
@@ -50,9 +50,9 @@ export default function RulesPage() {
             }
         }
         setLoading(false);
-    };
+    }, [getIdToken]);
 
-    const loadRules = async () => {
+    const loadRules = useCallback(async () => {
         if (!selectedTenant) return;
         const token = await getIdToken();
         const res = await fetch(`/api/admin/rules?tenantId=${selectedTenant}`, {
@@ -62,10 +62,10 @@ export default function RulesPage() {
             const data = await res.json();
             setRules(data.rules);
         }
-    };
+    }, [selectedTenant, getIdToken]);
 
-    useEffect(() => { loadTenants(); }, [getIdToken]);
-    useEffect(() => { loadRules(); }, [selectedTenant, getIdToken]);
+    useEffect(() => { loadTenants(); }, [loadTenants]);
+    useEffect(() => { loadRules(); }, [loadRules]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

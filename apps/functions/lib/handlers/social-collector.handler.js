@@ -6,9 +6,10 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleSocialCollector = handleSocialCollector;
+const v2_1 = require("firebase-functions/v2");
 const social_collector_service_1 = require("../services/social-collector.service");
 async function handleSocialCollector(req, res) {
-    console.log('[Social Collector Handler] Triggered');
+    v2_1.logger.info('[Social Collector Handler] Triggered');
     try {
         // Parse job from request body
         const job = req.body;
@@ -27,7 +28,7 @@ async function handleSocialCollector(req, res) {
         });
     }
     catch (error) {
-        console.error('[Social Collector Handler] Error:', error);
+        v2_1.logger.error('[Social Collector Handler] Error:', error);
         const message = error instanceof Error ? error.message : String(error);
         const errorCode = error.code;
         // Return 500 for retry, 400 for no-retry

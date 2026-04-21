@@ -50,6 +50,35 @@ export function useQuotes(symbols: string[]) {
 }
 
 /**
+ * Hook for historical candles
+ */
+export function useCandles(symbol: string, start: string, end: string) {
+    const { getIdToken, user } = useAuth();
+
+    const fetcher = async (url: string) => {
+        const token = await getIdToken();
+        const res = await fetch(`${API_BASE}${url}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error('Failed to fetch candles');
+        return res.json();
+    };
+
+    const { data, error, isLoading, mutate } = useSWR<{ data: any[] }>(
+        user && symbol ? `/api/market/candles?symbol=${encodeURIComponent(symbol)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}` : null,
+        fetcher,
+        { revalidateOnFocus: false }
+    );
+
+    return {
+        candles: data?.data || [],
+        isLoading,
+        error,
+        refresh: mutate,
+    };
+}
+
+/**
  * Hook for market dashboard
  */
 export function useMarketDashboard() {
@@ -290,5 +319,60 @@ export function useWatchlistFilter(items: WatchlistItem[]) {
         group, setGroup,
         assetType, setAssetType,
         clearFilters,
+    };
+}
+
+// ============ Technical Analysis Utils ============
+
+export interface PivotPoints {
+    p: number;
+    r1: number;
+    r2: number;
+    r3: number;
+    s1: number;
+    s2: number;
+    s3: number;
+}
+
+export function calculatePivotPoints(high: number, low: number, close: number): PivotPoints {
+    const p = (high + low + close) / 3;
+    const r1 = (p * 2) - low;
+    const r2 = p + (high - low);
+    const r3 = high + 2 * (p - low);
+    const s1 = (p * 2) - high;
+    const s2 = p - (high - low);
+    const s3 = low - 2 * (high - p);
+    
+    return { p, r1, r2, r3, s1, s2, s3 };
+}
+
+// ============ Macro Data ============
+
+export interface MacroEvent {
+    id: string;
+    date: string;
+    title: string;
+    impact: 'high' | 'medium' | 'low';
+    country: string;
+}
+
+export function useMacroCalendar() {
+    // Mock implementation for now
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dayAfter = new Date(today);
+    dayAfter.setDate(dayAfter.getDate() + 2);
+    
+    const events: MacroEvent[] = [
+        { id: '1', date: today.toISOString().split('T')[0], title: 'US Core CPI', impact: 'high', country: 'US' },
+        { id: '2', date: tomorrow.toISOString().split('T')[0], title: 'FED Interest Rate Decision', impact: 'high', country: 'US' },
+        { id: '3', date: dayAfter.toISOString().split('T')[0], title: 'Initial Jobless Claims', impact: 'medium', country: 'US' },
+    ];
+    
+    return {
+        events,
+        isLoading: false,
+        error: null,
     };
 }

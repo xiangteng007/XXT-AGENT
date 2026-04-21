@@ -108,6 +108,18 @@ function getClientIp(req: Request): string {
   return req.ip ?? req.socket.remoteAddress ?? 'unknown';
 }
 
+// ── P5-02: Client Key 擷取工具（UID 優先，降級 IP）────────────
+
+function getClientKey(req: Request): string {
+  // Firebase Auth middleware attaches user to req (uid-based rate limiting)
+  const user = (req as unknown as Record<string, unknown>)['user'];
+  if (user && typeof user === 'object' && 'uid' in (user as Record<string, unknown>)) {
+    return `uid:${(user as Record<string, string>).uid}`;
+  }
+  // Fallback to IP-based
+  return `ip:${getClientIp(req)}`;
+}
+
 // ── 中間件工廠 ─────────────────────────────────────────────────
 
 function createRateLimitMiddleware(
@@ -120,8 +132,9 @@ function createRateLimitMiddleware(
       return;
     }
 
-    const ip = getClientIp(req);
-    const { allowed, remaining, resetAt } = LIMITERS[limiterKey].consume(ip);
+    // P5-02: Use UID-based key when Firebase auth is available, fallback to IP
+    const clientKey = getClientKey(req);
+    const { allowed, remaining, resetAt } = LIMITERS[limiterKey].consume(clientKey);
 
     // 設定標準 Rate Limit headers（RFC 6585）
     res.setHeader('X-RateLimit-Limit',     String(LIMITERS[limiterKey]['maxRequests']));
@@ -132,7 +145,7 @@ function createRateLimitMiddleware(
       const retryAfter = Math.ceil((resetAt - Date.now()) / 1000);
       res.setHeader('Retry-After', String(retryAfter));
 
-      logger.warn(`[RateLimit:${limiterKey}] IP ${ip} exceeded limit on ${req.path}`);
+      logger.warn(`[RateLimit:${limiterKey}] ${clientKey} exceeded limit on ${req.path}`);
 
       res.status(429).json({
         ok:          false,
@@ -162,9 +175,20 @@ export const financeRateLimit = createRateLimitMiddleware('finance');
 /** Ollama 推理速率限制（每 IP 5 req/min）— 應用於 /chat 端點 */
 export const ollamaRateLimit = createRateLimitMiddleware('ollama');
 
+/** Per-limiter stats detail for monitoring API */
+interface RateLimiterDetail {
+  active_keys: number;
+  max_requests: number;
+  window_ms: number;
+}
+
 /** 取得所有 Limiter 指標（監控 API 用）*/
-export function getRateLimitStats(): Record<string, number> {
+export function getRateLimitStats(): Record<string, RateLimiterDetail> {
   return Object.fromEntries(
-    Object.entries(LIMITERS).map(([k, limiter]) => [k, limiter.getActiveKeys()]),
+    Object.entries(LIMITERS).map(([k, limiter]) => [k, {
+      active_keys:   limiter.getActiveKeys(),
+      max_requests:  limiter['maxRequests'],
+      window_ms:     limiter['windowMs'],
+    }]),
   );
 }

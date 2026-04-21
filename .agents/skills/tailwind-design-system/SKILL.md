@@ -1,33 +1,20 @@
 ---
 name: tailwind-design-system
-description: Build scalable design systems with Tailwind CSS, design tokens, component libraries, and responsive patterns. Use when creating component libraries, implementing design systems, or standardizing UI patterns.
+description: Guidelines for managing Tailwind CSS variables, tokens, and Carbon Copper styling.
 ---
 
 # Tailwind Design System
 
-Build production-ready design systems with Tailwind CSS, including design tokens, component variants, responsive patterns, and accessibility.
+## Carbon Copper Integration
+Our system utilizes the proprietary `Carbon Copper` industrial-cyberpunk theme.
+When styling elements, strictly adhere to the project's extended Tailwind config:
 
-## Use this skill when
+### Color Palette Constraints
+- **Primary**: Use `bg-copper` or `text-copper` (#B87333 equivalent) for main call-to-actions.
+- **Surface**: Use `bg-slate-900` or `bg-zinc-900` for container backgrounds to maintain dark-mode dominance.
+- **Accent/Alert**: Use `text-amber-500` for warnings, `text-emerald-500` for active/healthy states.
 
-- Creating a component library with Tailwind
-- Implementing design tokens and theming
-- Building responsive and accessible components
-- Standardizing UI patterns across a codebase
-- Migrating to or extending Tailwind CSS
-- Setting up dark mode and color schemes
-
-## Do not use this skill when
-
-- The task is unrelated to tailwind design system
-- You need a different domain or tool outside this scope
-
-## Instructions
-
-- Clarify goals, constraints, and required inputs.
-- Apply relevant best practices and validate outcomes.
-- Provide actionable steps and verification.
-- If detailed examples are required, open `resources/implementation-playbook.md`.
-
-## Resources
-
-- `resources/implementation-playbook.md` for detailed patterns and examples.
+### Utility Strategies
+- **Avoid Utility Soup**: For heavily reused button or card constructs, extract to `@layer components` in the `globals.css`.
+- **Flex/Grid Layouts**: Use CSS Grid for dashboards (`grid-cols-1 md:grid-cols-2`). Use Flexbox for alignments.
+- **Animations**: Apply `transition-all duration-200 ease-in-out` strictly to interactive elements for premium micro-interactions.

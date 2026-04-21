@@ -1,11 +1,18 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleWorker = handleWorker;
+/**
+ * Worker Handler - Processes jobs from the queue (v2 with image/location support)
+ *
+ * Triggered by: Cloud Scheduler (every minute) or HTTP
+ */
+const v2_1 = require("firebase-functions/v2");
 const queue_service_1 = require("../services/queue.service");
 const notion_service_1 = require("../services/notion.service");
 const storage_service_1 = require("../services/storage.service");
 const audit_service_1 = require("../services/audit.service");
 const metrics_service_1 = require("../services/metrics.service");
+const openclaw_emitter_service_1 = require("../services/openclaw-emitter.service");
 const BATCH_SIZE = 5;
 /**
  * Main worker entry point
@@ -19,7 +26,7 @@ async function handleWorker(req, res) {
             res.status(200).json({ processed: 0, message: 'No jobs in queue' });
             return;
         }
-        console.log(`[Worker] Processing ${jobs.length} job(s)`);
+        v2_1.logger.info(`[Worker] Processing ${jobs.length} job(s)`);
         const results = await Promise.allSettled(jobs.map(job => processJob(job)));
         const succeeded = results.filter(r => r.status === 'fulfilled').length;
         const failed = results.filter(r => r.status === 'rejected').length;
@@ -32,7 +39,7 @@ async function handleWorker(req, res) {
         });
     }
     catch (error) {
-        console.error('[Worker] Handler error:', error);
+        v2_1.logger.error('[Worker] Handler error:', error);
         res.status(500).json({ error: 'Worker error' });
     }
 }
@@ -44,10 +51,12 @@ async function processJob(job) {
     // Try to claim the job (atomic)
     const claimed = await (0, queue_service_1.claimJob)(job.id);
     if (!claimed) {
-        console.log(`[Worker] Job ${job.id} already claimed, skipping`);
+        v2_1.logger.info(`[Worker] Job ${job.id} already claimed, skipping`);
         return;
     }
-    console.log(`[Worker] Processing job ${job.id} type=${job.eventType} (attempt ${job.attempts + 1})`);
+    v2_1.logger.info(`[Worker] Processing job ${job.id} type=${job.eventType} (attempt ${job.attempts + 1})`);
+    // [OpenClaw] Task running
+    void openclaw_emitter_service_1.ocEmit.taskRunning(job.id, job.payload.tenantId);
     try {
         const payload = job.payload;
         let properties;
@@ -88,11 +97,13 @@ async function processJob(job) {
         const latency = Date.now() - startTime;
         await (0, metrics_service_1.recordLatency)(payload.tenantId, latency);
         await (0, audit_service_1.logNotionWritten)(payload.tenantId, job.id, true, result.pageId, payload.databaseId);
-        console.log(`[Worker] Job ${job.id} completed in ${latency}ms`);
+        v2_1.logger.info(`[Worker] Job ${job.id} completed in ${latency}ms`);
+        // [OpenClaw] Task done
+        void openclaw_emitter_service_1.ocEmit.taskDone(job.id, job.payload.tenantId, latency);
     }
     catch (error) {
         const err = error;
-        console.error(`[Worker] Job ${job.id} failed:`, err.message);
+        v2_1.logger.error(`[Worker] Job ${job.id} failed:`, err.message);
         await (0, queue_service_1.failJob)(job.id, err);
         await (0, metrics_service_1.incrementFailedCount)(job.payload.tenantId);
         // Check if this was the final attempt (job is now dead)
@@ -101,6 +112,8 @@ async function processJob(job) {
         }
         await (0, audit_service_1.logNotionWritten)(job.payload.tenantId, job.id, false, undefined, job.payload.databaseId, err.message);
         await (0, audit_service_1.logAuditError)(job.payload.tenantId, err, { jobId: job.id });
+        // [OpenClaw] Task failed
+        void openclaw_emitter_service_1.ocEmit.taskFailed(job.id, job.payload.tenantId, err.message);
         throw error; // Re-throw for Promise.allSettled tracking
     }
 }

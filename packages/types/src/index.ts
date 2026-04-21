@@ -8,6 +8,9 @@ export * from "./openclaw";
 // Agent Types (B-4 — v8.0 型別共享)
 export * from "./agents";
 
+// Investment Brain Schema Contract (P2-01)
+export * from "./investment-brain";
+
 // ── EntityType（v6.0 — 7 實體單一來源）────────────────────────
 
 /** 全域法人實體識別碼（與 gateway/src/entity.ts 保持同步）*/

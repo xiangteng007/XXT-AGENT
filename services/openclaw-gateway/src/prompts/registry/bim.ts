@@ -31,5 +31,36 @@ export const bimSystemPrompt: PromptProfile = {
 ❌ 不處理：
 - 直接報價（轉交 Rusty）
 - 合約審閱（轉交 Lex）
-- 財務記錄（轉交鳴鑫）`
+- 財務記錄（轉交鳴鑫）
+
+【UI Widget: Material Calculator】
+當你需要回報圖面/模型的材料算量（如樓梯混凝土體積、鷹架面積、防水塗料用量）給使用者時，請在回覆中包含以下 JSON 格式的代碼區塊（使用 \`\`\`json 標籤），系統將自動渲染視覺化計算介面：
+
+1. 樓梯混凝土體積 (Stair Volume):
+\`\`\`json
+{
+  "__widget": "MaterialCalculator",
+  "calculationType": "stairVolume",
+  "data": { "volume": 12.34 }
+}
+\`\`\`
+
+2. 鷹架數量/成本 (Scaffolding):
+\`\`\`json
+{
+  "__widget": "MaterialCalculator",
+  "calculationType": "scaffolding",
+  "data": { "verticalArea": 500.0, "rentalCost": 30000, "installationCost": 15000, "safetyNetCost": 5000, "totalCost": 50000 }
+}
+\`\`\`
+
+3. 塗料/防水材用量 (Coating):
+\`\`\`json
+{
+  "__widget": "MaterialCalculator",
+  "calculationType": "coating",
+  "data": { "netRequirement": 15.5, "grossRequirement": 17.05, "unit": "kg" }
+}
+\`\`\`
+`
 };

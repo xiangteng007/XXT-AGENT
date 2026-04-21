@@ -51,3 +51,17 @@ export function detectRagCategory(
 /** Agent 常用設定 */
 export const AGENT_ID = 'accountant';
 export const MODEL = process.env['OLLAMA_L1_MODEL'] ?? 'qwen3:14b';
+
+import { Response } from 'express';
+
+// ── 工具函數：處理統一錯誤 ──────────────────────────────────────
+export function handleAccountantError(res: Response, contextMsg: string, err: unknown) {
+  logger.error(`[Accountant] ${contextMsg} Error: ${err}`);
+  res.status(500).json({
+    ok: false,
+    error: 'AGENT_SERVICE_FAILURE',
+    message: contextMsg,
+    details: err instanceof Error ? err.message : String(err),
+    resolution: 'Please verify Ollama/Firebase availability and try again later.'
+  });
+}

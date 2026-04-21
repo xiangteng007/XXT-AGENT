@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import styles from './tenants.module.css';
 
@@ -33,7 +33,7 @@ export default function TenantsPage() {
         timezone: 'Asia/Taipei',
     });
 
-    const loadTenants = async () => {
+    const loadTenants = useCallback(async () => {
         try {
             const token = await getIdToken();
             const res = await fetch('/api/admin/tenants', {
@@ -48,11 +48,11 @@ export default function TenantsPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [getIdToken]);
 
     useEffect(() => {
         loadTenants();
-    }, [getIdToken]);
+    }, [loadTenants]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

@@ -1,0 +1,436 @@
+{
+  "$defs": {
+    "FusionContext": {
+      "description": "Triple Fusion context from Event Fusion Engine.",
+      "properties": {
+        "market": {
+          "additionalProperties": true,
+          "title": "Market",
+          "type": "object"
+        },
+        "news": {
+          "additionalProperties": true,
+          "title": "News",
+          "type": "object"
+        },
+        "social": {
+          "additionalProperties": true,
+          "title": "Social",
+          "type": "object"
+        },
+        "severity": {
+          "title": "Severity",
+          "type": "integer"
+        },
+        "direction": {
+          "enum": [
+            "positive",
+            "negative"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "data_quality": {
+          "enum": [
+            "live",
+            "partial",
+            "mock"
+          ],
+          "title": "Data Quality",
+          "type": "string"
+        },
+        "credibility_tiers": {
+          "additionalProperties": true,
+          "title": "Credibility Tiers",
+          "type": "object"
+        }
+      },
+      "title": "FusionContext",
+      "type": "object"
+    },
+    "InvestmentAction": {
+      "description": "Single investment action in a plan.",
+      "properties": {
+        "action": {
+          "enum": [
+            "BUY",
+            "SELL",
+            "HOLD",
+            "WATCH",
+            "HEDGE",
+            "REDUCE",
+            "AVOID"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "symbol": {
+          "title": "Symbol",
+          "type": "string"
+        },
+        "allocation_pct": {
+          "title": "Allocation Pct",
+          "type": "number"
+        },
+        "entry_price": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Entry Price"
+        },
+        "stop_loss": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stop Loss"
+        },
+        "take_profit": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Take Profit"
+        },
+        "timeframe": {
+          "title": "Timeframe",
+          "type": "string"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "basis_of_judgment": {
+          "title": "Basis Of Judgment",
+          "type": "string"
+        }
+      },
+      "title": "InvestmentAction",
+      "type": "object"
+    },
+    "InvestmentPlan": {
+      "description": "Output of Strategy Planner Agent.",
+      "properties": {
+        "plan_id": {
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "actions": {
+          "items": {
+            "$ref": "#/$defs/InvestmentAction"
+          },
+          "title": "Actions",
+          "type": "array"
+        },
+        "scenarios": {
+          "additionalProperties": true,
+          "title": "Scenarios",
+          "type": "object"
+        },
+        "confidence": {
+          "title": "Confidence",
+          "type": "integer"
+        },
+        "invalidation_rules": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Invalidation Rules",
+          "type": "array"
+        },
+        "risk_flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Risk Flags",
+          "type": "array"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "advisory_disclaimer": {
+          "title": "Advisory Disclaimer",
+          "type": "string"
+        },
+        "backtest_evidence": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Backtest Evidence"
+        }
+      },
+      "title": "InvestmentPlan",
+      "type": "object"
+    },
+    "MarketInsight": {
+      "description": "Output of Market Analyst Agent.",
+      "properties": {
+        "regime": {
+          "enum": [
+            "bull",
+            "bear",
+            "range",
+            "volatile",
+            "unknown"
+          ],
+          "title": "Regime",
+          "type": "string"
+        },
+        "trend": {
+          "enum": [
+            "up",
+            "down",
+            "range"
+          ],
+          "title": "Trend",
+          "type": "string"
+        },
+        "signals": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Signals",
+          "type": "array"
+        },
+        "conviction": {
+          "title": "Conviction",
+          "type": "integer"
+        },
+        "key_levels": {
+          "additionalProperties": true,
+          "title": "Key Levels",
+          "type": "object"
+        },
+        "catalysts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Catalysts",
+          "type": "array"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "judgment_basis": {
+          "title": "Judgment Basis",
+          "type": "string"
+        },
+        "uncertainty_warning": {
+          "title": "Uncertainty Warning",
+          "type": "string"
+        }
+      },
+      "title": "MarketInsight",
+      "type": "object"
+    },
+    "PriceSnapshot": {
+      "description": "Latest price data from market sources.",
+      "properties": {
+        "symbol": {
+          "title": "Symbol",
+          "type": "string"
+        },
+        "price": {
+          "title": "Price",
+          "type": "number"
+        },
+        "open": {
+          "title": "Open",
+          "type": "number"
+        },
+        "high": {
+          "title": "High",
+          "type": "number"
+        },
+        "low": {
+          "title": "Low",
+          "type": "number"
+        },
+        "volume": {
+          "title": "Volume",
+          "type": "number"
+        },
+        "change_pct_1m": {
+          "title": "Change Pct 1M",
+          "type": "number"
+        },
+        "volatility_regime": {
+          "enum": [
+            "low",
+            "normal",
+            "high"
+          ],
+          "title": "Volatility Regime",
+          "type": "string"
+        },
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "string"
+        }
+      },
+      "title": "PriceSnapshot",
+      "type": "object"
+    },
+    "RiskAssessment": {
+      "description": "Output of Risk Manager Agent.",
+      "properties": {
+        "approved": {
+          "title": "Approved",
+          "type": "boolean"
+        },
+        "risk_score": {
+          "title": "Risk Score",
+          "type": "integer"
+        },
+        "adjustments": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Adjustments",
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        },
+        "violations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Violations",
+          "type": "array"
+        },
+        "adjusted_plan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InvestmentPlan"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "RiskAssessment",
+      "type": "object"
+    },
+    "VerificationInsight": {
+      "description": "Output of Information Verifier (Argus) Agent.",
+      "properties": {
+        "is_credible": {
+          "title": "Is Credible",
+          "type": "boolean"
+        },
+        "credibility_score": {
+          "title": "Credibility Score",
+          "type": "integer"
+        },
+        "sentiment_divergence": {
+          "title": "Sentiment Divergence",
+          "type": "boolean"
+        },
+        "divergence_score": {
+          "title": "Divergence Score",
+          "type": "number"
+        },
+        "divergence_detail": {
+          "title": "Divergence Detail",
+          "type": "string"
+        },
+        "verified_catalysts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Verified Catalysts",
+          "type": "array"
+        },
+        "fake_or_hype_warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fake Or Hype Warnings",
+          "type": "array"
+        },
+        "source_reliability": {
+          "additionalProperties": true,
+          "title": "Source Reliability",
+          "type": "object"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "judgment_basis": {
+          "title": "Judgment Basis",
+          "type": "string"
+        },
+        "credibility_basis": {
+          "title": "Credibility Basis",
+          "type": "string"
+        }
+      },
+      "title": "VerificationInsight",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "price_snapshot": {
+      "$ref": "#/$defs/PriceSnapshot"
+    },
+    "fusion_context": {
+      "$ref": "#/$defs/FusionContext"
+    },
+    "market_insight": {
+      "$ref": "#/$defs/MarketInsight"
+    },
+    "verification_insight": {
+      "$ref": "#/$defs/VerificationInsight"
+    },
+    "investment_action": {
+      "$ref": "#/$defs/InvestmentAction"
+    },
+    "investment_plan": {
+      "$ref": "#/$defs/InvestmentPlan"
+    },
+    "risk_assessment": {
+      "$ref": "#/$defs/RiskAssessment"
+    }
+  },
+  "required": [
+    "price_snapshot",
+    "fusion_context",
+    "market_insight",
+    "verification_insight",
+    "investment_action",
+    "investment_plan",
+    "risk_assessment"
+  ],
+  "title": "StateModels",
+  "type": "object"
+}

@@ -108,6 +108,14 @@ export const butlerApi = onRequest(
     handleButlerApi as AnyHandler
 );
 
+export const materialCalculatorApi = onRequest(
+    { cors: true, memory: '256MiB', maxInstances: 10 },
+    async (req, res) => {
+        const { handleMaterialCalculator } = await import('./handlers/material-calculator.handler');
+        return handleMaterialCalculator(req as any, res as any);
+    }
+);
+
 // Worker HTTP endpoint (internal use)
 export const lineWorker = onRequest(
     { cors: false, memory: '512MiB', timeoutSeconds: 300, maxInstances: 5 },

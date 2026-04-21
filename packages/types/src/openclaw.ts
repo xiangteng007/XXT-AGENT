@@ -37,6 +37,11 @@ export enum EventType {
   // ── Scribe 內容 ───────────────────────────────────────────
   CONTENT_DRAFTED   = "CONTENT_DRAFTED",
   CONTENT_FINALIZED = "CONTENT_FINALIZED",
+
+  // ── P2-03: Investment Brain 事件 ──────────────────────────
+  INVESTMENT_ANALYSIS_START    = "INVESTMENT_ANALYSIS_START",
+  INVESTMENT_ANALYSIS_PROGRESS = "INVESTMENT_ANALYSIS_PROGRESS",  // F-06: SSE node-level progress
+  INVESTMENT_ANALYSIS_COMPLETE = "INVESTMENT_ANALYSIS_COMPLETE",
 }
 
 // ────────────────────────────────────────────────────────────
@@ -151,6 +156,22 @@ export const EVENT_ANIMATION_MAP: Record<EventType, AnimationMapping> = {
     agent: "scribe",
     animation: "deliver-item",
     bubbleText: "📤 交稿",
+  },
+  [EventType.INVESTMENT_ANALYSIS_START]: {
+    agent: "director",
+    animation: "thinking",
+    bubbleText: "📊 投資分析進行中",
+  },
+  [EventType.INVESTMENT_ANALYSIS_PROGRESS]: {
+    agent: "director",
+    animation: "working",
+    bubbleText: "🔄 分析節點推進中",
+  },
+  [EventType.INVESTMENT_ANALYSIS_COMPLETE]: {
+    agent: "director",
+    animation: "stand-announce",
+    bubbleText: "📈 投資分析完成",
+    toastText: "Investment Brain 分析已完成",
   },
 };
 

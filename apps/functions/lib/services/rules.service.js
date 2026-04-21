@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.processMessage = processMessage;
 exports.getRulesForProject = getRulesForProject;
+const v2_1 = require("firebase-functions/v2");
 const firebase_1 = require("../config/firebase");
 /**
  * Process message text and match against rules
@@ -63,7 +64,7 @@ function matchRule(text, matcher) {
                 return regex.test(text);
             }
             catch {
-                console.error('Invalid regex pattern:', pattern);
+                v2_1.logger.error('Invalid regex pattern:', pattern);
                 return false;
             }
         default:

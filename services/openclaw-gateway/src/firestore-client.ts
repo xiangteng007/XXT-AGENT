@@ -49,6 +49,7 @@ export function getDb(): FirebaseFirestore.Firestore | null {
     }
 
     _db = admin.firestore();
+    _db.settings({ ignoreUndefinedProperties: true });
     logger.info('[FirestoreClient] Firestore initialized successfully');
     return _db;
   } catch (err) {

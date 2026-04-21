@@ -11,10 +11,10 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.enrichWithGemini = enrichWithGemini;
+const v2_1 = require("firebase-functions/v2");
 const generative_ai_1 = require("@google/generative-ai");
-const secret_manager_1 = require("@google-cloud/secret-manager");
+const secrets_1 = require("../config/secrets");
 const zod_1 = require("zod");
-const secretManager = new secret_manager_1.SecretManagerServiceClient();
 let geminiClient = null;
 // Zod Schema for Gemini response validation (per SPEC_PHASE6_5_PHASE7_CLOUD.md)
 const GeminiResponseSchema = zod_1.z.object({
@@ -29,21 +29,18 @@ const GeminiResponseSchema = zod_1.z.object({
     rationale: zod_1.z.string(),
 });
 /**
- * Initialize Gemini client with API key from Secret Manager
+ * Initialize Gemini client with API key from centralized secrets
  */
 async function getGeminiClient() {
     if (geminiClient)
         return geminiClient;
-    const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
-    const secretName = `projects/${projectId}/secrets/GEMINI_API_KEY/versions/latest`;
     try {
-        const [version] = await secretManager.accessSecretVersion({ name: secretName });
-        const apiKey = version.payload?.data?.toString() || '';
+        const apiKey = await (0, secrets_1.getSecret)('GEMINI_API_KEY');
         geminiClient = new generative_ai_1.GoogleGenerativeAI(apiKey);
         return geminiClient;
     }
     catch (err) {
-        console.error('[Gemini] Failed to get API key from Secret Manager:', err);
+        v2_1.logger.error('[Gemini] Failed to get API key:', err);
         throw new Error('Gemini API key not available');
     }
 }
@@ -66,7 +63,7 @@ async function enrichWithGemini(request) {
         return validated(parsed);
     }
     catch (err) {
-        console.error('[Gemini] Enrichment failed:', err);
+        v2_1.logger.error('[Gemini] Enrichment failed:', err);
         // Return default response on failure
         return {
             severity: 30,
@@ -162,12 +159,12 @@ function validated(partial) {
             };
         }
         // Log Zod validation errors for debugging
-        console.warn('[Gemini] Zod validation failed:', JSON.stringify(result.error.issues));
+        v2_1.logger.warn('[Gemini] Zod validation failed:', JSON.stringify(result.error.issues));
         // Fallback: apply manual normalization
         return fallbackValidation(partial);
     }
     catch (err) {
-        console.warn('[Gemini] Validation error, using fallback:', err);
+        v2_1.logger.warn('[Gemini] Validation error, using fallback:', err);
         return fallbackValidation(partial);
     }
 }

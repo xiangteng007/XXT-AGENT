@@ -69,3 +69,13 @@ export {
     useLocalStorage,
     usePrevious,
 } from './useUtilities';
+
+export {
+    useInvestmentStream,
+} from './useInvestmentStream';
+export type {
+    InvestmentStreamState,
+    StreamPhase,
+    StreamNodeEvent,
+    StreamCompleteEvent,
+} from './useInvestmentStream';

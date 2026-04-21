@@ -1,0 +1,136 @@
+{
+  "$defs": {
+    "InvestmentAction": {
+      "description": "Single investment action in a plan.",
+      "properties": {
+        "action": {
+          "enum": [
+            "BUY",
+            "SELL",
+            "HOLD",
+            "WATCH",
+            "HEDGE",
+            "REDUCE",
+            "AVOID"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "symbol": {
+          "title": "Symbol",
+          "type": "string"
+        },
+        "allocation_pct": {
+          "title": "Allocation Pct",
+          "type": "number"
+        },
+        "entry_price": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Entry Price"
+        },
+        "stop_loss": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stop Loss"
+        },
+        "take_profit": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Take Profit"
+        },
+        "timeframe": {
+          "title": "Timeframe",
+          "type": "string"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "basis_of_judgment": {
+          "title": "Basis Of Judgment",
+          "type": "string"
+        }
+      },
+      "title": "InvestmentAction",
+      "type": "object"
+    }
+  },
+  "description": "Output of Strategy Planner Agent.",
+  "properties": {
+    "plan_id": {
+      "title": "Plan Id",
+      "type": "string"
+    },
+    "actions": {
+      "items": {
+        "$ref": "#/$defs/InvestmentAction"
+      },
+      "title": "Actions",
+      "type": "array"
+    },
+    "scenarios": {
+      "additionalProperties": true,
+      "title": "Scenarios",
+      "type": "object"
+    },
+    "confidence": {
+      "title": "Confidence",
+      "type": "integer"
+    },
+    "invalidation_rules": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Invalidation Rules",
+      "type": "array"
+    },
+    "risk_flags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Risk Flags",
+      "type": "array"
+    },
+    "rationale": {
+      "title": "Rationale",
+      "type": "string"
+    },
+    "advisory_disclaimer": {
+      "title": "Advisory Disclaimer",
+      "type": "string"
+    },
+    "backtest_evidence": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Backtest Evidence"
+    }
+  },
+  "title": "InvestmentPlan",
+  "type": "object"
+}

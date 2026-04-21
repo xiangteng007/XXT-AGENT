@@ -16,9 +16,10 @@ import { Router, Request, Response } from 'express';
 import { logger } from '../../logger';
 import {
   addEntry, queryEntries, calcPeriodSummary, calcYearSummary,
-  generate401Report, generateLedgerCsv, calcPeriod,
+  generate401Report, generateLedgerCsv, calcPeriod, deleteEntry,
   type LedgerEntry, type LedgerCategory, type EntryType, type EntityType,
 } from '../../ledger-store';
+import { addBankTransaction, type BankTransaction } from '../../bank-store';
 
 export const ledgerRouter = Router();
 
@@ -99,7 +100,7 @@ ledgerRouter.post('/ledger', async (req: Request, res: Response) => {
     counterparty_name, counterparty_tax_id,
     project_id, is_deductible, notes,
     company_id = 'senteng', user_id,
-    entity_type = 'co_construction', payment_method,
+    entity_type = 'co_construction', payment_method, bank_account_id,
   } = req.body as {
     type?: EntryType; category?: LedgerCategory;
     description?: string; amount?: number;
@@ -108,7 +109,7 @@ ledgerRouter.post('/ledger', async (req: Request, res: Response) => {
     counterparty_name?: string; counterparty_tax_id?: string;
     project_id?: string; is_deductible?: boolean; notes?: string;
     company_id?: string; user_id?: string;
-    entity_type?: EntityType; payment_method?: string;
+    entity_type?: EntityType; payment_method?: string; bank_account_id?: string;
   };
 
   if (!type || !category || !description || !amount || amount <= 0) {
@@ -147,6 +148,7 @@ ledgerRouter.post('/ledger', async (req: Request, res: Response) => {
     } : undefined,
     counterparty_name, counterparty_tax_id,
     payment_method: payment_method as LedgerEntry['payment_method'],
+    bank_account_id,
     transaction_date: txDate, period,
     created_at: new Date().toISOString(),
     created_by: user_id ?? 'accountant-bot',
@@ -157,9 +159,40 @@ ledgerRouter.post('/ledger', async (req: Request, res: Response) => {
   await addEntry(entry);
   logger.info(`[Ledger] ${type} ${entryId} NT$${amount_taxed} ${category} period=${period}`);
 
+  let dual_write = false;
+  let bank_txn_id: string | undefined;
+
+  if (payment_method === 'bank_transfer' && bank_account_id) {
+    try {
+      bank_txn_id = crypto.randomUUID();
+      const txn: BankTransaction = {
+        txn_id: bank_txn_id,
+        account_id: bank_account_id,
+        entity_type: entity_type as EntityType,
+        type: type === 'income' ? 'credit' : 'debit',
+        amount: amount_taxed,
+        txn_date: txDate,
+        description: description,
+        counterparty: counterparty_name,
+        ledger_category: category,
+        payment_method: 'bank_transfer',
+        linked_entry_id: entryId,
+        created_at: new Date().toISOString(),
+        created_by: user_id ?? 'accountant-bot',
+      };
+      await addBankTransaction(txn);
+      dual_write = true;
+    } catch (dualWriteErr) {
+      logger.error(`[Accountant] CRITICAL: Dual write failed for LedgerEntry ${entryId}. BankTransaction was NOT created. Compensating... Error: ${String(dualWriteErr)}`);
+      await deleteEntry(entryId);
+      res.status(500).json({ error: 'Dual write failed (BankTransaction). LedgerEntry was rolled back.' });
+      return;
+    }
+  }
+
   const entityLabel = entity_type === 'personal' ? '個人' : entity_type === 'family' ? '家庭' : '公司';
   res.status(201).json({
-    ok: true, entry_id: entryId,
+    ok: true, entry_id: entryId, dual_write, bank_txn_id,
     summary: { type, category, description, amount_untaxed, tax_amount, amount_taxed, period, transaction_date: txDate, entity_type, entity_label: entityLabel },
     message: `已記入帳本（${entityLabel}）：${type === 'income' ? '收入' : '支出'} NT$${amount_taxed.toLocaleString()} · ${description}`,
   });

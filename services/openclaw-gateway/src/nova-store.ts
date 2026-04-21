@@ -11,6 +11,7 @@
 
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { logger } from './logger';
+import { writeRequestQueue } from './write-request-queue';
 
 // ── 型別定義 ──────────────────────────────────────────────────
 
@@ -238,30 +239,28 @@ export async function dispatchPayrollToLedger(
       record.overtime_pay + record.full_attendance_bonus + record.other_additions +
       record.employer_labor_insurance + record.employer_health_insurance + record.employer_pension;
 
-    const payload = {
-      targetAgent: 'accountant',
-      action: 'create_ledger_entry',
-      payload: {
+    await writeRequestQueue.submit({
+      source_agent: 'nova',
+      target_agent: 'accountant',
+      collection: 'accountant_ledger',
+      operation: 'create',
+      idempotency_key: `payroll_to_ledger_${record.payroll_id}`,
+      reason: `薪資發放 — ${employeeName} (${record.period})`,
+      entity_type: record.entity_type,
+      data: {
         type: 'expense',
         category: 'labor',
         description: `薪資發放 — ${employeeName} (${record.period})`,
         amount: totalEmployerCost,
         amount_type: 'taxed',
-        is_tax_exempt: true,      // 薪資費用非銷項稅
+        is_tax_exempt: true,
         entity_type: record.entity_type,
         transaction_date: record.pay_date,
         notes: `payroll_id:${record.payroll_id} 淨薪:${record.net_salary}`,
-        source_agent: 'nova',
-        source_id: record.payroll_id,
       },
-    };
-    // 寫入 write_request Firestore Collection（供 Agent Bus 消費）
-    await db().collection('write_requests').add({
-      ...payload,
-      created_at: new Date().toISOString(),
-      status: 'pending',
     });
-    logger.info(`[NovaStore] Payroll → Accountant write_request queued: ${record.payroll_id}`);
+
+    logger.info(`[NovaStore] Payroll → Accountant write_request queued via QVP: ${record.payroll_id}`);
     return { queued: true };
   } catch (err) {
     logger.error(`[NovaStore] Failed to dispatch payroll to Accountant: ${err}`);

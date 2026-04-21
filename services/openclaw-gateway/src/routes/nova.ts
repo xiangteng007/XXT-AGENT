@@ -132,8 +132,8 @@ novaRouter.post('/chat', async (req: Request, res: Response) => {
  *               employment_type:  { type: string, enum: [full_time, part_time, contractor], default: full_time }
  *               labor_insurance_bracket: { type: number, example: 45800 }
  *               health_insurance_bracket: { type: number, example: 46800 }
- *               health_dependents:{ type: integer, default: 0 }
- *               pension_self_rate:{ type: number, default: 0 }
+ *               health_dependents: { type: integer, default: 0 }
+ *               pension_self_rate: { type: number, default: 0 }
  *     responses:
  *       201:
  *         description: 員工建立成功

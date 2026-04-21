@@ -41,6 +41,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.garminAdapter = exports.GarminConnectAdapter = void 0;
 exports.processAppleHealthSync = processAppleHealthSync;
+const v2_1 = require("firebase-functions/v2");
 const admin = __importStar(require("firebase-admin"));
 const db = admin.firestore();
 // ================================
@@ -98,7 +99,7 @@ class GarminConnectAdapter {
             return response;
         }
         catch (error) {
-            console.error('Garmin daily summary fetch failed:', error);
+            v2_1.logger.error('Garmin daily summary fetch failed:', error);
             return null;
         }
     }
@@ -116,7 +117,7 @@ class GarminConnectAdapter {
             return response;
         }
         catch (error) {
-            console.error('Garmin sleep fetch failed:', error);
+            v2_1.logger.error('Garmin sleep fetch failed:', error);
             return null;
         }
     }
@@ -134,7 +135,7 @@ class GarminConnectAdapter {
             return response.activities || [];
         }
         catch (error) {
-            console.error('Garmin activities fetch failed:', error);
+            v2_1.logger.error('Garmin activities fetch failed:', error);
             return [];
         }
     }
@@ -246,8 +247,8 @@ class GarminConnectAdapter {
     async makeSignedRequest(url, tokens) {
         // This is a placeholder - in production, implement proper OAuth1.0a signing
         // using libraries like 'oauth-1.0a' or 'simple-oauth2'
-        console.log(`Making Garmin API request to: ${url}`);
-        console.log(`Using token for user: ${tokens.userId}`);
+        v2_1.logger.info(`Making Garmin API request to: ${url}`);
+        v2_1.logger.info(`Using token for user: ${tokens.userId}`);
         // For now, return mock data for development
         throw new Error('OAuth1.0a signing not implemented. Use Garmin Webhook Push instead.');
     }

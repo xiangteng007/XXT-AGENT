@@ -257,6 +257,7 @@ export default function NewsFeedPage() {
                                     {/* Thumbnail */}
                                     {article.imageUrl && (
                                         <div className="hidden md:block flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden bg-muted">
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
                                             <img
                                                 src={article.imageUrl}
                                                 alt=""

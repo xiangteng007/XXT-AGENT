@@ -1,0 +1,58 @@
+{
+  "description": "Output of Information Verifier (Argus) Agent.",
+  "properties": {
+    "is_credible": {
+      "title": "Is Credible",
+      "type": "boolean"
+    },
+    "credibility_score": {
+      "title": "Credibility Score",
+      "type": "integer"
+    },
+    "sentiment_divergence": {
+      "title": "Sentiment Divergence",
+      "type": "boolean"
+    },
+    "divergence_score": {
+      "title": "Divergence Score",
+      "type": "number"
+    },
+    "divergence_detail": {
+      "title": "Divergence Detail",
+      "type": "string"
+    },
+    "verified_catalysts": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Verified Catalysts",
+      "type": "array"
+    },
+    "fake_or_hype_warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Fake Or Hype Warnings",
+      "type": "array"
+    },
+    "source_reliability": {
+      "additionalProperties": true,
+      "title": "Source Reliability",
+      "type": "object"
+    },
+    "summary": {
+      "title": "Summary",
+      "type": "string"
+    },
+    "judgment_basis": {
+      "title": "Judgment Basis",
+      "type": "string"
+    },
+    "credibility_basis": {
+      "title": "Credibility Basis",
+      "type": "string"
+    }
+  },
+  "title": "VerificationInsight",
+  "type": "object"
+}

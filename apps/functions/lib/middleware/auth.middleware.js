@@ -8,6 +8,7 @@ exports.authenticate = authenticate;
 exports.requireTeam = requireTeam;
 exports.requireSuperadmin = requireSuperadmin;
 exports.getCurrentTeamRole = getCurrentTeamRole;
+const v2_1 = require("firebase-functions/v2");
 const auth_1 = require("firebase-admin/auth");
 const rbac_service_1 = require("../services/rbac.service");
 const auth = (0, auth_1.getAuth)();
@@ -70,7 +71,7 @@ function authenticate(options = {}) {
             next();
         }
         catch (error) {
-            console.error('Authentication error:', error);
+            v2_1.logger.error('Authentication error:', error);
             if (required) {
                 res.status(401).json({
                     success: false,

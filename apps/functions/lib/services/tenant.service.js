@@ -5,6 +5,7 @@ exports.getTeam = getTeam;
 exports.getProject = getProject;
 exports.clearTenantCache = clearTenantCache;
 exports.invalidateTenantCache = invalidateTenantCache;
+const v2_1 = require("firebase-functions/v2");
 const firebase_1 = require("../config/firebase");
 // Cache tenant configs
 const tenantCache = new Map();
@@ -30,7 +31,7 @@ async function findTenantByChannelId(channelId) {
             .limit(1)
             .get();
         if (integrationsSnapshot.empty) {
-            console.warn(`No integration found for channel: ${channelId}`);
+            v2_1.logger.warn(`No integration found for channel: ${channelId}`);
             return null;
         }
         const integration = {
@@ -40,7 +41,7 @@ async function findTenantByChannelId(channelId) {
         // Get team
         const teamDoc = await db.collection('teams').doc(integration.teamId).get();
         if (!teamDoc.exists) {
-            console.error(`Team not found: ${integration.teamId}`);
+            v2_1.logger.error(`Team not found: ${integration.teamId}`);
             return null;
         }
         const team = { id: teamDoc.id, ...teamDoc.data() };
@@ -53,7 +54,7 @@ async function findTenantByChannelId(channelId) {
             .limit(1)
             .get();
         if (projectsSnapshot.empty) {
-            console.warn(`No active project for team: ${integration.teamId}`);
+            v2_1.logger.warn(`No active project for team: ${integration.teamId}`);
             return null;
         }
         const project = {
@@ -75,7 +76,7 @@ async function findTenantByChannelId(channelId) {
         return config;
     }
     catch (error) {
-        console.error('Error finding tenant:', error);
+        v2_1.logger.error('Error finding tenant:', error);
         return null;
     }
 }

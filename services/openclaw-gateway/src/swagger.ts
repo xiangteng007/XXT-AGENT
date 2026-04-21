@@ -50,7 +50,7 @@ OpenClaw Gateway 是 XXT-AGENT 的統一 AI 閘道，整合以下功能：
   ],
   tags: [
     { name: 'System',     description: '系統健康 / VRAM / 設定' },
-    { name: 'Accountant', description: '💼 Kay — 會計師幕僚（財務 PRIVATE）' },
+    { name: 'Accountant (鳴鑫)', description: '💼 Kay — 會計師幕僚（財務 PRIVATE）' },
     { name: 'Finance',    description: '📈 Finance — Investment Brain 投資策略' },
     { name: 'Guardian',   description: '🛡️ Guardian — 保險管理' },
     { name: 'BIM',        description: '🏗️ Titan — BIM/建築設計' },

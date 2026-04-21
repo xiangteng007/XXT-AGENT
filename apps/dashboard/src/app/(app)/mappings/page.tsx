@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import styles from './mappings.module.css';
 
@@ -23,7 +23,7 @@ export default function MappingsPage() {
     const [showForm, setShowForm] = useState(false);
     const [formData, setFormData] = useState({ databaseId: '', titleField: 'Name', contentField: '', tagsField: 'Tags', dateField: 'Date' });
 
-    const loadTenants = async () => {
+    const loadTenants = useCallback(async () => {
         const token = await getIdToken();
         const res = await fetch('/api/admin/tenants', { headers: { Authorization: `Bearer ${token}` } });
         if (res.ok) {
@@ -32,9 +32,9 @@ export default function MappingsPage() {
             if (data.tenants.length > 0) setSelectedTenant(data.tenants[0].id);
         }
         setLoading(false);
-    };
+    }, [getIdToken]);
 
-    const loadMappings = async () => {
+    const loadMappings = useCallback(async () => {
         if (!selectedTenant) return;
         const token = await getIdToken();
         const res = await fetch(`/api/admin/mappings?tenantId=${selectedTenant}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -42,10 +42,10 @@ export default function MappingsPage() {
             const data = await res.json();
             setMappings(data.mappings);
         }
-    };
+    }, [selectedTenant, getIdToken]);
 
-    useEffect(() => { loadTenants(); }, [getIdToken]);
-    useEffect(() => { loadMappings(); }, [selectedTenant, getIdToken]);
+    useEffect(() => { loadTenants(); }, [loadTenants]);
+    useEffect(() => { loadMappings(); }, [loadMappings]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

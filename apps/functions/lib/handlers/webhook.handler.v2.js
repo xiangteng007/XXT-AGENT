@@ -1,6 +1,16 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleWebhook = handleWebhook;
+/**
+ * Main LINE webhook handler (Refactored for Queue Architecture)
+ *
+ * Changes from original:
+ * 1. Uses actual rawBody (not JSON.stringify)
+ * 2. Enqueues jobs instead of direct Notion writes
+ * 3. Fast ACK (< 3 seconds target)
+ * 4. Deduplication via processedEvents
+ */
+const v2_1 = require("firebase-functions/v2");
 const secrets_service_1 = require("../services/secrets.service");
 const line_service_1 = require("../services/line.service");
 const tenant_service_1 = require("../services/tenant.service");
@@ -41,7 +51,7 @@ async function handleWebhook(req, res) {
         // 5. Find tenant configuration
         const tenant = await (0, tenant_service_1.findTenantByChannelId)(destination);
         if (!tenant) {
-            console.warn(`Unknown channel: ${destination}`);
+            v2_1.logger.warn(`Unknown channel: ${destination}`);
             // Still return 200 to prevent LINE from retrying
             res.status(200).send('OK');
             return;
@@ -49,7 +59,7 @@ async function handleWebhook(req, res) {
         // 6. Verify signature
         const channelSecret = await (0, secrets_service_1.getLineChannelSecret)(tenant.integrationId);
         if (!(0, line_service_1.verifySignature)(rawBody, signature, channelSecret)) {
-            console.error('Invalid signature for channel:', destination);
+            v2_1.logger.error('Invalid signature for channel:', destination);
             res.status(401).send('Invalid signature');
             return;
         }
@@ -61,15 +71,15 @@ async function handleWebhook(req, res) {
         // Log any failures
         const failures = results.filter(r => r.status === 'rejected');
         if (failures.length > 0) {
-            console.error('Some events failed to enqueue:', failures);
+            v2_1.logger.error('Some events failed to enqueue:', failures);
         }
         const duration = Date.now() - startTime;
-        console.log(`[Webhook] Processed ${events.length} events in ${duration}ms`);
+        v2_1.logger.info(`[Webhook] Processed ${events.length} events in ${duration}ms`);
         // Fast ACK
         res.status(200).send('OK');
     }
     catch (error) {
-        console.error('Webhook handler error:', error);
+        v2_1.logger.error('Webhook handler error:', error);
         res.status(500).send('Internal Server Error');
     }
 }
@@ -85,7 +95,7 @@ async function processEvent(event, tenant, webhookEventId) {
     // Check deduplication
     const eventKey = `${tenant.teamId}:${messageEvent.message.id}`;
     if (await (0, queue_service_1.isEventProcessed)(eventKey)) {
-        console.log(`[Webhook] Event ${eventKey} already processed, skipping`);
+        v2_1.logger.info(`[Webhook] Event ${eventKey} already processed, skipping`);
         return;
     }
     // Route by message type
@@ -101,7 +111,7 @@ async function processEvent(event, tenant, webhookEventId) {
             break;
         default:
             // Unsupported message type (sticker, etc.) - silently ignore
-            console.log(`[Webhook] Unsupported message type: ${messageEvent.message.type}`);
+            v2_1.logger.info(`[Webhook] Unsupported message type: ${messageEvent.message.type}`);
     }
 }
 /**

@@ -20,6 +20,20 @@ const nextConfig = {
         ignoreDuringBuilds: false,
     },
 
+    // Rewrites for proxying to standalone services
+    async rewrites() {
+        return [
+            {
+                source: '/intelligence/:path*',
+                destination: 'http://localhost:5173/:path*',
+            },
+            {
+                source: '/intelligence',
+                destination: 'http://localhost:5173/',
+            }
+        ];
+    },
+
     // Security headers
     async headers() {
         return [

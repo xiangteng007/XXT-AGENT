@@ -3,6 +3,7 @@ import { localRunner } from '../local-runner-circuit-breaker';
 import { getRunningModels } from '../ollama-inference.service';
 import { writeRequestQueue } from '../write-request-queue';
 import { costTracker } from '../cost-tracker';
+import { getRateLimitStats } from '../middleware/rate-limiter';
 import { logger } from '../logger';
 
 export const systemRouter = Router();
@@ -26,6 +27,8 @@ const KNOWN_AGENT_COUNT = 11;
  *         description: 系統健康狀態
  */
 systemRouter.get('/health', async (_req: Request, res: Response) => {
+  // 主動戳一下 Circuit Breaker 更新狀態
+  await localRunner.canUseLocal();
   const runnerStatus = localRunner.getStatus();
 
   // 快速 ping AI Gateway
@@ -35,6 +38,18 @@ systemRouter.get('/health', async (_req: Request, res: Response) => {
       signal: AbortSignal.timeout(2000),
     });
     if (r.ok) cloudStatus = 'online';
+  } catch {
+    // silent
+  }
+
+  // P5-03: Ping Investment Brain (LangGraph service)
+  const INVESTMENT_BRAIN_URL = process.env['INVESTMENT_BRAIN_URL'] ?? 'http://localhost:8090';
+  let investmentBrainStatus: 'online' | 'offline' = 'offline';
+  try {
+    const ibRes = await fetch(`${INVESTMENT_BRAIN_URL}/health`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (ibRes.ok) investmentBrainStatus = 'online';
   } catch {
     // silent
   }
@@ -50,6 +65,9 @@ systemRouter.get('/health', async (_req: Request, res: Response) => {
   const costStats = costTracker.getAllStats();
   const totalInferences = costStats.reduce((s, a) => s + a.inference_count, 0);
   const totalTokens = costStats.reduce((s, a) => s + a.total_tokens, 0);
+
+  // P5-03: Rate limiter stats
+  const rateLimitStats = getRateLimitStats();
 
   logger.debug('[System/health] Health check computed');
 
@@ -72,6 +90,11 @@ systemRouter.get('/health', async (_req: Request, res: Response) => {
       status: cloudStatus,
       gateway_url: AI_GATEWAY,
     },
+    // P5-03: Investment Brain subsystem
+    investment_brain: {
+      status: investmentBrainStatus,
+      url: INVESTMENT_BRAIN_URL,
+    },
     hardware: {
       gpu: 'NVIDIA GeForce RTX 4080 SUPER',
       vram_total_mb: 16376,
@@ -91,9 +114,57 @@ systemRouter.get('/health', async (_req: Request, res: Response) => {
       total_inferences: totalInferences,
       total_tokens: totalTokens,
     },
+    // P5-03: Rate limiter active key counts
+    rate_limit: rateLimitStats,
   });
 });
 
+
+// ── GET /system/health/deep ───────────────────────────────────
+/**
+ * @openapi
+ * /system/health/deep:
+ *   get:
+ *     tags: [System]
+ *     summary: 系統平行深度健康檢查（P5-03）
+ *     description: 並行檢查 Brain, Redis, Gateway 等外部相依服務狀態
+ *     responses:
+ *       200:
+ *         description: 系統各組件健康狀態
+ */
+systemRouter.get('/health/deep', async (_req: Request, res: Response) => {
+  const INVESTMENT_BRAIN_URL = process.env['INVESTMENT_BRAIN_URL'] ?? 'http://localhost:8090';
+  const REDIS_URL = process.env['REDIS_URL'] ?? 'redis://localhost:6379';
+
+  const [brainRes, gatewayRes, redisRes] = await Promise.allSettled([
+    fetch(`${INVESTMENT_BRAIN_URL}/health`, { signal: AbortSignal.timeout(2000) }).then(r => r.ok),
+    fetch(`${AI_GATEWAY}/health`, { signal: AbortSignal.timeout(2000) }).then(r => r.ok),
+    import('ioredis').then(({ default: Redis }) => {
+      return new Promise<boolean>((resolve) => {
+        const redis = new Redis(REDIS_URL, { maxRetriesPerRequest: 0, connectTimeout: 1000 });
+        redis.ping()
+          .then(() => resolve(true))
+          .catch(() => resolve(false))
+          .finally(() => redis.disconnect());
+      });
+    }),
+  ]);
+
+  const investmentBrainStatus = brainRes.status === 'fulfilled' && brainRes.value ? 'online' : 'offline';
+  const gatewayStatus = gatewayRes.status === 'fulfilled' && gatewayRes.value ? 'online' : 'offline';
+  const redisStatus = redisRes.status === 'fulfilled' && redisRes.value ? 'online' : 'offline';
+
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    components: {
+      investment_brain: { status: investmentBrainStatus, url: INVESTMENT_BRAIN_URL },
+      ai_gateway: { status: gatewayStatus, url: AI_GATEWAY },
+      redis: { status: redisStatus },
+      local_runner: localRunner.getStatus(),
+    }
+  });
+});
 
 // ── GET /system/models ────────────────────────────────────────
 systemRouter.get('/models', async (_req: Request, res: Response) => {

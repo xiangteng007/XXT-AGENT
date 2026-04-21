@@ -1,0 +1,48 @@
+{
+  "description": "Latest price data from market sources.",
+  "properties": {
+    "symbol": {
+      "title": "Symbol",
+      "type": "string"
+    },
+    "price": {
+      "title": "Price",
+      "type": "number"
+    },
+    "open": {
+      "title": "Open",
+      "type": "number"
+    },
+    "high": {
+      "title": "High",
+      "type": "number"
+    },
+    "low": {
+      "title": "Low",
+      "type": "number"
+    },
+    "volume": {
+      "title": "Volume",
+      "type": "number"
+    },
+    "change_pct_1m": {
+      "title": "Change Pct 1M",
+      "type": "number"
+    },
+    "volatility_regime": {
+      "enum": [
+        "low",
+        "normal",
+        "high"
+      ],
+      "title": "Volatility Regime",
+      "type": "string"
+    },
+    "timestamp": {
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "title": "PriceSnapshot",
+  "type": "object"
+}

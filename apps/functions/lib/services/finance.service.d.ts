@@ -9,45 +9,8 @@
  * - Investment portfolio overview
  */
 import { FinanceProfile, BankAccount, CreditCard, Transaction, RecurringPayment } from '../types/butler.types';
-export declare const TAIWAN_BANKS: {
-    readonly '808': {
-        readonly code: "808";
-        readonly name: "玉山銀行";
-        readonly englishName: "E.SUN Bank";
-        readonly openBankingSupport: true;
-        readonly apiBase: "https://openapi.esunbank.com.tw";
-    };
-    readonly '822': {
-        readonly code: "822";
-        readonly name: "中國信託";
-        readonly englishName: "CTBC Bank";
-        readonly openBankingSupport: true;
-        readonly apiBase: "https://openapi.ctbcbank.com";
-    };
-    readonly '004': {
-        readonly code: "004";
-        readonly name: "臺灣銀行";
-        readonly englishName: "Bank of Taiwan";
-        readonly openBankingSupport: true;
-        readonly apiBase: "https://fapi.bot.com.tw";
-    };
-    readonly '007': {
-        readonly code: "007";
-        readonly name: "第一銀行";
-        readonly englishName: "First Bank";
-        readonly openBankingSupport: true;
-        readonly apiBase: "https://openapi.firstbank.com.tw";
-    };
-};
-export declare const TRANSACTION_CATEGORIES: {
-    income: string[];
-    expense: {
-        essential: string[];
-        lifestyle: string[];
-        business: string[];
-        vehicle: string[];
-    };
-};
+import { TAIWAN_BANKS, TRANSACTION_CATEGORIES } from '../config/bank-config';
+export { TAIWAN_BANKS, TRANSACTION_CATEGORIES };
 export declare class FinanceService {
     /**
      * Get user's finance profile

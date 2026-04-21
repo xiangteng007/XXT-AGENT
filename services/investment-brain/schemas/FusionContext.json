@@ -1,0 +1,48 @@
+{
+  "description": "Triple Fusion context from Event Fusion Engine.",
+  "properties": {
+    "market": {
+      "additionalProperties": true,
+      "title": "Market",
+      "type": "object"
+    },
+    "news": {
+      "additionalProperties": true,
+      "title": "News",
+      "type": "object"
+    },
+    "social": {
+      "additionalProperties": true,
+      "title": "Social",
+      "type": "object"
+    },
+    "severity": {
+      "title": "Severity",
+      "type": "integer"
+    },
+    "direction": {
+      "enum": [
+        "positive",
+        "negative"
+      ],
+      "title": "Direction",
+      "type": "string"
+    },
+    "data_quality": {
+      "enum": [
+        "live",
+        "partial",
+        "mock"
+      ],
+      "title": "Data Quality",
+      "type": "string"
+    },
+    "credibility_tiers": {
+      "additionalProperties": true,
+      "title": "Credibility Tiers",
+      "type": "object"
+    }
+  },
+  "title": "FusionContext",
+  "type": "object"
+}

@@ -399,6 +399,20 @@
                     "order": "DESCENDING"
                 }
             ]
+        },
+        {
+            "collectionGroup": "fused_events",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "domain",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "ts",
+                    "order": "DESCENDING"
+                }
+            ]
         }
     ],
     "fieldOverrides": []

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 
 interface WatchlistItem {
@@ -23,7 +23,7 @@ export default function MarketWatchlistPage() {
     const [newSymbol, setNewSymbol] = useState('');
     const [newAssetClass, setNewAssetClass] = useState<'stock' | 'fund' | 'future'>('stock');
 
-    const fetchItems = async () => {
+    const fetchItems = useCallback(async () => {
         try {
             const token = await getIdToken();
             const res = await fetch('/api/admin/market/watchlist', {
@@ -38,11 +38,11 @@ export default function MarketWatchlistPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [getIdToken]);
 
     useEffect(() => {
         fetchItems();
-    }, [getIdToken]);
+    }, [fetchItems]);
 
     const handleAdd = async () => {
         if (!newSymbol.trim()) return;

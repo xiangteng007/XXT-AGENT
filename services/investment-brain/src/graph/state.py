@@ -36,6 +36,9 @@ class FusionContext(TypedDict, total=False):
     social: dict
     severity: int
     direction: Literal["positive", "negative"]
+    # F-02: data quality metadata
+    data_quality: Literal["live", "partial", "mock"]
+    credibility_tiers: dict   # source-level quality ratings
 
 
 class MarketInsight(TypedDict, total=False):
@@ -47,6 +50,22 @@ class MarketInsight(TypedDict, total=False):
     key_levels: dict  # support/resistance
     catalysts: list[str]
     summary: str
+    judgment_basis: str  # P3-01: Explicit reasoning basis
+    uncertainty_warning: str  # P3-01: Used for fallback/degraded data
+
+class VerificationInsight(TypedDict, total=False):
+    """Output of Information Verifier (Argus) Agent."""
+    is_credible:           bool
+    credibility_score:     int        # A-02: 0–100, calc per verifier prompt rules
+    sentiment_divergence:  bool
+    divergence_score:      float      # P3-03: calculated divergence score (0-1)
+    divergence_detail:     str        # A-02: plain-language explanation
+    verified_catalysts:    list[str]
+    fake_or_hype_warnings: list[str]
+    source_reliability:    dict       # {news_quality, social_quality, cross_reference_count}
+    summary:               str
+    judgment_basis:        str        # A-02: required for advisory compliance
+    credibility_basis:     str        # P3-03: specific conflicting evidence
 
 
 class InvestmentAction(TypedDict, total=False):
@@ -59,17 +78,20 @@ class InvestmentAction(TypedDict, total=False):
     take_profit: float | None
     timeframe: str
     rationale: str
+    basis_of_judgment: str  # P3-02: Advisory framing required
 
 
 class InvestmentPlan(TypedDict, total=False):
     """Output of Strategy Planner Agent."""
-    plan_id: str
-    actions: list[InvestmentAction]
-    scenarios: dict  # base/bull/bear probabilities
-    confidence: int  # 0-100
-    invalidation_rules: list[str]
-    risk_flags: list[str]
-    rationale: str
+    plan_id:              str
+    actions:              list[InvestmentAction]
+    scenarios:            dict   # base/bull/bear probabilities
+    confidence:           int    # 0-100
+    invalidation_rules:   list[str]
+    risk_flags:           list[str]
+    rationale:            str
+    advisory_disclaimer:  str    # A-03: mandatory advisory framing field
+    backtest_evidence:    dict | None  # F-03: structured backtest metrics from BacktestEngine
 
 
 class RiskAssessment(TypedDict, total=False):
@@ -144,6 +166,7 @@ class InvestmentAgentState(TypedDict, total=False):
     symbol: str
     timeframe: str
     risk_level: Literal["conservative", "moderate", "aggressive"]
+    execution_mode: Literal["advisory", "paper_trade", "live"]  # P5-01: Execution mode strategy
     user_context: str | None  # Additional user instructions
 
     # ── Market Data (from Event Fusion Engine) ───────────
@@ -152,6 +175,7 @@ class InvestmentAgentState(TypedDict, total=False):
 
     # ── Agent Outputs ────────────────────────────────────
     market_insight: MarketInsight | None
+    verification_insight: VerificationInsight | None
     investment_plan: InvestmentPlan | None
     risk_assessment: RiskAssessment | None
     trade_results: list[TradeResult]
@@ -166,12 +190,14 @@ class InvestmentAgentState(TypedDict, total=False):
     started_at: str
     completed_at: str | None
     iteration: int  # For feedback loop counting
+    max_iterations: int  # P1-03: Hard cap on risk→plan retry loops (default 2)
 
 
 def create_initial_state(
     symbol: str,
     timeframe: str = "1h",
     risk_level: str = "moderate",
+    execution_mode: str = "advisory",
     user_context: str | None = None,
     session_id: str | None = None,
 ) -> InvestmentAgentState:
@@ -185,10 +211,12 @@ def create_initial_state(
         symbol=symbol.upper().strip(),
         timeframe=timeframe,
         risk_level=risk_level,  # type: ignore[arg-type]
+        execution_mode=execution_mode, # type: ignore[arg-type]
         user_context=user_context,
         price_snapshot=None,
         fusion_context=None,
         market_insight=None,
+        verification_insight=None,
         investment_plan=None,
         risk_assessment=None,
         trade_results=[],
@@ -199,4 +227,5 @@ def create_initial_state(
         started_at=datetime.utcnow().isoformat(),
         completed_at=None,
         iteration=0,
+        max_iterations=2,
     )

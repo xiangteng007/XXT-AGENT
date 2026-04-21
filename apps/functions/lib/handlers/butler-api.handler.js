@@ -40,6 +40,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleButlerApi = handleButlerApi;
+const v2_1 = require("firebase-functions/v2");
 const admin = __importStar(require("firebase-admin"));
 // Import services
 const butler_service_1 = require("../services/butler.service");
@@ -49,17 +50,67 @@ const finance_service_1 = require("../services/finance.service");
 const vehicle_service_1 = require("../services/vehicle.service");
 const schedule_service_1 = require("../services/schedule.service");
 const business_service_1 = require("../services/business.service");
+const investment_service_1 = require("../services/butler/investment.service");
+const loan_service_1 = require("../services/butler/loan.service");
+const monthly_insights_service_1 = require("../services/butler/monthly-insights.service");
+const investment_report_service_1 = require("../services/butler/investment-report.service");
+const schemas_1 = require("../validators/schemas");
 // ================================
-// Authentication Helper
+// CORS Whitelist
 // ================================
+const ALLOWED_ORIGINS = [
+    'https://xxt-agent.vercel.app',
+    'https://xxt-agent.web.app',
+    'http://localhost:3000',
+    'http://localhost:3001',
+];
+function getCorsOrigin(req) {
+    const origin = req.headers.origin || '';
+    return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+}
+// ================================
+// Rate Limiting — In-Memory (V3 #10)
+// ================================
+const RATE_LIMIT_MAX = 100;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const rateLimitMap = new Map();
+function checkRateLimit(uid) {
+    const now = Date.now();
+    const entry = rateLimitMap.get(uid);
+    if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+        rateLimitMap.set(uid, { count: 1, windowStart: now });
+        return true;
+    }
+    if (entry.count >= RATE_LIMIT_MAX)
+        return false;
+    entry.count++;
+    return true;
+}
+// Periodic cleanup to prevent memory leaks
+setInterval(() => {
+    const now = Date.now();
+    for (const [uid, entry] of rateLimitMap) {
+        if (now - entry.windowStart > RATE_LIMIT_WINDOW_MS * 2)
+            rateLimitMap.delete(uid);
+    }
+}, 120_000);
+// ================================
+// Token Verification Cache (V3 #12)
+// ================================
+const TOKEN_CACHE_TTL_MS = 5 * 60_000; // 5 minutes
+const tokenCache = new Map();
 async function verifyAuth(req) {
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
+    if (!authHeader?.startsWith('Bearer '))
         return null;
-    }
     try {
         const token = authHeader.split('Bearer ')[1];
+        // Check cache first
+        const cached = tokenCache.get(token);
+        if (cached && Date.now() < cached.expiresAt)
+            return cached.uid;
         const decodedToken = await admin.auth().verifyIdToken(token);
+        tokenCache.set(token, { uid: decodedToken.uid, expiresAt: Date.now() + TOKEN_CACHE_TTL_MS });
         return decodedToken.uid;
     }
     catch {
@@ -67,11 +118,20 @@ async function verifyAuth(req) {
     }
 }
 // ================================
+// Request ID (V3 #11)
+// ================================
+let requestCounter = 0;
+function getRequestId() {
+    return `req-${Date.now()}-${++requestCounter}`;
+}
+// ================================
 // Main Butler API Handler
 // ================================
 async function handleButlerApi(req, res) {
-    // CORS headers
-    res.set('Access-Control-Allow-Origin', '*');
+    // CORS headers — whitelist only
+    const origin = getCorsOrigin(req);
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Vary', 'Origin');
     if (req.method === 'OPTIONS') {
         res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
         res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
@@ -79,10 +139,32 @@ async function handleButlerApi(req, res) {
         res.status(204).send('');
         return;
     }
+    // Request correlation (V3 #11) + API version header (V3 #8)
+    const requestId = getRequestId();
+    res.set('X-Request-Id', requestId);
+    res.set('X-API-Version', '2.1.0');
+    // Health check (no auth required) — edge cacheable (V3 #26)
+    if (req.path === '/health' || req.path === '/') {
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=300');
+        res.json({ status: 'ok', version: '2.1.0', timestamp: new Date().toISOString() });
+        return;
+    }
+    // CSP violation report endpoint (V3 #13) — no auth required
+    if (req.path === '/csp-report' && req.method === 'POST') {
+        v2_1.logger.warn('[CSP Violation]', { body: req.body, userAgent: req.headers['user-agent'] });
+        res.status(204).send('');
+        return;
+    }
     // Authenticate
     const uid = await verifyAuth(req);
     if (!uid) {
         res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+    // Rate limiting
+    const allowed = await checkRateLimit(uid);
+    if (!allowed) {
+        res.status(429).json({ error: 'Too many requests. Please try again later.' });
         return;
     }
     // Parse route from path
@@ -109,13 +191,25 @@ async function handleButlerApi(req, res) {
             case 'business':
                 await handleBusiness(req, res, uid, action);
                 break;
+            case 'export':
+                await handleExport(req, res, uid, action);
+                break;
+            case 'investment':
+                await handleInvestment(req, res, uid, action);
+                break;
+            case 'loan':
+                await handleLoan(req, res, uid);
+                break;
+            case 'insights':
+                await handleInsights(req, res, uid, action);
+                break;
             default:
-                res.status(404).json({ error: 'Not found', path });
+                res.status(404).json({ error: 'Not found' });
         }
     }
     catch (error) {
-        console.error('[Butler API Error]', error);
-        res.status(500).json({ error: error.message });
+        v2_1.logger.error('[Butler API Error]', { requestId, module, action, error });
+        res.status(500).json({ error: 'Internal server error', requestId });
     }
 }
 // ================================
@@ -215,14 +309,23 @@ async function handleFinance(req, res, uid, action, param1, param2) {
             break;
         case 'transactions':
             if (method === 'GET') {
-                const { startDate, endDate, type, category } = req.query;
-                const transactions = await finance_service_1.financeService.getTransactions(uid, startDate, endDate, { type: type, category: category });
+                const qv = (0, schemas_1.validateBody)(schemas_1.TransactionQuerySchema, req.query);
+                if (!qv.success) {
+                    res.status(400).json({ error: qv.error });
+                    return;
+                }
+                const transactions = await finance_service_1.financeService.getTransactions(uid, qv.data.startDate, qv.data.endDate, { type: qv.data.type, category: qv.data.category });
                 res.json(transactions);
             }
             break;
         case 'transaction':
             if (method === 'POST') {
-                const id = await finance_service_1.financeService.recordTransaction(uid, req.body);
+                const tv = (0, schemas_1.validateBody)(schemas_1.TransactionCreateSchema, req.body);
+                if (!tv.success) {
+                    res.status(400).json({ error: tv.error });
+                    return;
+                }
+                const id = await finance_service_1.financeService.recordTransaction(uid, tv.data);
                 res.json({ id });
             }
             break;
@@ -242,6 +345,86 @@ async function handleFinance(req, res, uid, action, param1, param2) {
             break;
         default:
             res.status(404).json({ error: 'Finance endpoint not found' });
+    }
+}
+// ================================
+// Export Handler (CSV)
+// ================================
+async function handleExport(req, res, uid, format) {
+    if (req.method !== 'GET') {
+        res.status(405).json({ error: 'Method not allowed' });
+        return;
+    }
+    const now = new Date();
+    const startDate = req.query.start || `${now.getFullYear()}-01-01`;
+    const endDate = req.query.end || now.toISOString().split('T')[0];
+    const transactions = await finance_service_1.financeService.getTransactions(uid, startDate, endDate, {});
+    if (format === 'csv' || !format) {
+        // BOM for Excel UTF-8 compatibility
+        const BOM = '\uFEFF';
+        const header = '日期,類型,金額,分類,描述,來源';
+        const rows = transactions.map((tx) => `${tx.date},${tx.type === 'income' ? '收入' : '支出'},${tx.amount},${tx.category || ''},"${(tx.description || '').replace(/"/g, '""')}",${tx.source || ''}`);
+        const csv = BOM + header + '\n' + rows.join('\n');
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="transactions_${startDate}_${endDate}.csv"`);
+        res.send(csv);
+    }
+    else {
+        res.json(transactions);
+    }
+}
+// ================================
+// Investment Handler
+// ================================
+async function handleInvestment(req, res, uid, action) {
+    if (req.method !== 'GET') {
+        res.status(405).json({ error: 'Method not allowed' });
+        return;
+    }
+    switch (action) {
+        case 'portfolio': {
+            const summary = await investment_service_1.investmentService.getPortfolioSummary(uid);
+            res.json(summary);
+            break;
+        }
+        case 'report': {
+            const html = await (0, investment_report_service_1.generateInvestmentReport)(uid);
+            res.set('Content-Type', 'text/html; charset=utf-8');
+            res.send(html);
+            break;
+        }
+        default:
+            res.status(404).json({ error: 'Investment endpoint not found' });
+    }
+}
+// ================================
+// Loan Handler
+// ================================
+async function handleLoan(req, res, uid) {
+    if (req.method !== 'GET') {
+        res.status(405).json({ error: 'Method not allowed' });
+        return;
+    }
+    const summary = await loan_service_1.loanService.getLoanSummary(uid);
+    res.json(summary);
+}
+// ================================
+// Insights Handler
+// ================================
+async function handleInsights(req, res, uid, action) {
+    if (req.method !== 'GET') {
+        res.status(405).json({ error: 'Method not allowed' });
+        return;
+    }
+    switch (action) {
+        case 'monthly': {
+            const month = req.query.month;
+            const report = await (0, monthly_insights_service_1.generateMonthlyInsights)(uid, month);
+            res.json(report);
+            break;
+        }
+        default:
+            res.status(404).json({ error: 'Insights endpoint not found' });
     }
 }
 // ================================

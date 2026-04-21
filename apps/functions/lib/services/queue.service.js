@@ -17,6 +17,7 @@ exports.updateJobStatus = updateJobStatus;
  * - Worker polls for queued jobs
  * - Supports retry with exponential backoff
  */
+const v2_1 = require("firebase-functions/v2");
 const firebase_1 = require("../config/firebase");
 const firestore_1 = require("firebase-admin/firestore");
 const JOBS_COLLECTION = 'jobs';
@@ -40,7 +41,7 @@ async function enqueueJob(payload, webhookEventId) {
         updatedAt: firestore_1.FieldValue.serverTimestamp(),
     };
     const docRef = await db.collection(JOBS_COLLECTION).add(jobData);
-    console.log(`[Queue] Job enqueued: ${docRef.id} for tenant ${payload.tenantId}`);
+    v2_1.logger.info(`[Queue] Job enqueued: ${docRef.id} for tenant ${payload.tenantId}`);
     return docRef.id;
 }
 /**
@@ -82,7 +83,7 @@ async function claimJob(jobId) {
         return true;
     }
     catch (error) {
-        console.warn(`[Queue] Failed to claim job ${jobId}:`, error);
+        v2_1.logger.warn(`[Queue] Failed to claim job ${jobId}:`, error);
         return false;
     }
 }
@@ -96,7 +97,7 @@ async function completeJob(jobId) {
         processedAt: firestore_1.FieldValue.serverTimestamp(),
         updatedAt: firestore_1.FieldValue.serverTimestamp(),
     });
-    console.log(`[Queue] Job completed: ${jobId}`);
+    v2_1.logger.info(`[Queue] Job completed: ${jobId}`);
 }
 /**
  * Mark job as failed (may retry or dead)
@@ -123,7 +124,7 @@ async function failJob(jobId, error) {
         },
         updatedAt: firestore_1.FieldValue.serverTimestamp(),
     });
-    console.log(`[Queue] Job ${newStatus === 'dead' ? 'dead' : 'will retry'}: ${jobId} (attempt ${attempts}/${maxAttempts})`);
+    v2_1.logger.info(`[Queue] Job ${newStatus === 'dead' ? 'dead' : 'will retry'}: ${jobId} (attempt ${attempts}/${maxAttempts})`);
 }
 /**
  * Check if event already processed (deduplication)

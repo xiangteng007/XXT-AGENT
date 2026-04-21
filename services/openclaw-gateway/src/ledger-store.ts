@@ -199,6 +199,26 @@ export async function addEntry(entry: LedgerEntry): Promise<{ ok: boolean; entry
 }
 
 /**
+ * 刪除一筆收支記錄 (補償機制用)
+ */
+export async function deleteEntry(entry_id: string): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    const idx = IN_MEMORY_LEDGER.findIndex(e => e.entry_id === entry_id);
+    if (idx >= 0) IN_MEMORY_LEDGER.splice(idx, 1);
+    logger.info(`[Ledger] Deleted in-memory: ${entry_id}`);
+    return;
+  }
+  try {
+    await db.collection('accountant_ledger').doc(entry_id).delete();
+    logger.info(`[Ledger] Deleted from Firestore: ${entry_id}`);
+  } catch (err) {
+    logger.warn(`[Ledger] Failed to delete from Firestore: ${String(err)}`);
+    throw err;
+  }
+}
+
+/**
  * 查詢收支記錄
  * @param filters.type  income|expense|all
  * @param filters.period  YYYYMM

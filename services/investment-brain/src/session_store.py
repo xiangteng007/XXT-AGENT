@@ -114,8 +114,11 @@ class RedisSessionStore:
         """目前 session 數量（用於 /health 端點）。"""
         if self._using_redis and self._redis:
             try:
-                keys = await self._redis.keys(f"{self.KEY_PREFIX}*")
-                return len(keys)
+                # C-05: Use SCAN instead of KEYS to avoid O(N) blocking
+                count = 0
+                async for _ in self._redis.scan_iter(match=f"{self.KEY_PREFIX}*", count=100):
+                    count += 1
+                return count
             except Exception:
                 return 0
         return len(self._fallback)
@@ -124,13 +127,17 @@ class RedisSessionStore:
         """列出最近的 sessions（/invest/sessions 端點使用）。"""
         if self._using_redis and self._redis:
             try:
-                keys = await self._redis.keys(f"{self.KEY_PREFIX}*")
-                sessions = []
-                for key in keys[:limit * 2]:  # 多取一些再排序
+                # C-05: Use SCAN cursor instead of KEYS * to avoid blocking
+                sessions: list[dict] = []
+                async for key in self._redis.scan_iter(
+                    match=f"{self.KEY_PREFIX}*", count=100
+                ):
+                    if len(sessions) >= limit * 2:  # collect 2x then sort
+                        break
                     raw = await self._redis.get(key)
                     if raw:
                         sessions.append(json.loads(raw))
-                # 依 completed_at 排序（最新在前）
+                # Sort by completed_at descending
                 sessions.sort(
                     key=lambda s: s.get("completed_at") or "", reverse=True
                 )

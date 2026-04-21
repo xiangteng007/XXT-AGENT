@@ -5,6 +5,10 @@
  * NemoClaw 整合（2026-03-31）:
  *   Layer 2 Privacy Router  — /chat 敏感詞偵測 → 強制本地 Ollama
  *   Layer 3 Audit Logger    — 所有 AI 決策寫入 Firestore agent_audit_logs
+ *
+ * AGENT_REGISTRY（2026-04-19）:
+ *   Unified source-of-truth for all agent IDs, grid positions, and roles.
+ *   Used by /state (positions), /chat LLM prompt, and /chat fallback heuristics.
  */
 
 import { Router, Request, Response } from "express";
@@ -20,22 +24,95 @@ import { wrapWithAudit } from "../audit-logger";
 
 export const agentsRouter = Router();
 
+/**
+ * P1-01: Known valid market symbols — whitelist to prevent arbitrary
+ * strings from triggering the expensive LangGraph investment pipeline.
+ * Covers US large-cap, major ETFs, TW blue-chips, and crypto.
+ */
+const KNOWN_SYMBOLS = new Set([
+  // ── US Large Cap ──
+  'AAPL','MSFT','GOOGL','GOOG','AMZN','NVDA','META','TSLA','BRK','JPM',
+  'V','UNH','MA','HD','PG','JNJ','XOM','AVGO','MRK','COST','ABBV','CVX',
+  'KO','PEP','CRM','ADBE','WMT','TMO','LLY','NFLX','AMD','INTC','QCOM',
+  'ORCL','CSCO','DIS','BA','GS','MS','AXP','PYPL','SQ','UBER','ABNB',
+  'COIN','PLTR','SNOW','MU','AMAT','LRCX','KLAC','MRVL','ASML','ARM',
+  // ── Major ETFs ──
+  'SPY','QQQ','IWM','DIA','VTI','VOO','VGT','ARKK','SOXX','SMH',
+  'XLF','XLK','XLE','XLV','XLI','TLT','HYG','GLD','SLV','USO',
+  // ── TW Blue-Chips (TWSE via Fugle) ──
+  'TSM','UMC','ASEH','CHT',
+  '2330','2454','2317','2308','2303','2412','2882','2881','2886','2891',
+  '2002','1301','1303','2105','3711','2603','2615','3037','2345','6505',
+  // ── Crypto ──
+  'BTC','ETH','SOL','DOGE','XRP','ADA','AVAX','DOT','MATIC','LINK',
+]);
+
+/** Common English words that match /[A-Z]{2,5}/ but are NOT symbols */
+const NON_SYMBOL_WORDS = new Set([
+  'UI','PR','API','APP','TEST','THE','AND','FOR','BUT','NOT','YOU',
+  'ALL','CAN','HER','WAS','ARE','HAS','HAD','HOW','MAN','NEW','NOW',
+  'OLD','SEE','WAY','WHO','BOY','DID','GET','HIM','HIS','LET','SAY',
+  'SHE','TOO','USE','DAD','MOM','SET','RUN','GOT','SAT','TOP','RED',
+  'YES','YET','NOR','OUR','TRY','ASK','BIG','END','FAR','KEY','LOT',
+  'OWN','PUT','OFF','BIT','CUT','HOT','MAP','PAY','TEN','WAR','WIN',
+  'JUST','ALSO','BACK','BEEN','CALL','COME','EACH','EVEN','FIND',
+  'GIVE','GOOD','HAVE','HERE','HIGH','INTO','JUST','KEEP','KNOW',
+  'LAST','LIKE','LONG','LOOK','MADE','MAKE','MANY','MORE','MOST',
+  'MUCH','MUST','NAME','ONLY','OPEN','OVER','PART','PLAY','SAME',
+  'SHOW','SIDE','SOME','SUCH','TAKE','TELL','THAN','THAT','THEM',
+  'THEN','THEY','THIS','TIME','VERY','WANT','WELL','WHAT','WHEN',
+  'WILL','WITH','WORK','YEAR','YOUR','DOWN','BEEN','DOES','DONE',
+  'FROM','WENT','WERE','BEEN','HELP','HERE','HOME','HOPE','IDEA',
+]);
+
+/** Validate if a candidate string is a known market symbol */
+function isValidSymbol(candidate: string): boolean {
+  if (!candidate || candidate.length < 1 || candidate.length > 6) return false;
+  if (NON_SYMBOL_WORDS.has(candidate)) return false;
+  return KNOWN_SYMBOLS.has(candidate);
+}
+
 // 根據 agents/*.json 設定檔產生初始狀態
 // 工作區路徑（相對 Gateway 執行路徑）
 const AGENTS_CONFIG_DIR = process.env["AGENTS_CONFIG_DIR"]
   ?? path.resolve(__dirname, "../../../../../.agent/agents");
 
-// 5 個預設 Agent 的初始座標（等距格點）
-const DEFAULT_POSITIONS: Record<string, { gx: number; gy: number }> = {
-  director:    { gx: 2, gy: 2 },
-  pixidev:     { gx: 0, gy: 1 },
-  architect:   { gx: 4, gy: 1 },
-  flashbot:    { gx: 2, gy: 4 },
-  scribe:      { gx: 0, gy: 3 },
-  accountant:  { gx: 6, gy: 3 },
-  guardian:    { gx: 8, gy: 3 },
-  finance:     { gx: 10, gy: 3 },
+/** Unified Agent Registry — single source of truth for all known agents. */
+const AGENT_REGISTRY: Record<string, { gx: number; gy: number; role: string }> = {
+  // ── Core Office ──────────────────────────────────────────────────
+  director:        { gx: 2,  gy: 2,  role: 'director' },
+  pixidev:         { gx: 0,  gy: 1,  role: 'pixidev' },
+  architect:       { gx: 4,  gy: 1,  role: 'architect' },
+  flashbot:        { gx: 2,  gy: 4,  role: 'flashbot' },
+  scribe:          { gx: 0,  gy: 3,  role: 'scribe' },
+  // ── Finance Dept ─────────────────────────────────────────────────
+  accountant:      { gx: 6,  gy: 3,  role: 'accountant' },
+  guardian:        { gx: 8,  gy: 3,  role: 'guardian' },
+  finance:         { gx: 10, gy: 3,  role: 'finance' },
+  // ── Investment Brain ─────────────────────────────────────────────
+  'market-analyst':  { gx: 6,  gy: 1,  role: 'market-analyst' },
+  'risk-manager':    { gx: 8,  gy: 1,  role: 'risk-manager' },
+  'strategy-planner':{ gx: 10, gy: 1,  role: 'strategy-planner' },
+  // ── Legal & Compliance ───────────────────────────────────────────
+  lex:             { gx: 4,  gy: 4,  role: 'lex' },
+  daredevil:       { gx: 6,  gy: 4,  role: 'lex' },
+  // ── Engineering & Spatial ────────────────────────────────────────
+  bim:             { gx: 0,  gy: 5,  role: 'bim' },
+  shuri:           { gx: 0,  gy: 5,  role: 'bim' },
+  interior:        { gx: 2,  gy: 5,  role: 'interior' },
+  vision:          { gx: 2,  gy: 5,  role: 'interior' },
+  estimator:       { gx: 4,  gy: 5,  role: 'estimator' },
+  rocket:          { gx: 4,  gy: 5,  role: 'estimator' },
+  // ── Field & Operations ───────────────────────────────────────────
+  scout:           { gx: 8,  gy: 5,  role: 'scout' },
+  nova:            { gx: 10, gy: 5,  role: 'nova' },
+  zora:            { gx: 12, gy: 5,  role: 'zora' },
+  // ── Esoteric / Advisory ──────────────────────────────────────────
+  wong:            { gx: 12, gy: 2,  role: 'advisory' },
 };
+
+/** Comma-separated agent list for use in LLM prompts */
+const AGENT_IDS_FOR_PROMPT = Object.keys(AGENT_REGISTRY).join(', ');
 
 agentsRouter.get("/state", (_req: Request, res: Response) => {
   const agents: OpenClawAgentState[] = [];
@@ -71,7 +148,7 @@ agentsRouter.get("/state", (_req: Request, res: Response) => {
           display_name: config.display_name,
           status: "idle",
           current_task_id: null,
-          position: DEFAULT_POSITIONS[config.id] ?? { gx: 0, gy: 0 },
+          position: AGENT_REGISTRY[config.id] ?? { gx: 0, gy: 0 },
           model: config.model ?? {
             provider: "unknown",
             model_id: "unknown",
@@ -171,10 +248,11 @@ agentsRouter.post("/tasks", async (req: Request, res: Response) => {
 // 互動式群聊：接收文字，經 Privacy Router 分類後呼叫 Local Ollama 或 AI Gateway，
 // 指定一隻 Agent 回答，若有 symbol 則自動觸發投資流
 agentsRouter.post("/chat", async (req: Request, res: Response) => {
-  const { message, session_id, user_id } = req.body as {
+  const { message, session_id, user_id, target_agent } = req.body as {
     message?: string;
     session_id?: string;
     user_id?: string;
+    target_agent?: string;
   };
   if (!message) {
     res.status(400).json({ error: "No message provided" });
@@ -202,9 +280,131 @@ agentsRouter.post("/chat", async (req: Request, res: Response) => {
       const model = PrivacyRouter.resolveModel(classification);
       const AI_GATEWAY = process.env["AI_GATEWAY_URL"] || "http://127.0.0.1:8080";
 
+      // ── If the user explicitly selected an agent, skip the intent router ──
+      if (target_agent && AGENT_REGISTRY[target_agent]) {
+        logger.info(`[Chat] trace=${traceId} Bypassing intent router — explicit target_agent=${target_agent}`);
+        
+        let replyContent = "系統連線異常，無法取得代理回應...";
+        try {
+          const authHeader: Record<string, string> = classification.routeTo === 'cloud'
+            ? { "Authorization": `Bearer ${process.env["OPENCLAW_API_KEY"] || "dev-secret-key"}` }
+            : {};
+          
+          // P2-02: 實作真實 LLM 路由，替換佔位廣播
+          let systemPrompt = `You are ${target_agent}, an AI agent in the XXT-AGENT ecosystem. Respond to the user's message in Traditional Chinese concisely (under 50 words).`;
+          try {
+            const configPath = path.join(AGENTS_CONFIG_DIR, `${target_agent}.json`);
+            if (fs.existsSync(configPath)) {
+              const configRaw = fs.readFileSync(configPath, "utf-8");
+              const config = JSON.parse(configRaw);
+              systemPrompt = `你是 XXT-AGENT 系統中的 AI 代理人。
+角色名稱：${config.name_zh || config.display_name} (${config.id})
+職位：${config.title_zh || config.role}
+個性：${config.personality || '專業、簡潔'}
+溝通風格：${config.communication_style || '直接了當'}
+座右銘：${config.motto || ''}
+口頭禪：${config.catchphrase || ''}
+
+請遵循你的角色設定，以繁體中文簡潔地（50字以內）回答使用者的問題。`;
+            }
+          } catch (e) {
+            logger.warn(`Failed to load config for agent ${target_agent} to construct prompt: ${e}`);
+          }
+
+          const aiRes = await wrapWithAudit(
+            {
+              agentId: target_agent,
+              action: 'DIRECT_CHAT',
+              classification,
+              inputPreview,
+              traceId,
+              sessionId: session_id,
+              userId: user_id,
+              model,
+            },
+            () => fetch(endpoint, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...authHeader,
+              },
+              body: JSON.stringify({
+                model,
+                messages: [
+                  { role: "system", content: systemPrompt },
+                  { role: "user", content: message }
+                ],
+                temperature: 0.7,
+              }),
+            }),
+          );
+
+          if (aiRes.ok) {
+            interface AIChatResponse {
+              choices?: Array<{ message?: { content?: string } }>;
+            }
+            const aiData = await aiRes.json() as AIChatResponse;
+            replyContent = aiData.choices?.[0]?.message?.content || "（無法產生回應）";
+          } else {
+            logger.error(`[Chat] Direct agent AI Gateway error: ${aiRes.status}`);
+          }
+        } catch (e) {
+          logger.error(`[Chat] Direct agent AI Gateway unreachable: ${e}`);
+        }
+
+        broadcastEvent({
+          id: crypto.randomUUID(),
+          type: "AGENT_STATE_UPDATE" as EventType,
+          source: "intent-router",
+          severity: "info",
+          target_agent,
+          task_id: "chat-reply",
+          payload: {
+            messages: [{ content: replyContent }],
+            current_step: "chat",
+          },
+          timestamp: new Date().toISOString(),
+        });
+
+        // Clear state after a short delay
+        setTimeout(() => {
+          broadcastEvent({
+            id: crypto.randomUUID(),
+            type: "AGENT_STATE_UPDATE" as EventType,
+            source: "intent-router",
+            severity: "info",
+            target_agent,
+            payload: {
+              messages: [{ content: "" }],
+              current_step: "complete"
+            },
+            timestamp: new Date().toISOString()
+          });
+        }, 5000);
+
+        return;
+      }
+
+      // P2-02: If target_agent is specified but NOT in registry, return error instead of silent fallthrough
+      if (target_agent && !AGENT_REGISTRY[target_agent]) {
+        logger.warn(`[Chat] trace=${traceId} Unknown target_agent="${target_agent}", available: ${Object.keys(AGENT_REGISTRY).join(', ')}`);
+        broadcastEvent({
+          id: crypto.randomUUID(),
+          type: "AGENT_STATE_UPDATE" as EventType,
+          source: "intent-router",
+          severity: "warning",
+          payload: {
+            messages: [{ content: `⚠️ 找不到代理「${target_agent}」。可用代理：${Object.keys(AGENT_REGISTRY).slice(0, 5).join(', ')}...` }],
+            current_step: "error",
+          },
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
       const prompt = `You are the OpenClaw Intent Router.
 Analyze the user message: "${message}"
-Available agents: director, pixidev, architect, flashbot, scribe, market-analyst, risk-manager, strategy-planner.
+Available agents: ${AGENT_IDS_FOR_PROMPT}.
 Decide which agent should respond and what they should say in Traditional Chinese. Keep the reply short, under 30 words, like a chat room response.
 If the user is asking to analyze a stock, extract the symbol (e.g. AAPL) and return it. Do not execute the analysis, just acknowledge.
 Reply purely in JSON format without markdown ticks:
@@ -280,8 +480,8 @@ Reply purely in JSON format without markdown ticks:
       // =======================
       if (!usedAi) {
         const txt = message.toLowerCase();
-        const symbols = message.toUpperCase().match(/\b[A-Z]{2,5}\b/g) || [];
-        const stockSymbols = symbols.filter((s: string) => !['UI', 'PR', 'API', 'APP', 'TEST'].includes(s));
+        const symbols = message.toUpperCase().match(/\b[A-Z]{1,6}\b/g) || [];
+        const stockSymbols = symbols.filter((s: string) => isValidSymbol(s));
         taskSymbol = stockSymbols[0] || null;
 
         if (txt.includes('前端') || txt.includes('ui') || txt.includes('畫面') || txt.includes('介面') || txt.includes('按鈕')) {
@@ -371,8 +571,8 @@ Reply purely in JSON format without markdown ticks:
         });
       }, 5000);
 
-      // 3. Trigger LangGraph if symbol found
-      if (taskSymbol) {
+      // 3. Trigger LangGraph if symbol found AND validated against whitelist (P1-01)
+      if (taskSymbol && isValidSymbol(taskSymbol)) {
         await new Promise(r => setTimeout(r, 1500));
         
         logger.info(`[Intent Router] Triggering task for ${taskSymbol}`);

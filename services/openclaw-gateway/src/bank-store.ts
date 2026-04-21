@@ -179,27 +179,46 @@ export async function updateBankAccountBalance(
 }
 
 // ── BankTransaction CRUD ───────────────────────────────────────────
-
-export async function addBankTransaction(
-  txn: BankTransaction,
-): Promise<{ ok: boolean; txn_id: string }> {
+/**
+ * 新增一筆銀行交易
+ */
+export async function addBankTransaction(txn: BankTransaction): Promise<{ ok: boolean; txn_id: string }> {
   const db = await getDb();
-
   if (!db) {
     if (IN_MEMORY_TXNS.length >= TXN_MAX) IN_MEMORY_TXNS.shift();
     IN_MEMORY_TXNS.push(txn);
-    logger.info(`[Bank] Txn in-memory: ${txn.txn_id} ${txn.type} ${txn.amount}`);
+    logger.info(`[Bank] Saved in-memory txn: ${txn.txn_id}`);
     return { ok: true, txn_id: txn.txn_id };
   }
 
   try {
     await db.collection('bank_transactions').doc(txn.txn_id).set(txn);
-    logger.info(`[Bank] Txn to Firestore: ${txn.txn_id}`);
+    logger.info(`[Bank] Saved to Firestore txn: ${txn.txn_id}`);
     return { ok: true, txn_id: txn.txn_id };
   } catch (err) {
     IN_MEMORY_TXNS.push(txn);
-    logger.warn(`[Bank] Firestore failed (txn), buffered: ${String(err)}`);
+    logger.warn(`[Bank] Firestore failed, buffered txn: ${String(err)}`);
     return { ok: true, txn_id: txn.txn_id };
+  }
+}
+
+/**
+ * 刪除一筆銀行交易記錄 (補償機制用)
+ */
+export async function deleteBankTransaction(txn_id: string): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    const idx = IN_MEMORY_TXNS.findIndex(t => t.txn_id === txn_id);
+    if (idx >= 0) IN_MEMORY_TXNS.splice(idx, 1);
+    logger.info(`[Bank] Deleted in-memory txn: ${txn_id}`);
+    return;
+  }
+  try {
+    await db.collection('bank_transactions').doc(txn_id).delete();
+    logger.info(`[Bank] Deleted from Firestore: ${txn_id}`);
+  } catch (err) {
+    logger.warn(`[Bank] Failed to delete from Firestore: ${String(err)}`);
+    throw err;
   }
 }
 
@@ -228,6 +247,7 @@ export async function queryBankTransactions(filters: {
   txn_date_to?: string;
   period?: string;   // YYYYMM → convert to date range
   type?: TxnType;
+  counterparty?: string;
   limit?: number;
 }): Promise<BankTransaction[]> {
   const db = await getDb();
@@ -253,6 +273,7 @@ export async function queryBankTransactions(filters: {
         if (filters.type && t.type !== filters.type) return false;
         if (date_from && t.txn_date < date_from) return false;
         if (date_to && t.txn_date > date_to) return false;
+        if (filters.counterparty && !t.counterparty?.includes(filters.counterparty)) return false;
         return true;
       })
       .slice(-limit)
@@ -266,8 +287,12 @@ export async function queryBankTransactions(filters: {
     if (filters.type) q = q.where('type', '==', filters.type);
     if (date_from) q = q.where('txn_date', '>=', date_from);
     if (date_to)   q = q.where('txn_date', '<=', date_to);
-    const snap = await q.orderBy('txn_date', 'desc').limit(limit).get();
-    return snap.docs.map(d => d.data() as BankTransaction);
+    const snap = await q.orderBy('txn_date', 'desc').limit(limit * 2).get(); // fetch more to accommodate post-filtering
+    let results = snap.docs.map(d => d.data() as BankTransaction);
+    if (filters.counterparty) {
+      results = results.filter(t => t.counterparty?.includes(filters.counterparty!));
+    }
+    return results.slice(0, limit);
   } catch {
     return IN_MEMORY_TXNS.slice(-limit).reverse();
   }

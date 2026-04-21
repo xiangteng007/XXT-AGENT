@@ -41,6 +41,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.dispatchSocialCollectJobs = dispatchSocialCollectJobs;
 exports.getTenantsWithSources = getTenantsWithSources;
+const v2_1 = require("firebase-functions/v2");
 const admin = __importStar(require("firebase-admin"));
 const tasks_1 = require("@google-cloud/tasks");
 const error_handling_1 = require("../utils/error-handling");
@@ -54,14 +55,14 @@ const COLLECTOR_URL = process.env.SOCIAL_COLLECTOR_URL || '';
  * Main dispatcher function
  */
 async function dispatchSocialCollectJobs() {
-    console.log('[Social Dispatcher] Starting dispatch cycle...');
+    v2_1.logger.info('[Social Dispatcher] Starting dispatch cycle...');
     const result = { dispatched: 0, skipped: 0, errors: [] };
     try {
         // Fetch all enabled sources across all tenants
         const sourcesSnapshot = await db.collectionGroup('sources')
             .where('enabled', '==', true)
             .get();
-        console.log(`[Social Dispatcher] Found ${sourcesSnapshot.size} enabled sources`);
+        v2_1.logger.info(`[Social Dispatcher] Found ${sourcesSnapshot.size} enabled sources`);
         for (const doc of sourcesSnapshot.docs) {
             const source = { id: doc.id, ...doc.data() };
             // Skip if webhook mode (handled by webhook endpoint)
@@ -74,15 +75,15 @@ async function dispatchSocialCollectJobs() {
                 result.dispatched++;
             }
             catch (err) {
-                console.error(`[Social Dispatcher] Failed to create task for ${source.id}:`, err);
+                v2_1.logger.error(`[Social Dispatcher] Failed to create task for ${source.id}:`, err);
                 result.errors.push(`${source.id}: ${(0, error_handling_1.getErrorMessage)(err)}`);
             }
         }
-        console.log('[Social Dispatcher] Dispatch complete:', result);
+        v2_1.logger.info('[Social Dispatcher] Dispatch complete:', result);
         return result;
     }
     catch (err) {
-        console.error('[Social Dispatcher] Fatal error:', err);
+        v2_1.logger.error('[Social Dispatcher] Fatal error:', err);
         result.errors.push((0, error_handling_1.getErrorMessage)(err));
         return result;
     }
@@ -117,7 +118,7 @@ async function createCollectTask(source) {
         },
     };
     await tasksClient.createTask({ parent, task });
-    console.log(`[Social Dispatcher] Created task for ${source.platform}:${source.id}`);
+    v2_1.logger.info(`[Social Dispatcher] Created task for ${source.platform}:${source.id}`);
 }
 /**
  * Get all tenant IDs that have social sources

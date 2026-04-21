@@ -5,11 +5,55 @@
  * Handles incoming Telegram Bot API updates for the XXT-AGENT Personal Butler System.
  * Provides the same core functionality as the LINE Bot but with Telegram-specific features.
  */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleTelegramWebhook = handleTelegramWebhook;
+const v2_1 = require("firebase-functions/v2");
 const butler_ai_service_1 = require("../services/butler-ai.service");
 const firestore_1 = require("firebase-admin/firestore");
 const secret_manager_1 = require("@google-cloud/secret-manager");
+const finance_service_1 = require("../services/finance.service");
+const investment_service_1 = require("../services/butler/investment.service");
+const loan_service_1 = require("../services/butler/loan.service");
+const monthly_insights_service_1 = require("../services/butler/monthly-insights.service");
+const vehicle_service_1 = require("../services/vehicle.service");
+const schedule_service_1 = require("../services/schedule.service");
+const tax_service_1 = require("../services/butler/tax.service");
+const financial_advisor_service_1 = require("../services/butler/financial-advisor.service");
+const receipt_ocr_service_1 = require("../services/butler/receipt-ocr.service");
+const conversation_session_service_1 = require("../services/butler/conversation-session.service");
 // Lazy-loaded Bot Token from Secret Manager
 let cachedBotToken = null;
 async function getBotToken() {
@@ -28,11 +72,11 @@ async function getBotToken() {
             name: 'projects/xxt-agent/secrets/TELEGRAM_BOT_TOKEN/versions/latest',
         });
         cachedBotToken = version.payload?.data?.toString() || '';
-        console.log('[Telegram] Bot token loaded from Secret Manager');
+        v2_1.logger.info('[Telegram] Bot token loaded from Secret Manager');
         return cachedBotToken;
     }
     catch (error) {
-        console.error('[Telegram] Failed to load token from Secret Manager:', error);
+        v2_1.logger.error('[Telegram] Failed to load token from Secret Manager:', error);
         throw new Error('TELEGRAM_BOT_TOKEN not available');
     }
 }
@@ -41,11 +85,19 @@ const db = (0, firestore_1.getFirestore)();
 // Main Handler
 // ================================
 async function handleTelegramWebhook(req, res) {
-    console.log('[Telegram Webhook] Received update');
     // Fast ACK - respond immediately
     res.status(200).send('OK');
     try {
         const update = req.body;
+        // Idempotency check (#9) — skip already-processed updates
+        const updateId = String(update.update_id);
+        const dedupeRef = db.collection('_telegramDedup').doc(updateId);
+        const existing = await dedupeRef.get();
+        if (existing.exists) {
+            v2_1.logger.warn('[Telegram] Duplicate update_id skipped:', updateId);
+            return;
+        }
+        await dedupeRef.set({ processedAt: Date.now() });
         if (update.message) {
             await handleMessage(update.message);
         }
@@ -54,7 +106,7 @@ async function handleTelegramWebhook(req, res) {
         }
     }
     catch (error) {
-        console.error('[Telegram Webhook] Error processing update:', error);
+        v2_1.logger.error('[Telegram Webhook] Error processing update:', error);
     }
 }
 // ================================
@@ -64,7 +116,7 @@ async function handleMessage(message) {
     const chatId = message.chat.id;
     const telegramUserId = message.from.id;
     const text = message.text || '';
-    console.log(`[Telegram] Message from ${telegramUserId}: ${text || '[non-text content]'}`);
+    v2_1.logger.info(`[Telegram] Message from ${telegramUserId}: ${text || '[non-text content]'}`);
     // Handle voice messages
     if (message.voice) {
         await handleVoiceMessage(chatId, telegramUserId, message);
@@ -95,10 +147,9 @@ async function handleVoiceMessage(chatId, telegramUserId, message) {
     const voice = message.voice;
     if (!voice)
         return;
-    console.log(`[Telegram] Voice message received: duration=${voice.duration}s, file_id=${voice.file_id}`);
+    v2_1.logger.info(`[Telegram] Voice message received: duration=${voice.duration}s, file_id=${voice.file_id}`);
     await sendChatAction(chatId, 'typing');
     try {
-        // Get bot token for API call
         const token = await getBotToken();
         // Get file path from Telegram
         const fileResponse = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${voice.file_id}`);
@@ -107,39 +158,53 @@ async function handleVoiceMessage(chatId, telegramUserId, message) {
             await sendMessage(chatId, '❌ 無法處理語音訊息，請稍後再試。');
             return;
         }
-        // Download voice file URL
+        // Download voice file
         const voiceUrl = `https://api.telegram.org/file/bot${token}/${fileData.result.file_path}`;
-        // For now, inform user about the feature status
-        // Full Speech-to-Text integration requires Google Cloud Speech API
-        await sendMessage(chatId, `🎤 **語音辨識**
-
-已收到您的語音訊息 (${voice.duration} 秒)
-
-⏳ 語音轉文字功能**開發中**
-
-目前請使用文字輸入，例如：
-• 「今天花了 150 元吃午餐」
-• 「新增下午 3 點開會」
-• 「查看本月支出」
-
-💡 *完整語音支援預計下一版本推出*`, {
-            reply_markup: {
-                inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
+        const voiceResponse = await fetch(voiceUrl);
+        if (!voiceResponse.ok) {
+            await sendMessage(chatId, '❌ 無法下載語音檔案。');
+            return;
+        }
+        const audioBuffer = Buffer.from(await voiceResponse.arrayBuffer());
+        // Use Gemini to transcribe audio
+        const { GoogleGenerativeAI } = await Promise.resolve().then(() => __importStar(require('@google/generative-ai')));
+        const apiKey = process.env.GOOGLE_AI_API_KEY;
+        if (!apiKey) {
+            await sendMessage(chatId, '❌ AI 服務未設定，無法處理語音。');
+            return;
+        }
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const audioPart = {
+            inlineData: {
+                data: audioBuffer.toString('base64'),
+                mimeType: 'audio/ogg',
             },
-        });
-        // Log for future implementation
-        console.log(`[Telegram] Voice file URL: ${voiceUrl} (STT integration pending)`);
+        };
+        const result = await model.generateContent([
+            '請將這段語音訊息轉成文字。只輸出語音的文字內容，不要加任何說明或標點符號以外的內容。如果聽不清楚，回傳「無法辨識」。',
+            audioPart,
+        ]);
+        const transcribed = result.response.text().trim();
+        v2_1.logger.info(`[Telegram] STT result: "${transcribed}"`);
+        if (!transcribed || transcribed === '無法辨識') {
+            await sendMessage(chatId, '🎤 無法辨識語音內容，請重新錄製或使用文字輸入。');
+            return;
+        }
+        // Show transcription then process as text
+        await sendMessage(chatId, `🎤 語音辨識：「${transcribed}」\n\n⏳ 處理中...`);
+        await handleNaturalLanguage(chatId, telegramUserId, transcribed);
     }
     catch (error) {
-        console.error('[Telegram] Voice message error:', error);
-        await sendMessage(chatId, '❌ 語音處理發生錯誤，請使用文字輸入。');
+        v2_1.logger.error('[Telegram] Voice STT error:', error);
+        await sendMessage(chatId, '❌ 語音辨識失敗，請使用文字輸入。');
     }
 }
 // ================================
 // Location Handler (P1)
 // ================================
 async function handleLocationMessage(chatId, telegramUserId, location) {
-    console.log(`[Telegram] Location received: lat=${location.latitude}, lng=${location.longitude}`);
+    v2_1.logger.info(`[Telegram] Location received: lat=${location.latitude}, lng=${location.longitude}`);
     const linkedUid = await getLinkedFirebaseUid(telegramUserId);
     if (!linkedUid) {
         await sendMessage(chatId, '❌ 請先綁定帳號才能使用位置功能。\n\n使用 /link 開始綁定。');
@@ -171,7 +236,7 @@ async function handleLocationMessage(chatId, telegramUserId, location) {
         });
     }
     catch (error) {
-        console.error('[Telegram] Location save error:', error);
+        v2_1.logger.error('[Telegram] Location save error:', error);
         await sendMessage(chatId, '❌ 無法儲存位置，請稍後再試。');
     }
 }
@@ -185,15 +250,15 @@ async function handlePhotoMessage(chatId, telegramUserId, message) {
     // Get the highest resolution photo (last in array)
     const photo = photos[photos.length - 1];
     const caption = message.caption || '';
-    console.log(`[Telegram] Photo received: file_id=${photo.file_id}, caption="${caption}"`);
+    v2_1.logger.info(`[Telegram] Photo received: file_id=${photo.file_id}, caption="${caption}"`);
     const linkedUid = await getLinkedFirebaseUid(telegramUserId);
     if (!linkedUid) {
         await sendMessage(chatId, '❌ 請先綁定帳號才能使用圖片功能。\n\n使用 /link 開始綁定。');
         return;
     }
     await sendChatAction(chatId, 'typing');
+    await sendMessage(chatId, '🔍 正在辨識收據...');
     try {
-        // Get bot token for API call
         const token = await getBotToken();
         // Get file path from Telegram
         const fileResponse = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${photo.file_id}`);
@@ -202,46 +267,64 @@ async function handlePhotoMessage(chatId, telegramUserId, message) {
             await sendMessage(chatId, '❌ 無法處理圖片，請稍後再試。');
             return;
         }
-        // Get photo URL
+        // Download image from Telegram
         const photoUrl = `https://api.telegram.org/file/bot${token}/${fileData.result.file_path}`;
-        console.log(`[Telegram] Photo URL: ${photoUrl}`);
-        // Store photo reference for processing
-        await db.collection(`users/${linkedUid}/butler/photos`).add({
-            telegramFileId: photo.file_id,
-            caption: caption,
-            source: 'telegram',
-            timestamp: firestore_1.Timestamp.now(),
-            processed: false,
-            type: 'receipt_pending',
+        const imgResponse = await fetch(photoUrl);
+        if (!imgResponse.ok) {
+            await sendMessage(chatId, '❌ 無法下載圖片。');
+            return;
+        }
+        const imageBuffer = Buffer.from(await imgResponse.arrayBuffer());
+        const contentType = imgResponse.headers.get('content-type') || 'image/jpeg';
+        // Extract receipt data via Gemini Vision OCR
+        const receipt = await (0, receipt_ocr_service_1.extractReceiptData)(imageBuffer, contentType);
+        // Record transaction automatically
+        await finance_service_1.financeService.recordTransaction(linkedUid, {
+            type: 'expense',
+            amount: receipt.totalAmount,
+            description: `${receipt.storeName}${receipt.items.length > 0 ? ' - ' + receipt.items.map(i => i.name).join(', ') : ''}`,
+            category: receipt.category,
+            date: receipt.date,
+            source: 'manual',
+            bankAccountId: '',
         });
-        // For now, provide manual entry option
-        // Full Vision API OCR integration would go here
-        await sendMessage(chatId, `📸 **圖片已接收**
-
-${caption ? `說明: "${caption}"` : ''}
-
-🔍 **OCR 功能開發中**
-
-請選擇此圖片的用途：`, {
+        // Format response
+        let msg = `📸 **收據辨識完成！**\n\n`;
+        msg += `🏪 ${receipt.storeName}\n`;
+        msg += `💰 $${receipt.totalAmount.toLocaleString()}\n`;
+        msg += `📁 ${receipt.category}\n`;
+        msg += `📅 ${receipt.date}\n`;
+        if (receipt.items.length > 0) {
+            msg += `\n📝 明細：\n`;
+            receipt.items.slice(0, 5).forEach(item => {
+                msg += `  • ${item.name} $${item.amount}${item.quantity && item.quantity > 1 ? ` ×${item.quantity}` : ''}\n`;
+            });
+            if (receipt.items.length > 5) {
+                msg += `  ... 共 ${receipt.items.length} 項\n`;
+            }
+        }
+        if (receipt.invoiceNumber) {
+            msg += `\n🧾 發票：${receipt.invoiceNumber}`;
+        }
+        msg += `\n\n✅ 已自動記帳`;
+        await sendMessage(chatId, msg, {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '🧾 發票記帳', callback_data: 'photo_receipt' }],
-                    [{ text: '💳 信用卡帳單', callback_data: 'photo_creditcard' }],
-                    [{ text: '📊 手動輸入金額', callback_data: 'photo_manual' }],
+                    [{ text: '💰 查看本月支出', callback_data: 'cmd_balance' }],
                     [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
                 ],
             },
         });
-        console.log('[Telegram] Photo saved and awaiting classification (Vision API pending)');
+        v2_1.logger.info(`[Telegram] Receipt OCR success: ${receipt.storeName} $${receipt.totalAmount}`);
     }
     catch (error) {
-        console.error('[Telegram] Photo message error:', error);
+        v2_1.logger.error('[Telegram] Photo message error:', error);
         await sendMessage(chatId, '❌ 圖片處理發生錯誤，請稍後再試。');
     }
 }
 async function handleCommand(chatId, telegramUserId, text) {
     const [command] = text.split(' ');
-    const commandName = command.replace('@\\w+$', '').toLowerCase();
+    const commandName = command.replace(/@\w+$/, '').toLowerCase();
     switch (commandName) {
         case '/start':
             await sendWelcomeMessage(chatId);
@@ -267,24 +350,58 @@ async function handleCommand(chatId, telegramUserId, text) {
         case '/balance':
             await sendBalanceInfo(chatId, telegramUserId);
             break;
+        case '/invest':
+            await sendInvestmentSummary(chatId, telegramUserId);
+            break;
+        case '/loan':
+            await sendLoanSummary(chatId, telegramUserId);
+            break;
+        case '/tax':
+            await sendTaxEstimation(chatId, telegramUserId);
+            break;
+        case '/advice':
+            await sendFinancialAdvice(chatId, telegramUserId);
+            break;
+        case '/price':
+            await sendStockPrice(chatId, text);
+            break;
+        case '/report':
+            await sendMonthlyReport(chatId, telegramUserId);
+            break;
         case '/link':
             await sendLinkInstructions(chatId, telegramUserId);
             break;
         case '/settings':
             await sendSettingsMenu(chatId);
             break;
+        case '/agents':
+            await sendAgentMenu(chatId, telegramUserId);
+            break;
         default:
             await sendMessage(chatId, '❓ 不認識的指令。輸入 /help 查看可用指令。');
     }
 }
 async function handleNaturalLanguage(chatId, telegramUserId, text) {
-    // Check if user is linked
     const linkedUid = await getLinkedFirebaseUid(telegramUserId);
-    // Show typing indicator
+    const userId = linkedUid || `telegram:${telegramUserId}`;
     await sendChatAction(chatId, 'typing');
-    // Generate AI response
-    const response = await (0, butler_ai_service_1.generateAIResponse)(text, linkedUid || `telegram:${telegramUserId}`);
-    await sendMessage(chatId, response);
+    // Save user message and get history
+    await (0, conversation_session_service_1.appendMessage)(userId, 'user', text);
+    const history = await (0, conversation_session_service_1.getPreviousMessages)(userId);
+    const session = await (0, conversation_session_service_1.getSession)(userId);
+    // Generate AI response WITH function calling
+    const response = await (0, butler_ai_service_1.generateAIResponseWithTools)(text, userId, history.join('\n'), session.activeAgent);
+    if (response.toolCalls && response.toolCalls.length > 0) {
+        const toolResults = await executeTelegramToolCalls(userId, response.toolCalls);
+        const combined = toolResults.join('\n\n');
+        await (0, conversation_session_service_1.appendMessage)(userId, 'assistant', combined);
+        await sendMessage(chatId, combined);
+    }
+    else {
+        const aiText = response.text || '抱歉，我無法理解您的意思。';
+        await (0, conversation_session_service_1.appendMessage)(userId, 'assistant', aiText);
+        await sendMessage(chatId, aiText);
+    }
 }
 // ================================
 // Command Implementations
@@ -296,17 +413,25 @@ async function sendWelcomeMessage(chatId) {
 
 📋 **行程管理** - 查看今日行程、新增事件
 💰 **快速記帳** - 一鍵記錄支出
+📈 **投資理財** - 投資組合、貸款、稅務
+🤖 **理財顧問** - AI 個人化財務建議
 🏃 **健康追蹤** - BMI、運動記錄
 🚗 **車輛管理** - 油耗、保養提醒
 
-點擊下方選單開始使用，或直接用自然語言告訴我您的需求！
+直接用自然語言告訴我您的需求！
 
-💡 試試看說：「今天花了 150 元吃午餐」`;
+💡 試試看說：「買了 10 張 0050，均價 150」`;
     await sendMessage(chatId, welcome, {
         reply_markup: {
             inline_keyboard: [
-                [{ text: '📋 今日行程', callback_data: 'cmd_today' }],
-                [{ text: '💰 快速記帳', callback_data: 'cmd_expense' }],
+                [
+                    { text: '📋 今日行程', callback_data: 'cmd_today' },
+                    { text: '💰 快速記帳', callback_data: 'cmd_expense' },
+                ],
+                [
+                    { text: '📈 投資組合', callback_data: 'cmd_invest' },
+                    { text: '🤖 理財顧問', callback_data: 'cmd_advice' },
+                ],
                 [{ text: '🔗 綁定帳號', callback_data: 'cmd_link' }],
             ],
         },
@@ -319,20 +444,111 @@ async function sendHelpMessage(chatId) {
 /menu - 主選單
 /today - 今日行程
 /expense - 快速記帳
+/invest - 投資組合
+/loan - 貸款管理
+/tax - 稅務估算
+/advice - 理財顧問
+/price 2330 - 查股價
+/report - 月度報告
 /health - 健康快照
 /car - 車輛狀態
 /balance - 帳戶餘額
 /link - 綁定帳號
 /settings - 設定
+/agents - 切換 AI 代理
 
-**自然語言：**
-直接輸入文字，AI 會理解您的意圖！
-
-例如：
-• 「今天行程」
-• 「這個月花了多少」
-• 「車子該保養了嗎」`;
+**自然語言（AI 理財/專業代理）：**
+• 「買了 10 張 0050，均價 150」
+• 「房貸 800 萬、利率 2.1%、30 年」
+• 「年薪 120 萬，估算稅額」
+• 「給我理財建議」
+• 「這個月花了多少」`;
     await sendMessage(chatId, help);
+}
+async function sendStockPrice(chatId, text) {
+    const parts = text.trim().split(/\s+/);
+    const symbols = parts.slice(1).filter(s => s.length > 0);
+    if (symbols.length === 0) {
+        await sendMessage(chatId, '📈 用法：/price 2330 或 /price AAPL TSLA\n\n例如：\n• `/price 2330` — 台積電\n• `/price AAPL` — Apple\n• `/price 0050 2454` — 多檔查詢');
+        return;
+    }
+    await sendChatAction(chatId, 'typing');
+    try {
+        const results = [];
+        for (const sym of symbols.slice(0, 5)) {
+            const isTW = /^\d{4,6}$/.test(sym);
+            let msg = '';
+            if (isTW) {
+                const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_${sym}.tw`;
+                const resp = await fetch(url, { headers: { 'User-Agent': 'XXT-AGENT/1.0' } });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    const q = data.msgArray?.[0];
+                    if (q) {
+                        const price = parseFloat(q.z) || parseFloat(q.y) || 0;
+                        const prev = parseFloat(q.y) || 0;
+                        const change = price - prev;
+                        const pct = prev ? ((change / prev) * 100).toFixed(2) : '0.00';
+                        const arrow = change > 0 ? '🔴 ▲' : change < 0 ? '🟢 ▼' : '⚪';
+                        msg = `${arrow} **${q.n}** (${q.c})\n💰 $${price.toFixed(2)}  ${change > 0 ? '+' : ''}${change.toFixed(2)} (${pct}%)\n📊 成交量: ${parseInt(q.v).toLocaleString()} 張`;
+                    }
+                }
+            }
+            else {
+                const url = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${sym.toUpperCase()}&range=1d&interval=1d`;
+                const resp = await fetch(url, { headers: { 'User-Agent': 'XXT-AGENT/1.0' } });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    const m = data.spark?.result?.[0]?.response?.[0]?.meta;
+                    if (m) {
+                        const change = m.regularMarketPrice - m.previousClose;
+                        const pct = ((change / m.previousClose) * 100).toFixed(2);
+                        const arrow = change > 0 ? '🔴 ▲' : change < 0 ? '🟢 ▼' : '⚪';
+                        msg = `${arrow} **${sym.toUpperCase()}**\n💰 $${m.regularMarketPrice.toFixed(2)}  ${change > 0 ? '+' : ''}${change.toFixed(2)} (${pct}%)\n📊 Volume: ${(m.regularMarketVolume || 0).toLocaleString()}`;
+                    }
+                }
+            }
+            results.push(msg || `❌ 查無 ${sym} 的股價資料`);
+        }
+        await sendMessage(chatId, results.join('\n\n'));
+    }
+    catch (error) {
+        v2_1.logger.error('[Telegram] Stock price error:', error);
+        await sendMessage(chatId, '❌ 股價查詢失敗，請稍後再試。');
+    }
+}
+async function sendMonthlyReport(chatId, telegramUserId) {
+    const linkedUid = await getLinkedFirebaseUid(telegramUserId);
+    if (!linkedUid) {
+        await sendMessage(chatId, '❌ 請先綁定帳號才能使用月報功能。\n\n使用 /link 開始綁定。');
+        return;
+    }
+    await sendChatAction(chatId, 'typing');
+    await sendMessage(chatId, '📊 正在生成月度報告...');
+    try {
+        const report = await (0, monthly_insights_service_1.generateMonthlyInsights)(linkedUid);
+        let msg = `📊 **${report.month} 月度報告**\n\n`;
+        for (const section of report.sections) {
+            msg += `${section.icon} **${section.title}**\n`;
+            for (const item of section.items) {
+                msg += `  • ${item}\n`;
+            }
+            msg += '\n';
+        }
+        msg += `📝 ${report.summary}`;
+        await sendMessage(chatId, msg, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '💰 查看支出明細', callback_data: 'cmd_balance' }],
+                    [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+                ],
+            },
+        });
+    }
+    catch (error) {
+        v2_1.logger.error('[Telegram] Monthly report error:', error);
+        await sendMessage(chatId, '❌ 月報生成失敗，請稍後再試。');
+    }
 }
 async function sendMainMenu(chatId) {
     await sendMessage(chatId, '🏠 **主選單** - 請選擇功能：', {
@@ -343,12 +559,23 @@ async function sendMainMenu(chatId) {
                     { text: '💰 快速記帳', callback_data: 'cmd_expense' },
                 ],
                 [
+                    { text: '📈 投資組合', callback_data: 'cmd_invest' },
+                    { text: '🏦 貸款管理', callback_data: 'cmd_loan' },
+                ],
+                [
+                    { text: '📋 稅務估算', callback_data: 'cmd_tax' },
+                    { text: '🤖 理財顧問', callback_data: 'cmd_advice' },
+                ],
+                [
                     { text: '🏃 健康快照', callback_data: 'cmd_health' },
                     { text: '🚗 車輛狀態', callback_data: 'cmd_car' },
                 ],
                 [
                     { text: '💳 帳戶餘額', callback_data: 'cmd_balance' },
                     { text: '⚙️ 設定', callback_data: 'cmd_settings' },
+                ],
+                [
+                    { text: '🤖 切換 AI 代理', callback_data: 'cmd_agents' },
                 ],
             ],
         },
@@ -473,7 +700,7 @@ async function sendHealthSnapshot(chatId, telegramUserId) {
         });
     }
     catch (error) {
-        console.error('[Telegram] Health snapshot error:', error);
+        v2_1.logger.error('[Telegram] Health snapshot error:', error);
         await sendMessage(chatId, '❌ 無法載入健康數據，請稍後再試。', {
             reply_markup: {
                 inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
@@ -567,7 +794,7 @@ ${maintenanceItems.length > 0 ? '📋 **待辦提醒**\n' + maintenanceItems.joi
         });
     }
     catch (error) {
-        console.error('[Telegram] Vehicle status error:', error);
+        v2_1.logger.error('[Telegram] Vehicle status error:', error);
         await sendMessage(chatId, '❌ 無法載入車輛數據，請稍後再試。', {
             reply_markup: {
                 inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
@@ -642,7 +869,7 @@ ${topCategoriesText}
         });
     }
     catch (error) {
-        console.error('[Telegram] Balance info error:', error);
+        v2_1.logger.error('[Telegram] Balance info error:', error);
         await sendMessage(chatId, '❌ 無法載入財務數據，請稍後再試。', {
             reply_markup: {
                 inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]],
@@ -685,6 +912,306 @@ async function sendSettingsMenu(chatId) {
     });
 }
 // ================================
+// Financial Advisory Commands
+// ================================
+async function sendInvestmentSummary(chatId, telegramUserId) {
+    const linkedUid = await getLinkedFirebaseUid(telegramUserId);
+    if (!linkedUid) {
+        await sendMessage(chatId, '❌ 請先綁定帳號。使用 /link 開始。');
+        return;
+    }
+    await sendChatAction(chatId, 'typing');
+    try {
+        const portfolio = await investment_service_1.investmentService.getPortfolioSummary(linkedUid);
+        if (portfolio.holdingCount === 0) {
+            await sendMessage(chatId, '📈 **投資組合**\n\n尚未建立投資組合。\n\n💡 直接輸入「買了 10 張 0050，均價 150」開始追蹤', {
+                reply_markup: { inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]] },
+            });
+            return;
+        }
+        const holdingList = portfolio.holdings.slice(0, 8).map(h => `• ${h.symbol} ${h.name}: ${h.shares}股, 均價$${h.avgCost}`).join('\n');
+        await sendMessage(chatId, `📈 **投資組合** (${portfolio.holdingCount} 檔)
+
+💰 總市值: $${portfolio.totalMarketValue.toLocaleString()}
+📉 未實現損益: ${portfolio.totalUnrealizedPnL >= 0 ? '+' : ''}$${portfolio.totalUnrealizedPnL.toLocaleString()} (${portfolio.returnRate}%)
+
+**持倉明細:**
+${holdingList}`, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🤖 投資分析建議', callback_data: 'advice_topic_portfolio_review' }],
+                    [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+                ],
+            },
+        });
+    }
+    catch (err) {
+        v2_1.logger.error('[Telegram] Investment summary error:', err);
+        await sendMessage(chatId, '❌ 無法載入投資數據。');
+    }
+}
+async function sendLoanSummary(chatId, telegramUserId) {
+    const linkedUid = await getLinkedFirebaseUid(telegramUserId);
+    if (!linkedUid) {
+        await sendMessage(chatId, '❌ 請先綁定帳號。使用 /link 開始。');
+        return;
+    }
+    await sendChatAction(chatId, 'typing');
+    try {
+        const summary = await loan_service_1.loanService.getLoanSummary(linkedUid);
+        if (summary.loanCount === 0) {
+            await sendMessage(chatId, '🏦 **貸款管理**\n\n無貸款記錄。\n\n💡 輸入「房貸 800 萬、利率 2.1%、30 年」開始試算', {
+                reply_markup: { inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]] },
+            });
+            return;
+        }
+        const loanList = summary.loans.slice(0, 5).map(l => `• ${l.name}: $${l.remainingBalance.toLocaleString()} 剩餘 (月付$${l.monthlyPayment.toLocaleString()})`).join('\n');
+        await sendMessage(chatId, `🏦 **貸款管理** (${summary.loanCount} 筆)
+
+💳 總剩餘: $${summary.totalRemainingBalance.toLocaleString()}
+💰 每月總繳: $${summary.totalMonthlyPayment.toLocaleString()}
+📈 已償還比例: ${summary.paidOffPercentage}%
+
+**貸款明細:**
+${loanList}`, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🤖 債務策略建議', callback_data: 'advice_topic_debt_strategy' }],
+                    [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+                ],
+            },
+        });
+    }
+    catch (err) {
+        v2_1.logger.error('[Telegram] Loan summary error:', err);
+        await sendMessage(chatId, '❌ 無法載入貸款數據。');
+    }
+}
+async function sendTaxEstimation(chatId, telegramUserId) {
+    const linkedUid = await getLinkedFirebaseUid(telegramUserId);
+    if (!linkedUid) {
+        await sendMessage(chatId, '❌ 請先綁定帳號。使用 /link 開始。');
+        return;
+    }
+    await sendChatAction(chatId, 'typing');
+    try {
+        const profile = await tax_service_1.taxService.getTaxProfile(linkedUid);
+        if (!profile) {
+            await sendMessage(chatId, '📋 **稅務估算**\n\n尚未設定稅務資料。\n\n💡 輸入「年薪 120 萬，估算稅額」開始', {
+                reply_markup: { inline_keyboard: [[{ text: '← 返回主選單', callback_data: 'cmd_menu' }]] },
+            });
+            return;
+        }
+        const est = tax_service_1.taxService.estimateIncomeTax(profile);
+        let taxMsg = `📋 **稅務估算** (${est.year})
+
+💰 綜合所得: $${est.grossIncome.toLocaleString()}
+📋 應稅所得: $${est.taxableIncome.toLocaleString()}
+💳 適用稅率: ${est.taxBracketRate}%
+💵 預估稅額: $${est.estimatedTax.toLocaleString()}
+📉 有效稅率: ${est.effectiveRate}%`;
+        if (est.dividendAnalysis) {
+            const da = est.dividendAnalysis;
+            taxMsg += `\n\n📈 股利節稅: 建議「${da.recommendedMethod === 'combined' ? '合併計稅' : '分離課稅'}」，省$${da.savingsAmount.toLocaleString()}`;
+        }
+        await sendMessage(chatId, taxMsg, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🤖 稅務優化建議', callback_data: 'advice_topic_tax_optimization' }],
+                    [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+                ],
+            },
+        });
+    }
+    catch (err) {
+        v2_1.logger.error('[Telegram] Tax estimation error:', err);
+        await sendMessage(chatId, '❌ 無法計算稅務。');
+    }
+}
+async function sendFinancialAdvice(chatId, telegramUserId) {
+    const linkedUid = await getLinkedFirebaseUid(telegramUserId);
+    if (!linkedUid) {
+        await sendMessage(chatId, '❌ 請先綁定帳號。使用 /link 開始。');
+        return;
+    }
+    await sendMessage(chatId, `🤖 **AI 理財顧問**
+
+請選擇您想瞭解的財務主題：`, {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '📊 綜合報告', callback_data: 'advice_topic_comprehensive' }],
+                [{ text: '📈 投資組合分析', callback_data: 'advice_topic_portfolio_review' }],
+                [{ text: '🏦 債務策略', callback_data: 'advice_topic_debt_strategy' }],
+                [{ text: '📋 稅務優化', callback_data: 'advice_topic_tax_optimization' }],
+                [{ text: '🏖️ 退休規劃', callback_data: 'advice_topic_retirement_planning' }],
+                [{ text: '🛡️ 緊急預備金', callback_data: 'advice_topic_emergency_fund' }],
+                [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+            ],
+        },
+    });
+}
+async function sendAgentMenu(chatId, telegramUserId) {
+    const linkedUid = await getLinkedFirebaseUid(telegramUserId);
+    const userId = linkedUid || `telegram:${telegramUserId}`;
+    const session = await (0, conversation_session_service_1.getSession)(userId);
+    const currentAgent = session.activeAgent || 'butler';
+    await sendMessage(chatId, `🤖 **AI 代理團隊**\n\n目前選擇的代理：**${currentAgent}**\n\n請選擇您需要切換的專屬專家：`, {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '👔 小秘書 (預設)', callback_data: 'agent_switch_butler' }],
+                [
+                    { text: '🏛️ Titan (建築/BIM)', callback_data: 'agent_switch_titan' },
+                    { text: '✨ Lumi (室內設計)', callback_data: 'agent_switch_lumi' }
+                ],
+                [
+                    { text: '📐 Rusty (估算工務)', callback_data: 'agent_switch_rusty' },
+                    { text: '💰 Accountant (財務)', callback_data: 'agent_switch_accountant' }
+                ],
+                [
+                    { text: '🛡️ Argus (資安情報)', callback_data: 'agent_switch_argus' },
+                    { text: '👥 Nova (人力營運)', callback_data: 'agent_switch_nova' }
+                ],
+                [
+                    { text: '📈 Investment (投資)', callback_data: 'agent_switch_investment' },
+                    { text: '⚙️ Forge (機電軟韌)', callback_data: 'agent_switch_forge' }
+                ],
+                [
+                    { text: '🔬 Matter (材料科學)', callback_data: 'agent_switch_matter' },
+                    { text: '☁️ Nexus (系統架構)', callback_data: 'agent_switch_nexus' }
+                ],
+                [
+                    { text: '🌍 Zenith (永續ESG)', callback_data: 'agent_switch_zenith' },
+                    { text: '🎯 Apex (行銷拓展)', callback_data: 'agent_switch_apex' }
+                ],
+                [
+                    { text: '⚖️ Vertex (法務合規)', callback_data: 'agent_switch_vertex' },
+                    { text: '🗣️ Echo (公關客服)', callback_data: 'agent_switch_echo' }
+                ],
+                [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+            ],
+        },
+    });
+}
+// ================================
+// Telegram Tool Executor (shared with LINE)
+// ================================
+async function executeTelegramToolCalls(userId, toolCalls) {
+    const results = [];
+    for (const call of toolCalls) {
+        try {
+            switch (call.name) {
+                case 'record_expense': {
+                    const { amount, description, category } = call.args;
+                    await finance_service_1.financeService.recordTransaction(userId, {
+                        type: 'expense', amount,
+                        description: description || '支出',
+                        category: category || '其他',
+                        date: new Date().toISOString().split('T')[0],
+                        bankAccountId: '', source: 'manual',
+                    });
+                    results.push(`✅ 已記錄支出：$${amount} (${description || category || '其他'})`);
+                    break;
+                }
+                case 'record_weight': {
+                    const { weight } = call.args;
+                    // Direct Firestore write for Telegram (healthService uses same pattern)
+                    const today = new Date().toISOString().split('T')[0];
+                    await db.doc(`users/${userId}/butler/health/daily/${today}`).set({ weight, date: today, updatedAt: firestore_1.Timestamp.now() }, { merge: true });
+                    results.push(`✅ 已記錄體重：${weight} kg`);
+                    break;
+                }
+                case 'add_event': {
+                    const { title, date, startTime } = call.args;
+                    await schedule_service_1.scheduleService.addEvent(userId, {
+                        title, start: startTime ? `${date}T${startTime}:00` : date,
+                        end: date, allDay: !startTime, location: '',
+                        category: 'personal', reminders: [], source: 'manual',
+                    });
+                    results.push(`✅ 已新增行程：${title} (${date}${startTime ? ' ' + startTime : ''})`);
+                    break;
+                }
+                case 'get_schedule': {
+                    const schedule = await schedule_service_1.scheduleService.getTodaySchedule(userId);
+                    if (schedule?.events?.length > 0) {
+                        const list = schedule.events.map(e => `• ${typeof e.start === 'string' ? e.start.split('T')[1]?.slice(0, 5) || '全天' : '全天'} ${e.title}`).join('\n');
+                        results.push(`📅 今日行程：\n${list}`);
+                    }
+                    else {
+                        results.push('📅 今日沒有排定的行程');
+                    }
+                    break;
+                }
+                case 'get_spending': {
+                    const now = new Date();
+                    const summary = await finance_service_1.financeService.getMonthlySummary(userId, now.getFullYear(), now.getMonth() + 1);
+                    results.push(summary ? `💰 本月花費：$${(summary.totalExpenses || 0).toLocaleString()}` : '💰 目前沒有消費記錄');
+                    break;
+                }
+                case 'record_fuel': {
+                    const { liters, price_per_liter } = call.args;
+                    await vehicle_service_1.vehicleService.recordFuel(userId, 'default', {
+                        liters, pricePerLiter: price_per_liter, mileage: 0, isFull: true,
+                    });
+                    results.push(`⛽ 已記錄加油：${liters}L × $${price_per_liter}/L = $${(liters * price_per_liter).toFixed(0)}`);
+                    break;
+                }
+                case 'add_investment': {
+                    const { symbol, action, shares, price } = call.args;
+                    const tradeType = action === 'sell' ? 'sell' : 'buy';
+                    await investment_service_1.investmentService.recordTrade(userId, {
+                        holdingId: '', type: tradeType, symbol: symbol.toUpperCase(),
+                        shares, price, totalAmount: shares * price, fee: 0,
+                        date: new Date().toISOString().split('T')[0],
+                    });
+                    results.push(`✅ 已記錄${tradeType === 'buy' ? '買入' : '賣出'}：${symbol} ${shares}股 × $${price}`);
+                    break;
+                }
+                case 'get_portfolio': {
+                    const portfolio = await investment_service_1.investmentService.getPortfolioSummary(userId);
+                    if (portfolio.holdingCount > 0) {
+                        const hl = portfolio.holdings.slice(0, 5).map(h => `• ${h.symbol}: ${h.shares}股`).join('\n');
+                        results.push(`📈 投資組合（${portfolio.holdingCount} 檔）\n總市值：$${portfolio.totalMarketValue.toLocaleString()}\n${hl}`);
+                    }
+                    else {
+                        results.push('📈 尚未建立投資組合');
+                    }
+                    break;
+                }
+                case 'calculate_loan': {
+                    const { principal, annual_rate, term_months } = call.args;
+                    const monthly = loan_service_1.loanService.calculateMonthlyPayment(principal, annual_rate, term_months);
+                    const totalInterest = monthly * term_months - principal;
+                    results.push(`🏦 貸款試算\n貸款: $${principal.toLocaleString()}, ${annual_rate}%, ${term_months}月\n每月: $${monthly.toLocaleString()}\n總利息: $${totalInterest.toLocaleString()}`);
+                    break;
+                }
+                case 'estimate_tax': {
+                    const { annual_salary, investment_income, dependents } = call.args;
+                    const estimation = tax_service_1.taxService.estimateIncomeTax({
+                        annualSalary: annual_salary, investmentIncome: investment_income || 0,
+                        dependents: dependents || 0, filingStatus: 'single', deductions: [],
+                        year: new Date().getFullYear(),
+                    });
+                    results.push(`📋 稅務估算 (${estimation.year})\n所得: $${estimation.grossIncome.toLocaleString()}\n稅率: ${estimation.taxBracketRate}%\n稅額: $${estimation.estimatedTax.toLocaleString()}\n有效稅率: ${estimation.effectiveRate}%`);
+                    break;
+                }
+                case 'get_financial_advice': {
+                    const { topic } = call.args;
+                    const report = await financial_advisor_service_1.financialAdvisorService.getFinancialAdvice(userId, topic || 'comprehensive');
+                    results.push(financial_advisor_service_1.financialAdvisorService.formatForLine(report));
+                    break;
+                }
+                default:
+                    results.push(`⚠️ 未支援的操作：${call.name}`);
+            }
+        }
+        catch (err) {
+            v2_1.logger.error(`[Telegram] Tool call ${call.name} failed:`, err);
+            results.push(`❌ ${call.name} 執行失敗`);
+        }
+    }
+    return results;
+}
+// ================================
 // Callback Query Handling
 // ================================
 async function handleCallbackQuery(query) {
@@ -699,12 +1226,54 @@ async function handleCallbackQuery(query) {
         const command = '/' + data.replace('cmd_', '');
         await handleCommand(chatId, query.from.id, command);
     }
+    else if (data.startsWith('agent_switch_')) {
+        const agentId = data.replace('agent_switch_', '');
+        const linkedUid = await getLinkedFirebaseUid(query.from.id);
+        const userId = linkedUid || `telegram:${query.from.id}`;
+        await (0, conversation_session_service_1.switchAgent)(userId, agentId);
+        const agentNames = {
+            butler: '小秘書 (預設助理)',
+            titan: 'Titan (建築/BIM設計師)',
+            lumi: 'Lumi (室內設計師)',
+            rusty: 'Rusty (估算/工務)',
+            accountant: 'Accountant (財務會計)',
+            argus: 'Argus (資安與情報研究員)',
+            nova: 'Nova (人力與營運管理)',
+            investment: 'Investment (投資顧問)',
+            forge: 'Forge (機電與軟韌體工程師)',
+            matter: 'Matter (材料科學專家)',
+            nexus: 'Nexus (系統整合與架構專家)',
+            zenith: 'Zenith (永續發展與 ESG 專家)',
+            apex: 'Apex (行銷與業務拓展專家)',
+            vertex: 'Vertex (法務與合規專家)',
+            echo: 'Echo (公關與客服專家)'
+        };
+        const agentName = agentNames[agentId] || agentId;
+        await sendMessage(chatId, `✅ 已成功切換至 **${agentName}**！\n\n請問有什麼我可以協助您的？`);
+    }
     else if (data.startsWith('expense_')) {
         const category = data.replace('expense_', '');
         await handleExpenseCategory(chatId, query.from.id, category);
     }
     else if (data === 'add_event') {
         await sendMessage(chatId, '📝 請直接輸入事件內容，例如：\n\n「下午2點開會」\n「明天10點看醫生」');
+    }
+    else if (data.startsWith('advice_topic_')) {
+        const topic = data.replace('advice_topic_', '');
+        await sendChatAction(chatId, 'typing');
+        const linkedUid = await getLinkedFirebaseUid(query.from.id);
+        if (!linkedUid) {
+            await sendMessage(chatId, '❌ 請先綁定帳號。使用 /link 開始。');
+            return;
+        }
+        try {
+            const report = await financial_advisor_service_1.financialAdvisorService.getFinancialAdvice(linkedUid, topic);
+            await sendMessage(chatId, financial_advisor_service_1.financialAdvisorService.formatForLine(report));
+        }
+        catch (err) {
+            v2_1.logger.error('[Telegram] Advice error:', err);
+            await sendMessage(chatId, '❌ 產生建議時發生錯誤，請稍後再試。');
+        }
     }
 }
 async function handleExpenseCategory(chatId, telegramUserId, category) {
@@ -742,11 +1311,11 @@ async function sendMessage(chatId, text, options) {
         });
         if (!response.ok) {
             const error = await response.text();
-            console.error('[Telegram] Send message failed:', error);
+            v2_1.logger.error('[Telegram] Send message failed:', error);
         }
     }
     catch (error) {
-        console.error('[Telegram] Send message error:', error);
+        v2_1.logger.error('[Telegram] Send message error:', error);
     }
 }
 async function sendChatAction(chatId, action) {
@@ -759,7 +1328,7 @@ async function sendChatAction(chatId, action) {
         });
     }
     catch (error) {
-        console.error('[Telegram] Chat action error:', error);
+        v2_1.logger.error('[Telegram] Chat action error:', error);
     }
 }
 async function answerCallbackQuery(callbackQueryId, text) {
@@ -772,7 +1341,7 @@ async function answerCallbackQuery(callbackQueryId, text) {
         });
     }
     catch (error) {
-        console.error('[Telegram] Answer callback error:', error);
+        v2_1.logger.error('[Telegram] Answer callback error:', error);
     }
 }
 // ================================
@@ -787,7 +1356,7 @@ async function getLinkedFirebaseUid(telegramUserId) {
         return null;
     }
     catch (error) {
-        console.error('[Telegram] Get linked UID error:', error);
+        v2_1.logger.error('[Telegram] Get linked UID error:', error);
         return null;
     }
 }

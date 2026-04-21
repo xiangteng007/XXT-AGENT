@@ -18,16 +18,30 @@ from langchain_core.messages import AIMessage
 from ..state import InvestmentAgentState, InvestmentPlan, InvestmentAction
 from ...tools.ai_gateway import ai_gateway
 from ...tools.trade_planner import trade_planner
+from ...tools.market_data import market_data
+from ...backtest_engine import BacktestEngine
 
 logger = logging.getLogger("investment-brain.nodes.strategy_planner")
 
 STRATEGY_PLANNER_SYSTEM_PROMPT = """你是 XXT-AGENT 投資分析系統的「策略規劃師」(Strategy Planner)。
 
+【強制規則】你的輸出為投資分析建議（Advisory），非交易指令（Order）。
+每個 action 必須附帶 rationale（判斷依據）和明確的 entry_price / stop_loss / take_profit。
+禁止在 rationale 欄位使用「執行」「下單」「立即買入」等行動性語言。
+使用「建議」「評估」「參考進場區間」等框架性語言。
+
+⚠️ 核心原則（不可違反）：
+1. 你的所有輸出均為「分析建議」(Analysis Advice)，不是交易指令
+2. 任何建議必須附帶明確的判斷依據（judgment_basis）
+3. 目標價格必須有具體推導邏輯（不可僅給出數字）
+4. 永遠不可使用「立即買入」「馬上賣出」等行動性語言，改用「建議觀察買入區間」「可考慮分批減倉」
+
 你的職責是：
-1. 根據市場分析師的 MarketInsight 制定投資計畫
+1. 根據市場分析師的 MarketInsight 制定投資建議方案
 2. 考慮用戶的風險偏好（conservative / moderate / aggressive）
-3. 定義明確的進出場規則和失效條件
+3. 定義明確的觀察區間和失效條件
 4. 提供多情境概率評估
+5. 所有數字必須有推導邏輯
 
 以 JSON 格式輸出：
 {
@@ -37,10 +51,14 @@ STRATEGY_PLANNER_SYSTEM_PROMPT = """你是 XXT-AGENT 投資分析系統的「策
       "symbol": "AAPL",
       "allocation_pct": 10.0,
       "entry_price": 180.0,
+      "entry_rationale": "根據 [具體技術指標/支撐位/均線] 推導的建議進場觀察區間",
       "stop_loss": 175.0,
+      "stop_loss_rationale": "跌破 [具體支撐位/前低] 即失效",
       "take_profit": 195.0,
+      "take_profit_rationale": "接近 [具體壓力位/前高/黃金比率目標]",
       "timeframe": "1-3d",
-      "rationale": "原因（繁體中文）"
+      "rationale": "綜合判斷原因（繁體中文），不使用行動性語言",
+      "basis_of_judgment": "本建議的具體支撐數據（如: 技術指標、事件）"
     }
   ],
   "scenarios": {
@@ -51,7 +69,9 @@ STRATEGY_PLANNER_SYSTEM_PROMPT = """你是 XXT-AGENT 投資分析系統的「策
   "confidence": 0-100,
   "invalidation_rules": ["失效條件 1", "失效條件 2"],
   "risk_flags": ["high_vol", "news_uncertainty", "thin_liquidity"],
-  "rationale": "整體策略說明（繁體中文）"
+  "rationale": "整體策略說明（繁體中文）",
+  "judgment_basis": "本建議依據以下分析形成：1) [技術面數據] 2) [基本面事件] 3) [情緒面訊號]",
+  "advisory_disclaimer": "本分析僅供參考，不構成投資建議。投資人應自行評估風險。"
 }
 
 規則：
@@ -60,7 +80,10 @@ STRATEGY_PLANNER_SYSTEM_PROMPT = """你是 XXT-AGENT 投資分析系統的「策
 - 積極型: 單一持倉 ≤ 20%, 可 BUY/HEDGE
 - 至少 2 條 invalidation_rules
 - 三情境概率總和 ≈ 100
-- 使用繁體中文"""
+- judgment_basis 為必填欄位
+- entry_rationale、stop_loss_rationale、take_profit_rationale 為必填
+- 使用繁體中文
+- 所有價格目標必須標註推導來源（技術指標名稱或歷史水位）"""
 
 RISK_ALLOCATION = {
     "conservative": {"max_pct": 10, "preferred": ["WATCH", "HOLD"]},
@@ -82,10 +105,26 @@ async def strategy_planner_node(state: InvestmentAgentState) -> dict:
     timeframe = state.get("timeframe", "1h")
     risk_level = state.get("risk_level", "moderate")
     market_insight = state.get("market_insight")
+    verification_insight = state.get("verification_insight")
     price_snapshot = state.get("price_snapshot")
     strategy_memory = state.get("strategy_memory")
 
     logger.info(f"[Strategy Planner] Planning for {symbol} (risk={risk_level})")
+
+    # ── Step 0: Backtest Engine Integration ────────────────
+    backtest_metrics = {}
+    try:
+        candles = await market_data.get_candles(symbol, interval="1d", range_str="1y")
+        # Ensure it is formatted for BacktestEngine
+        # market_data.get_candles returns: {"timestamp":..., "datetime":..., "open":..., "high":..., "low":..., "close":..., "volume":...}
+        # BacktestEngine expects: {"date":..., "close":...}
+        bt_data = [{"date": c["datetime"], "close": c["close"]} for c in candles]
+        
+        engine = BacktestEngine(risk_free_rate=0.02)
+        backtest_metrics = engine.calculate_metrics(bt_data)
+        logger.info(f"[Strategy Planner] Backtest metrics computed for {symbol}")
+    except Exception as e:
+        logger.warning(f"[Strategy Planner] Backtest Engine unavailable: {e}")
 
     # ── Step 1: Get baseline from Trade Planner Worker ─────
     baseline_plan = {}
@@ -118,12 +157,36 @@ Trade Planner Worker 基準計畫:
 - 情境: {baseline_plan.get('scenarios', {})}
 """
 
+    verification_text = ""
+    if verification_insight:
+        verification_text = f"""
+OSINT 資訊驗證員報告:
+- 可信度: {'高' if verification_insight.get('is_credible') else '低 (潛在假消息/過度炒作)'}
+- 情緒背離: {'有背離現象' if verification_insight.get('sentiment_divergence') else '無背離'}
+- 確認催化劑: {', '.join(verification_insight.get('verified_catalysts', []))}
+- 炒作/假消息警告: {', '.join(verification_insight.get('fake_or_hype_warnings', []))}
+- 摘要: {verification_insight.get('summary', '')}
+
+特別指示：如果可信度低或有情緒背離，必須降低單一持倉上限或偏向 WATCH/HEDGE。
+"""
+
     memory_text = ""
     if strategy_memory:
         if strategy_memory.get("successful_patterns"):
             memory_text += f"\n歷史成功模式: {', '.join(strategy_memory['successful_patterns'][:3])}"
         if strategy_memory.get("failed_patterns"):
             memory_text += f"\n歷史失敗模式（避免）: {', '.join(strategy_memory['failed_patterns'][:3])}"
+
+    backtest_text = ""
+    if backtest_metrics and "error" not in backtest_metrics:
+        backtest_text = f"""
+Backtest Engine 歷史回測表現 (過去 1 年基準):
+- 總報酬率: {backtest_metrics.get('total_return', 0) * 100:.2f}%
+- 年化報酬率: {backtest_metrics.get('annualized_return', 0) * 100:.2f}%
+- 年化波動率: {backtest_metrics.get('annualized_volatility', 0) * 100:.2f}%
+- 夏普值 (Sharpe): {backtest_metrics.get('sharpe_ratio', 0):.2f}
+- 最大回撤 (Max Drawdown): {backtest_metrics.get('max_drawdown', 0) * 100:.2f}%
+"""
 
     planning_prompt = f"""
 標的: {symbol}
@@ -133,8 +196,10 @@ Trade Planner Worker 基準計畫:
 偏好動作類型: {risk_config['preferred']}
 
 {insight_text}
+{verification_text}
 {baseline_text}
 {memory_text}
+{backtest_text}
 
 目前價格: {price_snapshot.get('price', 0) if price_snapshot else '不可用'}
 
@@ -167,6 +232,7 @@ Trade Planner Worker 基準計畫:
             take_profit=a.get("take_profit"),
             timeframe=a.get("timeframe", timeframe),
             rationale=a.get("rationale", ""),
+            basis_of_judgment=a.get("basis_of_judgment", "無具體依據提供"),
         ))
 
     investment_plan = InvestmentPlan(
@@ -220,6 +286,7 @@ def _build_fallback_plan(
                 "take_profit": None,
                 "timeframe": timeframe,
                 "rationale": "AI 服務暫時不可用，建議觀察等待",
+                "basis_of_judgment": "無",
             }
         ],
         "scenarios": {

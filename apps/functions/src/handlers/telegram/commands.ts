@@ -23,7 +23,7 @@ const db = getFirestore();
 
 export async function handleCommand(chatId: number, telegramUserId: number, text: string): Promise<void> {
     const [command] = text.split(' ');
-    const commandName = command.replace('@\\w+$', '').toLowerCase();
+    const commandName = command.replace(/@\w+$/, '').toLowerCase();
 
     switch (commandName) {
         case '/start': await sendWelcomeMessage(chatId); break;
@@ -42,6 +42,7 @@ export async function handleCommand(chatId: number, telegramUserId: number, text
         case '/report': await sendMonthlyReport(chatId, telegramUserId); break;
         case '/link': await sendLinkInstructions(chatId, telegramUserId); break;
         case '/settings': await sendSettingsMenu(chatId); break;
+        case '/agents': await sendAgentsDirectory(chatId); break;
         default:
             await sendMessage(chatId, '❓ 不認識的指令。輸入 /help 查看可用指令。');
     }
@@ -102,6 +103,7 @@ export async function sendHelpMessage(chatId: number): Promise<void> {
 /balance - 帳戶餘額
 /link - 綁定帳號
 /settings - 設定
+/agents - 探員目錄
 
 **自然語言（AI 理財）：**
 • 「買了 10 張 0050，均價 150」
@@ -645,6 +647,37 @@ export async function sendFinancialAdvice(chatId: number, telegramUserId: number
                 [{ text: '📋 稅務優化', callback_data: 'advice_topic_tax_optimization' }],
                 [{ text: '🏖️ 退休規劃', callback_data: 'advice_topic_retirement_planning' }],
                 [{ text: '🛡️ 緊急預備金', callback_data: 'advice_topic_emergency_fund' }],
+                [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+            ],
+        },
+    });
+}
+
+export async function sendAgentsDirectory(chatId: number): Promise<void> {
+    await sendChatAction(chatId, 'typing');
+    const msg = `👥 **探員目錄 (Agents Directory)**
+
+• **Argus** - 全域情報官 (Global Intelligence)
+• **Lumi** - 室內設計/空間總管 (Spatial Manager)
+• **Nova** - 人資與協調長 (HR & Coordination)
+• **Rusty** - 財務/計價總管 (Financial Manager)
+• **Titan** - BIM/結構工程 (Structural Engineer)
+• **Aero** - 無人機硬體架構師
+• **Pulse** - 嵌入式韌體工程師
+• **Forge** - 先進製造專家 (微型化)
+• **Matter** - 應用材料科學家
+• **Nexus** - AI演化研究員
+• **Aegis** - 測試與可靠度工程師
+• **Radar** - 射頻與資安工程師
+• **Weaver** - 人機介面設計師
+• **Volt** - 能源與動力專家
+
+💡 請在 Dashboard 查看探員詳細狀態：
+https://xxt-agent.vercel.app/agents`;
+
+    await sendMessage(chatId, msg, {
+        reply_markup: {
+            inline_keyboard: [
                 [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
             ],
         },

@@ -159,6 +159,65 @@ export interface Transaction {
     source: 'open_banking' | 'notification' | 'manual';
     createdAt: FirebaseFirestore.Timestamp;
 }
+export interface InvestmentHolding {
+    id: string;
+    symbol: string;
+    name: string;
+    type: 'tw_stock' | 'us_stock' | 'etf' | 'fund' | 'bond' | 'crypto';
+    shares: number;
+    avgCost: number;
+    currentPrice?: number;
+    marketValue?: number;
+    unrealizedPnL?: number;
+    currency: 'TWD' | 'USD';
+    brokerId?: string;
+    lastUpdated?: FirebaseFirestore.Timestamp;
+}
+export interface InvestmentTransaction {
+    id: string;
+    holdingId: string;
+    type: 'buy' | 'sell' | 'dividend' | 'split';
+    symbol: string;
+    shares: number;
+    price: number;
+    totalAmount: number;
+    fee: number;
+    date: string;
+    note?: string;
+    createdAt: FirebaseFirestore.Timestamp;
+}
+export interface Loan {
+    id: string;
+    name: string;
+    type: 'mortgage' | 'car' | 'personal' | 'student' | 'credit';
+    lender: string;
+    principal: number;
+    interestRate: number;
+    termMonths: number;
+    startDate: string;
+    monthlyPayment: number;
+    remainingBalance: number;
+    totalPaid?: number;
+    nextPaymentDate?: string;
+    isActive: boolean;
+    createdAt: FirebaseFirestore.Timestamp;
+}
+export interface TaxProfile {
+    annualSalary?: number;
+    businessIncome?: number;
+    investmentIncome?: number;
+    rentalIncome?: number;
+    otherIncome?: number;
+    deductions: TaxDeduction[];
+    filingStatus: 'single' | 'married' | 'business';
+    dependents: number;
+    year: number;
+}
+export interface TaxDeduction {
+    type: 'insurance' | 'medical' | 'education' | 'charity' | 'mortgage_interest' | 'rental' | 'disability' | 'childcare' | 'elderly_care' | 'other';
+    amount: number;
+    description: string;
+}
 export interface VehicleProfile {
     id: string;
     make: string;
@@ -283,6 +342,10 @@ export declare const BUTLER_COLLECTIONS: {
     readonly PROFILE: "users/{uid}/butler/profile";
     readonly HEALTH_DAILY: "users/{uid}/butler/health/daily/{date}";
     readonly TRANSACTIONS: "users/{uid}/butler/finance/transactions";
+    readonly INVESTMENTS: "users/{uid}/butler/finance/investments";
+    readonly INVESTMENT_TRADES: "users/{uid}/butler/finance/investment_trades";
+    readonly LOANS: "users/{uid}/butler/finance/loans";
+    readonly TAX_PROFILES: "users/{uid}/butler/finance/tax";
     readonly FUEL_LOGS: "users/{uid}/butler/vehicles/{vehicleId}/fuel";
     readonly MAINTENANCE: "users/{uid}/butler/vehicles/{vehicleId}/maintenance";
     readonly REMINDERS: "users/{uid}/butler/reminders";

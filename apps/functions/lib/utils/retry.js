@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.retry = retry;
 exports.sleep = sleep;
 exports.isRetryableError = isRetryableError;
+const v2_1 = require("firebase-functions/v2");
 /**
  * Retry a function with exponential backoff
  */
@@ -28,7 +29,7 @@ async function retry(fn, options) {
             }
             // Cap the delay
             delay = Math.min(delay, maxDelayMs);
-            console.log(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`);
+            v2_1.logger.info(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`);
             await sleep(delay);
         }
     }

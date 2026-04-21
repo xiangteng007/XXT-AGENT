@@ -4,6 +4,7 @@ exports.verifySignature = verifySignature;
 exports.replyMessage = replyMessage;
 exports.getUserProfile = getUserProfile;
 exports.getMessageContent = getMessageContent;
+const v2_1 = require("firebase-functions/v2");
 const secrets_service_1 = require("./secrets.service");
 const validation_1 = require("../utils/validation");
 const LINE_API_BASE = 'https://api.line.me/v2/bot';
@@ -36,13 +37,13 @@ async function replyMessage(replyToken, integrationId, messages) {
         });
         if (!response.ok) {
             const errorBody = await response.text();
-            console.error('LINE reply failed:', response.status, errorBody);
+            v2_1.logger.error('LINE reply failed:', response.status, errorBody);
             return false;
         }
         return true;
     }
     catch (error) {
-        console.error('LINE reply error:', error);
+        v2_1.logger.error('LINE reply error:', error);
         return false;
     }
 }
@@ -67,7 +68,7 @@ async function getUserProfile(userId, integrationId) {
         };
     }
     catch (error) {
-        console.error('Get profile error:', error);
+        v2_1.logger.error('Get profile error:', error);
         return null;
     }
 }
@@ -89,7 +90,7 @@ async function getMessageContent(messageId, integrationId) {
         return Buffer.from(arrayBuffer);
     }
     catch (error) {
-        console.error('Get content error:', error);
+        v2_1.logger.error('Get content error:', error);
         return null;
     }
 }

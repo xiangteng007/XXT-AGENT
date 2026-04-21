@@ -16,6 +16,7 @@ exports.clearCacheByPrefix = clearCacheByPrefix;
 exports.cleanupExpiredCache = cleanupExpiredCache;
 exports.withCache = withCache;
 exports.getCacheStats = getCacheStats;
+const v2_1 = require("firebase-functions/v2");
 const firestore_1 = require("firebase-admin/firestore");
 // Cache configuration
 const CACHE_COLLECTION = '_cache';
@@ -55,7 +56,7 @@ async function getFromCache(key) {
         return data.value;
     }
     catch (error) {
-        console.warn('[Cache] Get error:', error);
+        v2_1.logger.warn('[Cache] Get error:', error);
         return null;
     }
 }
@@ -79,7 +80,7 @@ async function setInCache(key, value, ttlSeconds = DEFAULT_TTL_SECONDS) {
         await db.collection(CACHE_COLLECTION).doc(sanitizeKey(key)).set(entry);
     }
     catch (error) {
-        console.warn('[Cache] Set error:', error);
+        v2_1.logger.warn('[Cache] Set error:', error);
     }
 }
 /**
@@ -92,7 +93,7 @@ async function deleteFromCache(key) {
         await db.collection(CACHE_COLLECTION).doc(sanitizeKey(key)).delete();
     }
     catch (error) {
-        console.warn('[Cache] Delete error:', error);
+        v2_1.logger.warn('[Cache] Delete error:', error);
     }
 }
 /**
@@ -123,7 +124,7 @@ async function clearCacheByPrefix(prefix) {
         await batch.commit();
     }
     catch (error) {
-        console.warn('[Cache] Clear by prefix error:', error);
+        v2_1.logger.warn('[Cache] Clear by prefix error:', error);
     }
     return cleared;
 }
@@ -144,11 +145,11 @@ async function cleanupExpiredCache() {
         const batch = db.batch();
         snapshot.docs.forEach(doc => batch.delete(doc.ref));
         await batch.commit();
-        console.log(`[Cache] Cleaned up ${snapshot.size} expired entries`);
+        v2_1.logger.info(`[Cache] Cleaned up ${snapshot.size} expired entries`);
         return snapshot.size;
     }
     catch (error) {
-        console.warn('[Cache] Cleanup error:', error);
+        v2_1.logger.warn('[Cache] Cleanup error:', error);
         return 0;
     }
 }

@@ -46,6 +46,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.processScheduledReminders = processScheduledReminders;
 exports.cleanupNotificationMarkers = cleanupNotificationMarkers;
+const v2_1 = require("firebase-functions/v2");
 const admin = __importStar(require("firebase-admin"));
 const notification_service_1 = require("./notification.service");
 const vehicle_service_1 = require("./vehicle.service");
@@ -73,7 +74,7 @@ async function processScheduledReminders() {
                 result.errors.push(`User ${uid}: ${error.message}`);
             }
         }
-        console.log(`[Reminders] Processed: ${result.processed}, Sent: ${result.sent}`);
+        v2_1.logger.info(`[Reminders] Processed: ${result.processed}, Sent: ${result.sent}`);
         return result;
     }
     catch (error) {

@@ -17,4 +17,6 @@ export { ScheduleService, scheduleService } from '../schedule.service';
 export type { CalendarEvent, EventCategory, RecurrenceRule, Reminder, DailySchedule, TimeSlot, ReminderNotification, WeekOverview, } from '../schedule.service';
 export { BusinessService, businessService } from '../business.service';
 export type { DesignProject, ProjectType, ProjectStatus, ProjectPhase, Client, BusinessMetrics, ProjectTimelineItem, BusinessDashboard, } from '../business.service';
+export { getButlerContext } from '../butler-data.service';
+export type { ButlerContext } from '../butler-data.service';
 //# sourceMappingURL=index.d.ts.map

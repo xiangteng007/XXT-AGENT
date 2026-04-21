@@ -1,12 +1,3 @@
-/**
- * Main LINE webhook handler (Refactored for Queue Architecture)
- *
- * Changes from original:
- * 1. Uses actual rawBody (not JSON.stringify)
- * 2. Enqueues jobs instead of direct Notion writes
- * 3. Fast ACK (< 3 seconds target)
- * 4. Deduplication via processedEvents
- */
 import { Request, Response } from 'express';
 /**
  * Main LINE webhook handler

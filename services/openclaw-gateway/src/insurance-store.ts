@@ -221,15 +221,15 @@ export async function updatePolicyStatus(policyId: string, status: PolicyStatus)
 }
 
 /** 標記保單已連結帳本 */
-export async function markLedgerLinked(policyId: string, entryId: string): Promise<void> {
+export async function markLedgerLinked(policyId: string, entryId?: string): Promise<void> {
   const p = policiesStore.get(policyId);
-  if (p) { p.ledger_linked = true; p.ledger_entry_id = entryId; }
+  if (p) { p.ledger_linked = true; if (entryId) p.ledger_entry_id = entryId; }
   try {
     const db = await getFirestore();
     if (db) {
-      await db.collection('insurance_policies').doc(policyId).update({
-        ledger_linked: true, ledger_entry_id: entryId,
-      });
+      const updateData: any = { ledger_linked: true };
+      if (entryId) updateData.ledger_entry_id = entryId;
+      await db.collection('insurance_policies').doc(policyId).update(updateData);
     }
   } catch { /* ignore */ }
 }

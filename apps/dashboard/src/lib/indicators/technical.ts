@@ -35,6 +35,12 @@ export interface TechnicalIndicators {
     // Trend
     adx14: number;
     trendStrength: 'strong_up' | 'weak_up' | 'neutral' | 'weak_down' | 'strong_down';
+
+    // Advanced technical analysis
+    patterns: string[];
+    supports: number[];
+    resistances: number[];
+    fibonacci: { level: number; price: number }[];
 }
 
 /**
@@ -83,19 +89,49 @@ export function calculateRSI(prices: number[], period: number = 14): number {
 }
 
 /**
- * Calculate MACD
+ * Calculate MACD (Moving Average Convergence Divergence)
+ * 
+ * MACD Line  = EMA(12) - EMA(26)
+ * Signal     = 9-period EMA of the MACD Line series
+ * Histogram  = MACD Line - Signal Line
  */
 export function calculateMACD(prices: number[]): { value: number; signal: number; histogram: number } {
-    const ema12 = calculateEMA(prices, 12);
-    const ema26 = calculateEMA(prices, 26);
-    const macdLine = ema12 - ema26;
+    if (prices.length < 26) return { value: 0, signal: 0, histogram: 0 };
 
-    // Signal line is 9-period EMA of MACD
-    // Simplified: use current MACD as signal approximation
-    const signal = macdLine * 0.8; // Approximation
-    const histogram = macdLine - signal;
+    // Build the full MACD line series by computing EMA12 - EMA26 at each point
+    const k12 = 2 / (12 + 1);
+    const k26 = 2 / (26 + 1);
 
-    return { value: macdLine, signal, histogram };
+    let ema12 = prices[0];
+    let ema26 = prices[0];
+    const macdSeries: number[] = [];
+
+    for (let i = 1; i < prices.length; i++) {
+        ema12 = prices[i] * k12 + ema12 * (1 - k12);
+        ema26 = prices[i] * k26 + ema26 * (1 - k26);
+        // Only start recording MACD once we have enough data for EMA26
+        if (i >= 25) {
+            macdSeries.push(ema12 - ema26);
+        }
+    }
+
+    const currentMACD = macdSeries[macdSeries.length - 1] || 0;
+
+    // Signal line: 9-period EMA of the MACD series
+    let signal = 0;
+    if (macdSeries.length >= 9) {
+        const kSignal = 2 / (9 + 1);
+        signal = macdSeries[0];
+        for (let i = 1; i < macdSeries.length; i++) {
+            signal = macdSeries[i] * kSignal + signal * (1 - kSignal);
+        }
+    } else {
+        signal = currentMACD;
+    }
+
+    const histogram = currentMACD - signal;
+
+    return { value: currentMACD, signal, histogram };
 }
 
 /**
@@ -149,7 +185,10 @@ export function calculateATR(candles: OHLCV[], period: number = 14): number {
 }
 
 /**
- * Calculate Stochastic Oscillator
+ * Calculate Stochastic Oscillator (%K and %D)
+ * 
+ * %K = ((Close - Lowest Low) / (Highest High - Lowest Low)) × 100
+ * %D = 3-period SMA of %K values ("slow stochastic")
  */
 export function calculateStochastic(candles: OHLCV[], kPeriod: number = 14, dPeriod: number = 3): {
     k: number;
@@ -157,17 +196,27 @@ export function calculateStochastic(candles: OHLCV[], kPeriod: number = 14, dPer
 } {
     if (candles.length < kPeriod) return { k: 50, d: 50 };
 
-    const slice = candles.slice(-kPeriod);
-    const highestHigh = Math.max(...slice.map(c => c.high));
-    const lowestLow = Math.min(...slice.map(c => c.low));
-    const currentClose = candles[candles.length - 1].close;
+    // Compute %K for the last dPeriod bars to build the %D (SMA of %K)
+    const kValues: number[] = [];
+    const barsNeeded = Math.min(candles.length - kPeriod + 1, dPeriod);
 
-    const k = highestHigh === lowestLow
-        ? 50
-        : ((currentClose - lowestLow) / (highestHigh - lowestLow)) * 100;
+    for (let offset = barsNeeded - 1; offset >= 0; offset--) {
+        const endIdx = candles.length - offset;
+        const startIdx = endIdx - kPeriod;
+        const window = candles.slice(startIdx, endIdx);
+        const highestHigh = Math.max(...window.map(c => c.high));
+        const lowestLow = Math.min(...window.map(c => c.low));
+        const closePrice = candles[endIdx - 1].close;
 
-    // Simplified D calculation
-    const d = k; // Should be SMA of K
+        const kVal = highestHigh === lowestLow
+            ? 50
+            : ((closePrice - lowestLow) / (highestHigh - lowestLow)) * 100;
+        kValues.push(kVal);
+    }
+
+    const k = kValues[kValues.length - 1];
+    // %D = Simple Moving Average of the %K values
+    const d = kValues.reduce((sum, v) => sum + v, 0) / kValues.length;
 
     return { k, d };
 }
@@ -223,6 +272,183 @@ export function determineTrendStrength(
 }
 
 /**
+ * Detect Candlestick Patterns
+ */
+export function detectCandlestickPatterns(candles: OHLCV[]): string[] {
+    if (candles.length < 3) return [];
+    const patterns: string[] = [];
+    const current = candles[candles.length - 1];
+    const prev = candles[candles.length - 2];
+    const prev2 = candles[candles.length - 3];
+    
+    const bodySize = Math.abs(current.close - current.open);
+    const upperShadow = current.high - Math.max(current.open, current.close);
+    const lowerShadow = Math.min(current.open, current.close) - current.low;
+    const totalSize = current.high - current.low || 1;
+
+    // Doji
+    if (bodySize <= totalSize * 0.1) patterns.push('Doji');
+    
+    // Hammer / Hanging Man (small body, long lower shadow, small/no upper shadow)
+    if (lowerShadow > bodySize * 2 && upperShadow < bodySize * 0.5) patterns.push('Hammer');
+
+    // Shooting Star (small body, long upper shadow, small/no lower shadow)
+    if (upperShadow > bodySize * 2 && lowerShadow < bodySize * 0.5) patterns.push('Shooting Star');
+    
+    // Engulfing
+    const isBullishEngulfing = current.close > current.open && prev.close < prev.open && current.close > prev.open && current.open < prev.close;
+    const isBearishEngulfing = current.close < current.open && prev.close > prev.open && current.close < prev.open && current.open > prev.close;
+    
+    if (isBullishEngulfing) patterns.push('Bullish Engulfing');
+    if (isBearishEngulfing) patterns.push('Bearish Engulfing');
+
+    // Morning Star
+    // Prev2: Bearish, Prev: Small body (star), Current: Bullish
+    const prev2IsBearish = prev2.close < prev2.open;
+    const prevIsSmall = Math.abs(prev.close - prev.open) <= (prev.high - prev.low) * 0.3;
+    const currentIsBullish = current.close > current.open;
+    if (prev2IsBearish && prevIsSmall && currentIsBullish && current.close > (prev2.open + prev2.close) / 2) {
+        patterns.push('Morning Star');
+    }
+
+    // Evening Star
+    // Prev2: Bullish, Prev: Small body (star), Current: Bearish
+    const prev2IsBullish = prev2.close > prev2.open;
+    const currentIsBearish = current.close < current.open;
+    if (prev2IsBullish && prevIsSmall && currentIsBearish && current.close < (prev2.open + prev2.close) / 2) {
+        patterns.push('Evening Star');
+    }
+
+    return patterns;
+}
+
+/**
+ * Calculate Support and Resistance (Basic local extrema detection)
+ */
+export function calculateSupportResistance(candles: OHLCV[], lookback: number = 20): { supports: number[], resistances: number[] } {
+    if (candles.length < lookback * 2) return { supports: [], resistances: [] };
+    
+    const supports: number[] = [];
+    const resistances: number[] = [];
+    
+    // Simple logic: find local minimums and maximums over the given window
+    for (let i = lookback; i < candles.length - lookback; i++) {
+        let isSupport = true;
+        let isResistance = true;
+        const currentLow = candles[i].low;
+        const currentHigh = candles[i].high;
+        
+        for (let j = i - lookback; j <= i + lookback; j++) {
+            if (i === j) continue;
+            if (candles[j].low < currentLow) isSupport = false;
+            if (candles[j].high > currentHigh) isResistance = false;
+        }
+        
+        if (isSupport) supports.push(currentLow);
+        if (isResistance) resistances.push(currentHigh);
+    }
+    
+    // Keep only the last 3 levels for cleaner output
+    return {
+        supports: Array.from(new Set(supports)).sort((a,b) => b-a).slice(-3),
+        resistances: Array.from(new Set(resistances)).sort((a,b) => a-b).slice(-3)
+    };
+}
+
+/**
+ * Calculate Fibonacci Retracement Levels based on recent High/Low
+ */
+export function calculateFibonacciRetracement(candles: OHLCV[], lookback: number = 50): { level: number, price: number }[] {
+    if (candles.length < lookback) return [];
+    
+    const slice = candles.slice(-lookback);
+    const high = Math.max(...slice.map(c => c.high));
+    const low = Math.min(...slice.map(c => c.low));
+    const diff = high - low;
+    
+    // Assume current trend is up (low to high) for generic levels
+    // In a real scenario, this would depend on the detected trend direction.
+    return [
+        { level: 0, price: high },
+        { level: 0.236, price: high - diff * 0.236 },
+        { level: 0.382, price: high - diff * 0.382 },
+        { level: 0.5, price: high - diff * 0.5 },
+        { level: 0.618, price: high - diff * 0.618 },
+        { level: 0.786, price: high - diff * 0.786 },
+        { level: 1, price: low },
+    ];
+}
+
+/**
+ * Calculate ADX (Average Directional Index)
+ */
+export function calculateADX(candles: OHLCV[], period: number = 14): number {
+    if (candles.length < period * 2) return 25;
+
+    let trs: number[] = [];
+    let pdms: number[] = [];
+    let ndms: number[] = [];
+
+    for (let i = 1; i < candles.length; i++) {
+        const high = candles[i].high;
+        const low = candles[i].low;
+        const prevHigh = candles[i - 1].high;
+        const prevLow = candles[i - 1].low;
+        const prevClose = candles[i - 1].close;
+
+        const tr = Math.max(
+            high - low,
+            Math.abs(high - prevClose),
+            Math.abs(low - prevClose)
+        );
+
+        let pdm = high - prevHigh;
+        let ndm = prevLow - low;
+
+        if (pdm < 0) pdm = 0;
+        if (ndm < 0) ndm = 0;
+        if (pdm > ndm) ndm = 0;
+        else if (ndm > pdm) pdm = 0;
+        else { pdm = 0; ndm = 0; }
+
+        trs.push(tr);
+        pdms.push(pdm);
+        ndms.push(ndm);
+    }
+
+    // Initial smoothed values
+    let smoothedTR = trs.slice(0, period).reduce((a, b) => a + b, 0);
+    let smoothedPDM = pdms.slice(0, period).reduce((a, b) => a + b, 0);
+    let smoothedNDM = ndms.slice(0, period).reduce((a, b) => a + b, 0);
+
+    let dxs: number[] = [];
+
+    for (let i = period; i < trs.length; i++) {
+        const pdi = smoothedTR === 0 ? 0 : (smoothedPDM / smoothedTR) * 100;
+        const ndi = smoothedTR === 0 ? 0 : (smoothedNDM / smoothedTR) * 100;
+        const dx = (pdi + ndi) === 0 ? 0 : (Math.abs(pdi - ndi) / (pdi + ndi)) * 100;
+        dxs.push(dx);
+
+        if (i < trs.length - 1) {
+            smoothedTR = smoothedTR - (smoothedTR / period) + trs[i + 1];
+            smoothedPDM = smoothedPDM - (smoothedPDM / period) + pdms[i + 1];
+            smoothedNDM = smoothedNDM - (smoothedNDM / period) + ndms[i + 1];
+        }
+    }
+
+    if (dxs.length < period) return 25;
+
+    let adx = dxs.slice(0, period).reduce((a, b) => a + b, 0) / period;
+
+    for (let i = period; i < dxs.length; i++) {
+        adx = ((adx * (period - 1)) + dxs[i]) / period;
+    }
+
+    return adx;
+}
+
+
+/**
  * Calculate all technical indicators from OHLCV data
  */
 export function calculateAllIndicators(candles: OHLCV[]): TechnicalIndicators {
@@ -251,6 +477,10 @@ export function calculateAllIndicators(candles: OHLCV[]): TechnicalIndicators {
     const currentPrice = closes[closes.length - 1] || 0;
     const trendStrength = determineTrendStrength(currentPrice, sma20, sma60, rsi14, macd);
 
+    const patterns = detectCandlestickPatterns(candles);
+    const { supports, resistances } = calculateSupportResistance(candles);
+    const fibonacci = calculateFibonacciRetracement(candles);
+
     return {
         sma5, sma10, sma20, sma60, sma120,
         ema12, ema26,
@@ -261,7 +491,11 @@ export function calculateAllIndicators(candles: OHLCV[]): TechnicalIndicators {
         atr14,
         vwap,
         volumeRatio,
-        adx14: 25, // Placeholder - ADX calculation is complex
+        adx14: calculateADX(candles, 14),
         trendStrength,
+        patterns,
+        supports,
+        resistances,
+        fibonacci,
     };
 }

@@ -56,5 +56,22 @@ export const novaSystemPrompt: PromptProfile = {
 合規問題引用條文（勞基法第 X 條）。
 計算結果以表格呈現，最後提供行動摘要。
 數字較大時使用千分位逗號。
-繁體中文，準確且親切，有溫度。`
+【UI Widget: HR Calculator】
+當你需要進行薪資結算、勞健保試算或勞退提撥計算時，請在回覆中包含以下 JSON 格式的代碼區塊（使用 \`\`\`json 標籤），前端系統將自動渲染薪資試算面板：
+
+\`\`\`json
+{
+  "__widget": "HRWidget",
+  "calculationType": "salary",
+  "data": { 
+    "baseSalary": 40000, 
+    "overtimePay": 1500, 
+    "laborInsurance": 840, 
+    "healthInsurance": 620, 
+    "pension": 2400,
+    "netPay": 40040
+  }
+}
+\`\`\`
+`
 };

@@ -1,0 +1,61 @@
+{
+  "description": "Current virtual portfolio state.",
+  "properties": {
+    "total_value": {
+      "title": "Total Value",
+      "type": "number"
+    },
+    "cash": {
+      "title": "Cash",
+      "type": "number"
+    },
+    "positions": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Positions",
+      "type": "array"
+    },
+    "daily_pnl": {
+      "title": "Daily Pnl",
+      "type": "number"
+    },
+    "daily_pnl_pct": {
+      "title": "Daily Pnl Pct",
+      "type": "number"
+    },
+    "max_drawdown": {
+      "title": "Max Drawdown",
+      "type": "number"
+    },
+    "sharpe_ratio": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Sharpe Ratio"
+    },
+    "win_rate": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Win Rate"
+    },
+    "total_trades": {
+      "title": "Total Trades",
+      "type": "integer"
+    }
+  },
+  "title": "PortfolioState",
+  "type": "object"
+}

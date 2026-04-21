@@ -46,6 +46,7 @@ exports.sendLineNotification = sendLineNotification;
 exports.sendLineFlexMessage = sendLineFlexMessage;
 exports.sendTelegramNotification = sendTelegramNotification;
 exports.sendFcmNotification = sendFcmNotification;
+const v2_1 = require("firebase-functions/v2");
 const admin = __importStar(require("firebase-admin"));
 const db = admin.firestore();
 // ================================
@@ -55,7 +56,7 @@ const LINE_API_BASE = 'https://api.line.me/v2/bot';
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
 async function sendLineNotification(lineUserId, message, title) {
     if (!LINE_CHANNEL_ACCESS_TOKEN) {
-        console.error('LINE_CHANNEL_ACCESS_TOKEN not configured');
+        v2_1.logger.error('LINE_CHANNEL_ACCESS_TOKEN not configured');
         return false;
     }
     const messageBody = title ? `📢 ${title}\n\n${message}` : message;
@@ -78,13 +79,13 @@ async function sendLineNotification(lineUserId, message, title) {
         });
         if (!response.ok) {
             const error = await response.text();
-            console.error('LINE push failed:', error);
+            v2_1.logger.error('LINE push failed:', error);
             return false;
         }
         return true;
     }
     catch (error) {
-        console.error('LINE push error:', error);
+        v2_1.logger.error('LINE push error:', error);
         return false;
     }
 }
@@ -122,7 +123,7 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_API_BASE = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 async function sendTelegramNotification(chatId, message, title) {
     if (!TELEGRAM_BOT_TOKEN) {
-        console.error('TELEGRAM_BOT_TOKEN not configured');
+        v2_1.logger.error('TELEGRAM_BOT_TOKEN not configured');
         return false;
     }
     const messageText = title ? `📢 *${title}*\n\n${message}` : message;
@@ -138,13 +139,13 @@ async function sendTelegramNotification(chatId, message, title) {
         });
         if (!response.ok) {
             const error = await response.text();
-            console.error('Telegram send failed:', error);
+            v2_1.logger.error('Telegram send failed:', error);
             return false;
         }
         return true;
     }
     catch (error) {
-        console.error('Telegram send error:', error);
+        v2_1.logger.error('Telegram send error:', error);
         return false;
     }
 }
@@ -185,7 +186,7 @@ async function sendFcmNotification(fcmTokens, title, body, data) {
         };
     }
     catch (error) {
-        console.error('FCM send error:', error);
+        v2_1.logger.error('FCM send error:', error);
         return { success: 0, failure: fcmTokens.length };
     }
 }
@@ -218,7 +219,7 @@ class NotificationService {
             channels: {},
         };
         if (!settings) {
-            console.warn(`No notification settings for user ${payload.userId}`);
+            v2_1.logger.warn(`No notification settings for user ${payload.userId}`);
             return result;
         }
         // Check Do Not Disturb

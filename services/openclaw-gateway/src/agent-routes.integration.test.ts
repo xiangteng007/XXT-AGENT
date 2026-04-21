@@ -535,6 +535,39 @@ describe('Accountant Ledger API', () => {
     expect(res.status).toBe(400);
   });
 
+  it('POST /agents/accountant/ledger → 201 with single write when no bank_account_id', async () => {
+    const res = await request(app)
+      .post('/agents/accountant/ledger')
+      .send({
+        type: 'income',
+        category: 'engineering_payment',
+        description: '工程款 (現金)',
+        amount: 100000,
+        payment_method: 'cash'
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.entry_id).toBeDefined();
+    expect(res.body.dual_write).toBe(false);
+    expect(res.body.bank_txn_id).toBeUndefined();
+  });
+
+  it('POST /agents/accountant/ledger → 201 with dual write when bank_transfer and bank_account_id provided', async () => {
+    const res = await request(app)
+      .post('/agents/accountant/ledger')
+      .send({
+        type: 'expense',
+        category: 'material',
+        description: '材料費 (匯款)',
+        amount: 50000,
+        payment_method: 'bank_transfer',
+        bank_account_id: 'esun_co_1234'
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.entry_id).toBeDefined();
+    expect(res.body.dual_write).toBe(true);
+    expect(res.body.bank_txn_id).toBeDefined();
+  });
+
   it('GET /agents/accountant/report/summary → 200 with period/income/expense', async () => {
     const period = new Date().toISOString().slice(0, 7).replace('-', ''); // e.g. '202604'
     const res = await request(app).get(`/agents/accountant/report/summary?period=${period}`);
@@ -557,6 +590,33 @@ describe('Accountant Ledger API', () => {
     const res = await request(app).get('/agents/accountant/bank/accounts');
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('accounts');
+  });
+
+  it('POST /agents/accountant/bank/txn → 400 when required fields missing', async () => {
+    const res = await request(app)
+      .post('/agents/accountant/bank/txn')
+      .send({ type: 'credit', amount: 1000 }); // 缺 description
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('type, amount, description required');
+  });
+
+  it('POST /agents/accountant/bank/txn → 400 when type is invalid', async () => {
+    const res = await request(app)
+      .post('/agents/accountant/bank/txn')
+      .send({ type: 'invalid_type', amount: 1000, description: '測試' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('type must be credit or debit');
+  });
+
+  it('POST /agents/accountant/taxplan → 200 valid request test (mode: deduct)', async () => {
+    const res = await request(app)
+      .post('/agents/accountant/taxplan')
+      .send({ year: 2026, mode: 'deduct' });
+    expect(res.status).toBe(200);
+    expect(res.body.mode).toBe('deduct');
+    expect(res.body.year).toBe(2026);
+    expect(res.body.deductions).toBeDefined();
+    expect(res.body.total_deductible).toBeDefined();
   });
 });
 

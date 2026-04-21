@@ -65,11 +65,13 @@ export function useRealTimeQuotes(
     // Update quotes from polling data
     useEffect(() => {
         if (polledData?.quotes) {
-            const newQuotes = new Map(quotes);
-            polledData.quotes.forEach((q: RealTimeQuote) => {
-                newQuotes.set(q.symbol, { ...q, source: 'polling' });
+            setQuotes(prev => {
+                const newQuotes = new Map(prev);
+                polledData.quotes.forEach((q: RealTimeQuote) => {
+                    newQuotes.set(q.symbol, { ...q, source: 'polling' });
+                });
+                return newQuotes;
             });
-            setQuotes(newQuotes);
         }
     }, [polledData]);
 

@@ -21,6 +21,71 @@ import type { EntityType } from '../entity';
 
 export const reconcileRouter = Router();
 
+
+// ── P1-05 / A-04: Redis-based idempotency lock with renewal ──────
+let redisClient: import('ioredis').default | null = null;
+
+// A-04: Minimum lock TTL in seconds. Renewed every LOCK_RENEW_INTERVAL_MS.
+const LOCK_BASE_TTL_SEC    = 60;   // initial grant
+const LOCK_RENEW_INTERVAL_MS = 15_000; // renew every 15s
+
+async function getRedisForLock(): Promise<import('ioredis').default | null> {
+  if (redisClient) return redisClient;
+  try {
+    const Redis = (await import('ioredis')).default;
+    redisClient = new Redis(process.env['REDIS_URL'] || 'redis://localhost:6379', {
+      connectTimeout: 2000,
+      maxRetriesPerRequest: 1,
+    });
+    return redisClient;
+  } catch (e) {
+    logger.warn(`[Reconcile] Redis unavailable for lock: ${e}`);
+    return null;
+  }
+}
+
+/**
+ * Acquire a distributed lock for reconciliation.
+ * Returns { acquired, lockKey } — caller must call releaseReconcileLock(lockKey).
+ * A-04: Uses LOCK_BASE_TTL_SEC; caller should start a renewal timer.
+ */
+async function acquireReconcileLock(
+  period: string,
+  entity: string,
+): Promise<{ acquired: boolean; lockKey: string }> {
+  const lockKey = `reconcile_lock:${period}:${entity}`;
+  const redis = await getRedisForLock();
+  if (!redis) return { acquired: true, lockKey }; // graceful degradation
+  const result = await redis.set(lockKey, '1', 'EX', LOCK_BASE_TTL_SEC, 'NX');
+  return { acquired: result === 'OK', lockKey };
+}
+
+/**
+ * A-04: Start a lock renewal timer that refreshes TTL every 15s.
+ * Must call clearInterval on the returned timer when the task completes.
+ */
+async function startLockRenewal(lockKey: string): Promise<ReturnType<typeof setInterval> | null> {
+  const redis = await getRedisForLock();
+  if (!redis) return null;
+  const timer = setInterval(async () => {
+    try {
+      await redis.expire(lockKey, LOCK_BASE_TTL_SEC);
+      logger.debug(`[Reconcile] Lock renewed: ${lockKey}`);
+    } catch (e) {
+      logger.warn(`[Reconcile] Lock renewal failed: ${e}`);
+    }
+  }, LOCK_RENEW_INTERVAL_MS);
+  // Allow Node.js to exit even if timer is active
+  if (timer.unref) timer.unref();
+  return timer;
+}
+
+async function releaseReconcileLock(lockKey: string): Promise<void> {
+  const redis = await getRedisForLock();
+  if (!redis) return;
+  await redis.del(lockKey);
+}
+
 // ── GET /system/reconcile ─────────────────────────────────────
 /**
  * @openapi
@@ -93,6 +158,22 @@ reconcileRouter.post('/', async (req: Request, res: Response) => {
 
   logger.info(`[Reconcile/POST] period=${period ?? 'all'} entity=${entity_type ?? 'all'} persist=${persist}`);
 
+  // A-04: Acquire distributed lock with renewal support
+  const lockPeriod = period ?? 'all';
+  const lockEntity = entity_type ?? 'all';
+  const { acquired: lockAcquired, lockKey } = await acquireReconcileLock(lockPeriod, lockEntity);
+  if (!lockAcquired) {
+    res.status(409).json({
+      ok: false,
+      code: 'RECONCILE_IN_PROGRESS',
+      message: `對帳 ${lockPeriod}/${lockEntity} 正在進行中，請稍後再試`,
+    });
+    return;
+  }
+
+  // A-04: Start lock renewal to handle long-running reconciliation
+  const renewalTimer = await startLockRenewal(lockKey);
+
   try {
     const report = await performReconciliation(period, entity_type);
 
@@ -122,6 +203,10 @@ reconcileRouter.post('/', async (req: Request, res: Response) => {
   } catch (err) {
     logger.error(`[Reconcile] Error: ${err}`);
     res.status(500).json({ error: '對帳引擎異常', details: String(err) });
+  } finally {
+    // A-04: Stop renewal timer and release lock
+    if (renewalTimer) clearInterval(renewalTimer);
+    await releaseReconcileLock(lockKey);
   }
 });
 

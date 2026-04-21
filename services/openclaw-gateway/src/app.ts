@@ -142,10 +142,11 @@ app.use("/audit", firebaseAuthMiddleware, auditRouter);
 app.use("/regulation", firebaseAuthMiddleware, regulationRouter);
 
 // Division 5 — Financial Layer (強制 PRIVATE + 財務速率限制)
-app.use("/agents/accountant", firebaseAuthMiddleware, financeRateLimit, accountantRouter);
-app.use("/agents/guardian", firebaseAuthMiddleware, financeRateLimit, guardianRouter);
-app.use("/agents/finance", firebaseAuthMiddleware, financeRateLimit, financeRouter);
-app.use("/agents/nova", firebaseAuthMiddleware, financeRateLimit, novaRouter);  // E-1: Nova HR
+// Note: firebaseAuthMiddleware already applied at the /agents level (L137)
+app.use("/agents/accountant", financeRateLimit, accountantRouter);
+app.use("/agents/guardian",   financeRateLimit, guardianRouter);
+app.use("/agents/finance",    financeRateLimit, financeRouter);
+app.use("/agents/nova",       financeRateLimit, novaRouter);  // E-1: Nova HR
 
 // Division 6 — Engineering & Spatial Design Layer
 app.use("/agents/bim", firebaseAuthMiddleware, bimRouter);

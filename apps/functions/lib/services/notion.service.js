@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.writeToNotion = writeToNotion;
 exports.getDatabaseSchema = getDatabaseSchema;
 exports.updateNotionPage = updateNotionPage;
+const v2_1 = require("firebase-functions/v2");
 const client_1 = require("@notionhq/client");
 const secrets_service_1 = require("./secrets.service");
 const retry_1 = require("../utils/retry");
@@ -63,7 +64,7 @@ async function writeToNotion(params) {
     }
     catch (error) {
         const err = error;
-        console.error('Notion write error:', {
+        v2_1.logger.error('Notion write error:', {
             status: err.status,
             code: err.code,
             message: err.message,
@@ -102,7 +103,7 @@ async function getDatabaseSchema(integrationId, databaseId) {
         return schema;
     }
     catch (error) {
-        console.error('Get database schema error:', error);
+        v2_1.logger.error('Get database schema error:', error);
         return null;
     }
 }

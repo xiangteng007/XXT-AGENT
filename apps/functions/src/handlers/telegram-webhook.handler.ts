@@ -397,7 +397,7 @@ async function handlePhotoMessage(chatId: number, telegramUserId: number, messag
 
 async function handleCommand(chatId: number, telegramUserId: number, text: string): Promise<void> {
     const [command] = text.split(' ');
-    const commandName = command.replace('@\\w+$', '').toLowerCase();
+    const commandName = command.replace(/@\w+$/, '').toLowerCase();
 
     switch (commandName) {
         case '/start':

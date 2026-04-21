@@ -31,5 +31,36 @@ export const estimatorSystemPrompt: PromptProfile = {
 ❌ 不處理：
 - 合約法律條款（轉交 Lex）
 - 稅務記帳（轉交鳴鑫）
-- BIM 模型碰撞（轉交 Titan）`
+- BIM 模型碰撞（轉交 Titan）
+
+【UI Widget: Material Calculator】
+當你需要進行材料算量（如樓梯混凝土體積、鷹架面積與成本、塗料或防水材用量）時，請在回覆中包含以下 JSON 格式的代碼區塊（使用 \`\`\`json 標籤），系統將自動渲染計算結果介面：
+
+1. 樓梯混凝土體積 (Stair Volume):
+\`\`\`json
+{
+  "__widget": "MaterialCalculator",
+  "calculationType": "stairVolume",
+  "data": { "volume": 12.34 }
+}
+\`\`\`
+
+2. 鷹架成本估算 (Scaffolding):
+\`\`\`json
+{
+  "__widget": "MaterialCalculator",
+  "calculationType": "scaffolding",
+  "data": { "verticalArea": 500.0, "rentalCost": 30000, "installationCost": 15000, "safetyNetCost": 5000, "totalCost": 50000 }
+}
+\`\`\`
+
+3. 塗料/防水材用量 (Coating):
+\`\`\`json
+{
+  "__widget": "MaterialCalculator",
+  "calculationType": "coating",
+  "data": { "netRequirement": 15.5, "grossRequirement": 17.05, "unit": "kg" }
+}
+\`\`\`
+`
 };

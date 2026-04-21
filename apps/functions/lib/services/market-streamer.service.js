@@ -40,6 +40,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.runMarketStreamer = runMarketStreamer;
+const v2_1 = require("firebase-functions/v2");
 const admin = __importStar(require("firebase-admin"));
 const market_types_1 = require("../types/market.types");
 const metrics_service_1 = require("./metrics.service");
@@ -49,12 +50,12 @@ const db = admin.firestore();
  * Main streamer function - run every minute
  */
 async function runMarketStreamer() {
-    console.log('[Market Streamer] Starting cycle...');
+    v2_1.logger.info('[Market Streamer] Starting cycle...');
     const result = { processed: 0, signals: 0, errors: [] };
     try {
         // Get all enabled watchlist items
         const watchlistItems = await getEnabledWatchlistItems();
-        console.log(`[Market Streamer] Found ${watchlistItems.length} watchlist items`);
+        v2_1.logger.info(`[Market Streamer] Found ${watchlistItems.length} watchlist items`);
         if (watchlistItems.length === 0) {
             return result;
         }
@@ -81,18 +82,18 @@ async function runMarketStreamer() {
                 }
             }
             catch (err) {
-                console.error(`[Market Streamer] Error processing ${quote.symbol}:`, err);
+                v2_1.logger.error(`[Market Streamer] Error processing ${quote.symbol}:`, err);
                 result.errors.push(`${quote.symbol}: ${(0, error_handling_1.getErrorMessage)(err)}`);
             }
         }
         // Log metrics
         await (0, metrics_service_1.incrementMetric)('system', 'market_quotes_processed', result.processed);
         await (0, metrics_service_1.incrementMetric)('system', 'market_signals_generated', result.signals);
-        console.log('[Market Streamer] Cycle complete:', result);
+        v2_1.logger.info('[Market Streamer] Cycle complete:', result);
         return result;
     }
     catch (err) {
-        console.error('[Market Streamer] Fatal error:', err);
+        v2_1.logger.error('[Market Streamer] Fatal error:', err);
         result.errors.push((0, error_handling_1.getErrorMessage)(err));
         return result;
     }
@@ -118,22 +119,79 @@ async function getEnabledWatchlistItems() {
     return items;
 }
 /**
- * Fetch quotes from market data provider
+ * Fetch quotes from market data providers
+ * - Taiwan stocks (4-digit): TWSE API (free, no key)
+ * - US stocks: Yahoo Finance v8 (free, no key)
  */
 async function fetchQuotes(symbols) {
-    // TODO: Implement actual market data provider adapter
-    // For now, return mock data
-    console.log(`[Market Streamer] Fetching quotes for ${symbols.length} symbols`);
-    return symbols.map(symbol => ({
-        symbol,
-        price: 100 + Math.random() * 10,
-        open: 99,
-        high: 105,
-        low: 98,
-        prevClose: 100,
-        volume: Math.floor(1000000 + Math.random() * 500000),
-        ts: new Date(),
-    }));
+    v2_1.logger.info(`[Market Streamer] Fetching ${symbols.length} symbols`);
+    const results = [];
+    // Split TW vs US symbols
+    const twSymbols = symbols.filter(s => /^\d{4}$/.test(s) || s.endsWith('.TW'));
+    const usSymbols = symbols.filter(s => !twSymbols.includes(s));
+    // Fetch TWSE quotes
+    if (twSymbols.length > 0) {
+        try {
+            const codes = twSymbols.map(s => s.replace('.TW', '')).join('|');
+            const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${twSymbols.map(s => `tse_${s.replace('.TW', '')}.tw`).join('|')}`;
+            const resp = await fetch(url, { headers: { 'User-Agent': 'XXT-AGENT/1.0' } });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data.msgArray) {
+                    for (const q of data.msgArray) {
+                        const price = parseFloat(q.z) || parseFloat(q.y) || 0;
+                        results.push({
+                            symbol: q.c,
+                            price,
+                            open: parseFloat(q.o) || price,
+                            high: parseFloat(q.h) || price,
+                            low: parseFloat(q.l) || price,
+                            prevClose: parseFloat(q.y) || price,
+                            volume: parseInt(q.v) || 0,
+                            ts: new Date(parseInt(q.tlong)),
+                        });
+                    }
+                }
+            }
+            v2_1.logger.info(`[Market Streamer] TWSE: ${results.length}/${twSymbols.length} fetched (codes: ${codes})`);
+        }
+        catch (e) {
+            v2_1.logger.error('[Market Streamer] TWSE fetch error:', e);
+        }
+    }
+    // Fetch US quotes via Yahoo Finance v8
+    if (usSymbols.length > 0) {
+        try {
+            const joined = usSymbols.join(',');
+            const url = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${joined}&range=1d&interval=1d`;
+            const resp = await fetch(url, { headers: { 'User-Agent': 'XXT-AGENT/1.0' } });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data.spark?.result) {
+                    for (const r of data.spark.result) {
+                        const m = r.response?.[0]?.meta;
+                        if (m) {
+                            results.push({
+                                symbol: r.symbol,
+                                price: m.regularMarketPrice,
+                                open: m.regularMarketOpen || m.regularMarketPrice,
+                                high: m.regularMarketDayHigh || m.regularMarketPrice,
+                                low: m.regularMarketDayLow || m.regularMarketPrice,
+                                prevClose: m.previousClose || m.regularMarketPrice,
+                                volume: m.regularMarketVolume || 0,
+                                ts: new Date(),
+                            });
+                        }
+                    }
+                }
+            }
+            v2_1.logger.info(`[Market Streamer] Yahoo: ${results.length - twSymbols.length}/${usSymbols.length} fetched`);
+        }
+        catch (e) {
+            v2_1.logger.error('[Market Streamer] Yahoo fetch error:', e);
+        }
+    }
+    return results;
 }
 /**
  * Store tick data
@@ -266,7 +324,7 @@ async function createSignal(quote, detection) {
         disclaimer: '僅供參考，非投資建議。投資有風險，請謹慎評估。',
     };
     await db.collection('market_signals').add(signal);
-    console.log(`[Market Streamer] Created signal: ${signal.signalType} for ${quote.symbol}`);
+    v2_1.logger.info(`[Market Streamer] Created signal: ${signal.signalType} for ${quote.symbol}`);
 }
 /**
  * Create fused event from market signal
