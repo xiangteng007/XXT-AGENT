@@ -13,6 +13,7 @@ import {
     appendMessage,
     getPreviousMessages,
 } from '../../services/butler/conversation-session.service';
+import { isOllamaAvailable, getAvailableModels } from '../../services/local-inference.service';
 
 import { investmentService } from '../../services/butler/investment.service';
 import { loanService } from '../../services/butler/loan.service';
@@ -896,12 +897,23 @@ export async function sendMemoryStatus(chatId: number, telegramUserId: number): 
             messageCount = history.length;
         } catch (_) { /* ignore */ }
 
+        // Check local Ollama status
+        const ollamaOnline = await isOllamaAvailable();
+        const ollamaModels = ollamaOnline ? await getAvailableModels() : [];
+        const ollamaStatus = ollamaOnline
+            ? `✅ 運作中 (${ollamaModels.length > 0 ? ollamaModels.slice(0, 3).join(', ') : '模型載入中...'})`
+            : '❌ 離線（雲端 fallback 啟動中）';
+
         const msg = `🧠 **記憶狀態**
 
 👤 用戶 ID：\`${userId}\`
 🤖 當前探員：**${currentAgent.toUpperCase()}**
 💬 對話輪數：${messageCount} 條記錄
 🕐 最後活躍：${lastActive}
+
+─────────────────
+*推理引擎狀態：*
+🖥️ 本地 Ollama (RTX 4080)：${ollamaStatus}
 
 ─────────────────
 *記憶層狀態：*

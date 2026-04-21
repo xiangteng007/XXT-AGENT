@@ -11,6 +11,7 @@ import OpenAI from 'openai';
 import { getSecret } from '../config/secrets';
 import { getButlerContext } from './butler-data.service';
 import { sanitizeForAI, sanitizeAIOutput } from '../utils/ai-sanitizer';
+import { routedChat } from './inference-router.service';
 
 let geminiClient: GoogleGenerativeAI | null = null;
 let openaiClient: OpenAI | null = null;
@@ -340,6 +341,11 @@ async function generateOpenAIResponse(
 
 /**
  * Generate AI response for user message
+ * 
+ * Routing strategy (Local-First):
+ *   1. Classify task → local-safe vs cloud-required
+ *   2. Local-safe  → Ollama on RTX 4080 (zero token cost)
+ *   3. Cloud-required or Ollama offline → Gemini / OpenAI (fallback)
  */
 export async function generateAIResponse(
     userMessage: string,
@@ -351,7 +357,6 @@ export async function generateAIResponse(
         activeAgent?: string;
     }
 ): Promise<string> {
-    const selectedModel = context?.model || 'gemini-1.5-flash';
     const activeAgent = context?.activeAgent || 'butler';
     const systemPrompt = getAgentPrompt(activeAgent);
 
@@ -360,13 +365,13 @@ export async function generateAIResponse(
     const safeMessage = sanitized.text;
 
     try {
-        // Build conversation context
+        // Build conversation context string (for cloud fallback)
         let contextPrompt = '';
         if (context?.previousMessages?.length) {
             contextPrompt = '\n\n最近的對話：\n' + context.previousMessages.slice(-3).join('\n');
         }
 
-        // Fetch personalized data from Firestore
+        // Fetch personalized data from Firestore (shared by local + cloud paths)
         if (userId) {
             try {
                 const personalData = await getButlerContext(userId);
@@ -387,29 +392,43 @@ export async function generateAIResponse(
             }
         }
 
-        let response: string;
-
-        if (selectedModel.startsWith('gpt')) {
-            response = await generateOpenAIResponse(
-                safeMessage,
-                selectedModel as 'gpt-4o' | 'gpt-4o-mini',
-                systemPrompt,
-                contextPrompt
-            );
-        } else {
-            response = await generateGeminiResponse(
+        // ── Local-First Routing ─────────────────────────────────────────────
+        // Cloud fallback closure: called only if Ollama is unavailable or task
+        // requires live data (market prices, news, OCR, etc.)
+        const cloudFallback = async (): Promise<string> => {
+            const selectedModel = context?.model || 'gemini-1.5-flash';
+            if (selectedModel.startsWith('gpt')) {
+                return generateOpenAIResponse(
+                    safeMessage,
+                    selectedModel as 'gpt-4o' | 'gpt-4o-mini',
+                    systemPrompt,
+                    contextPrompt
+                );
+            }
+            return generateGeminiResponse(
                 safeMessage,
                 selectedModel as 'gemini-1.5-flash' | 'gemini-1.5-pro',
                 systemPrompt,
                 contextPrompt
             );
-        }
+        };
 
-        logger.info(`[Butler AI] Generated response using ${selectedModel} for user ${userId || 'unknown'}`);
-        return sanitizeAIOutput(response);
+        const result = await routedChat(
+            safeMessage,
+            activeAgent,
+            context?.previousMessages || [],
+            cloudFallback
+        );
+
+        logger.info(
+            `[Butler AI] Response via ${result.backend}/${result.model} ` +
+            `for user=${userId || 'unknown'} agent=${activeAgent}`
+        );
+
+        return sanitizeAIOutput(result.text);
 
     } catch (err) {
-        logger.error('[Butler AI] AI generation failed, using fallback:', err);
+        logger.error('[Butler AI] AI generation failed, using keyword fallback:', err);
         return generateFallbackResponse(userMessage);
     }
 }
