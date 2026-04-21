@@ -29,6 +29,7 @@ export interface ConversationSession {
     lastActiveAt: string;
     sessionId: string;
     model?: string;
+    activeAgent?: string;
 }
 
 // ================================
@@ -121,6 +122,17 @@ export async function getPreviousMessages(userId: string): Promise<string[]> {
 export async function clearSession(userId: string): Promise<void> {
     await sessionRef(userId).delete();
     logger.info(`[Session] Cleared for ${userId}`);
+}
+
+/**
+ * Switch the active agent for a user's session
+ */
+export async function switchAgent(userId: string, agentId: string): Promise<void> {
+    const session = await getSession(userId);
+    session.activeAgent = agentId;
+    session.lastActiveAt = new Date().toISOString();
+    await sessionRef(userId).set(session, { merge: true });
+    logger.info(`[Session] Switched agent to ${agentId} for ${userId}`);
 }
 
 /**
