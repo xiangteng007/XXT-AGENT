@@ -11,6 +11,8 @@ Cloud Run service that:
 from __future__ import annotations
 
 import json
+import html
+import re
 import logging
 from aiohttp import web, ClientSession, ClientTimeout
 
@@ -48,23 +50,65 @@ def parse_command(text: str) -> tuple[str, list[str]]:
 
 # format_analyze_result removed as we now use multi-agent streaming format.
 
+def format_for_telegram(text: str) -> str:
+    """Format Markdown text to Telegram-supported HTML."""
+    if not text:
+        return ""
+    # Escape HTML to prevent Telegram parsing errors with arbitrary < >
+    text = html.escape(text)
+    
+    # Code blocks (multi-line)
+    text = re.sub(r'```[a-zA-Z0-9_-]*\n?(.*?)\n?```', r'<pre><code>\1</code></pre>', text, flags=re.DOTALL)
+    
+    # Code: `code` -> <code>code</code>
+    text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
+    
+    # Headers: ### Header -> <b>Header</b>
+    text = re.sub(r'(?m)^###\s+(.+)$', r'<b>\1</b>', text)
+    text = re.sub(r'(?m)^##\s+(.+)$', r'<b>\1</b>', text)
+    text = re.sub(r'(?m)^#\s+(.+)$', r'<b>\1</b>', text)
+    
+    # Bold: **text** -> <b>text</b>
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+    
+    # Bold: __text__ -> <b>text</b>
+    text = re.sub(r'__(.+?)__', r'<b>\1</b>', text)
+    
+    # Italic: *text* -> <i>text</i> (Be careful with list items)
+    text = re.sub(r'(?<!\*)\*(?!\s)(.+?)(?<!\s)\*(?!\*)', r'<i>\1</i>', text)
+    
+    # Italic: _text_ -> <i>text</i>
+    text = re.sub(r'(?<!_)_(?!\s)(.+?)(?<!\s)_(?!_)', r'<i>\1</i>', text)
+    
+    # Links: [text](url) -> <a href="url">text</a>
+    text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', text)
+    
+    # Lists: - item or * item -> • item
+    text = re.sub(r'(?m)^\s*[-*]\s+', r'• ', text)
+    
+    return text
+
 async def call_agent_and_reply(gateway_url: str, bot_token: str, chat_id: str, agent_path: str, msg: str, prefix: str):
     """Helper to call OpenClaw gateway agent and send reply back to Telegram asynchronously."""
     if not gateway_url:
         await send_message(bot_token, chat_id, "❌ Gateway URL not configured.")
         return
 
+    # Add hidden system instructions for better layout output on Telegram
+    enhanced_msg = f"{msg}\n\n[系統內部提示：請務必使用條理分明的 Markdown 結構回答，並適度加入 Emoji 符號、粗體重點及清單排版，以利 Telegram 上清楚呈現。]"
+
     try:
         timeout = ClientTimeout(total=60)
         async with ClientSession(timeout=timeout) as session:
             async with session.post(
                 f"{gateway_url}{agent_path}",
-                json={"message": msg, "session_id": f"tg-{chat_id}"},
+                json={"message": enhanced_msg, "session_id": f"tg-{chat_id}"},
                 headers={"Authorization": "Bearer dev-local-bypass"},
             ) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     reply = data.get("reply") or data.get("answer") or "無回應"
+                    reply = format_for_telegram(reply)
                     # Truncate if too long for Telegram (max 4096)
                     if len(reply) > 4000:
                         reply = reply[:4000] + "...\n(截斷)"
@@ -74,22 +118,66 @@ async def call_agent_and_reply(gateway_url: str, bot_token: str, chat_id: str, a
     except Exception as e:
         await send_message(bot_token, chat_id, f"❌ Request failed: {e}")
 
-async def handle_telegram(request: web.Request) -> web.Response:
-    """Handle Telegram webhook updates."""
-    settings: Settings = request.app["settings"]
-    store: WatchStore = request.app["watch_store"]
-
-    # Verify secret token if configured
-    if settings.telegram_webhook_secret_token:
-        hdr = get_secret_header(request)
-        if hdr != settings.telegram_webhook_secret_token:
-            logger.warning("Invalid webhook secret token")
-            return web.Response(status=401)
-
+async def ollama_direct_reply(ollama_url: str, model: str, bot_token: str, chat_id: str, msg: str, prefix: str):
+    """Helper to call Ollama directly for fallback chat."""
+    if not ollama_url:
+        await send_message(bot_token, chat_id, "❌ Ollama URL not configured.")
+        return
     try:
-        update = await request.json()
-    except Exception:
-        return web.Response(status=400)
+        import re
+        timeout = ClientTimeout(total=90)
+        async with ClientSession(timeout=timeout) as session:
+            async with session.post(
+                f"{ollama_url}/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": "你是使用者的專屬貼身管家，請用繁體中文禮貌、專業地回答。請務必使用條理分明的 Markdown 結構（如粗體、清單、段落）及適當的 Emoji 符號，以利閱讀。"},
+                        {"role": "user", "content": msg + "\n/no_think"}
+                    ],
+                    "temperature": 0.3,
+                    "stream": False,
+                }
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    reply = data.get("choices", [{}])[0].get("message", {}).get("content", "無回應")
+                    
+                    # Remove <think> blocks if any
+                    reply = re.sub(r"<think>.*?</think>", "", reply, flags=re.DOTALL).strip()
+                    reply = format_for_telegram(reply)
+                    
+                    # Truncate if too long for Telegram (max 4096)
+                    if len(reply) > 4000:
+                        reply = reply[:4000] + "...\n(截斷)"
+                        
+                    await send_message(bot_token, chat_id, f"{prefix}\n\n{reply}", parse_mode="HTML")
+                else:
+                    await send_message(bot_token, chat_id, f"❌ Ollama error: HTTP {resp.status}")
+    except Exception as e:
+        await send_message(bot_token, chat_id, f"❌ Request failed: {e}")
+
+async def process_update(update: dict, settings: Settings, store: WatchStore) -> None:
+    """Process a single Telegram update."""
+
+    if "callback_query" in update:
+        cb = update["callback_query"]
+        data = cb.get("data", "")
+        msg = cb.get("message", {})
+        chat_id = str(msg.get("chat", {}).get("id", ""))
+        
+        if data.startswith("agent_switch_"):
+            agent_name = data.replace("agent_switch_", "")
+            store.set_agent(chat_id, agent_name)
+            
+            token = settings.telegram_bot_token
+            async with ClientSession(timeout=ClientTimeout(total=5)) as session:
+                await session.post(
+                    f"https://api.telegram.org/bot{token}/answerCallbackQuery",
+                    json={"callback_query_id": cb["id"], "text": f"已切換至 {agent_name} 代理"}
+                )
+            await send_message(token, chat_id, f"✅ 已成功切換至 {agent_name} 代理。請輸入您的問題：")
+        return
 
     msg = update.get("message") or update.get("edited_message") or {}
     chat = msg.get("chat") or {}
@@ -97,7 +185,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
     text = msg.get("text", "") or ""
 
     if not chat_id:
-        return web.Response(status=204)
+        return
 
     cmd, args = parse_command(text)
     
@@ -105,7 +193,14 @@ async def handle_telegram(request: web.Request) -> web.Response:
     if cmd == "NATURAL_LANGUAGE":
         user_text = args[0]
         if len(user_text) < 2:
-            return web.Response(status=204)
+            return
+            
+        current_agent = store.get_agent(chat_id)
+        if current_agent != "butler":
+            # Direct route to selected agent
+            await send_message(settings.telegram_bot_token, chat_id, f"🤖 <b>[{current_agent}]</b> 收到訊息，處理中...", parse_mode="HTML")
+            asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, f"/agents/{current_agent}/chat", user_text, f"🤖 <b>{current_agent} 回覆：</b>"))
+            return
             
         await send_message(settings.telegram_bot_token, chat_id, "🤖 <b>[大廳管家]</b> 收到大廳訊息，意圖分發中...", parse_mode="HTML")
         
@@ -117,7 +212,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                     json={
                         "model": settings.ollama_model,
                         "messages": [
-                            {"role": "system", "content": "你是一個意圖分發器。如果使用者的訊息與「股票、台積電、行情、分析」有關，回覆『INVEST: 股票代碼(若無明確代碼則輸出2330.TW或SPY)』。如果是會計、報稅，回覆『ACC』。如果是法規、法律，回覆『REG』。如果是保險，回覆『INS』。如果是貸款、融資，回覆『LOAN』。如果是個人資訊、公司資訊或客戶資訊，回覆『INFO』。如果是車輛保養資料，回覆『VEHICLE』。如果是工程進度、BIM或營造管理，回覆『ENG』。其他閒聊請回覆『CHAT』。"},
+                            {"role": "system", "content": "你是一個意圖分發器。如果使用者的訊息與「股票、台積電、行情、分析」有關，回覆『INVEST: 股票代碼(若無明確代碼則輸出2330.TW或SPY)』。如果是會計、報稅，回覆『ACC』。如果是法規、法律，回覆『REG』。如果是保險，回覆『INS』。如果是貸款、融資，回覆『LOAN』。如果是個人資訊、公司資訊或客戶資訊，回覆『INFO』。如果是車輛保養資料，回覆『VEHICLE』。如果是工程進度、BIM或營造管理，回覆『ENG』。如果是行政事務、一般客服問題，回覆『ADMIN』。其他閒聊請回覆『CHAT』。"},
                             {"role": "user", "content": user_text + "\n/no_think"}
                         ],
                         "temperature": 0.1
@@ -154,6 +249,9 @@ async def handle_telegram(request: web.Request) -> web.Response:
             elif intent_result.startswith("ENG"):
                 cmd = "/eng"
                 args = [user_text]
+            elif intent_result.startswith("ADMIN"):
+                cmd = "/admin"
+                args = [user_text]
             else:
                 cmd = "/ai"
                 args = [user_text]
@@ -170,17 +268,72 @@ async def handle_telegram(request: web.Request) -> web.Response:
                 cmd = "/ai"
                 args = [user_text]
     
+    # /agents
+    if cmd == "/agents":
+        import json
+        keyboard = {
+            "inline_keyboard": [
+                [{"text": "🤖 小秘書(預設)", "callback_data": "agent_switch_butler"}],
+                [
+                    {"text": "🏗️ Titan (建築/BIM)", "callback_data": "agent_switch_titan"},
+                    {"text": "✨ Lumi (室內設計)", "callback_data": "agent_switch_lumi"}
+                ],
+                [
+                    {"text": "📐 Rusty (估算工務)", "callback_data": "agent_switch_rusty"},
+                    {"text": "💰 Accountant (財務)", "callback_data": "agent_switch_accountant"}
+                ],
+                [
+                    {"text": "🛡️ Argus (資安情報)", "callback_data": "agent_switch_argus"},
+                    {"text": "👩 Nova (人力營運)", "callback_data": "agent_switch_nova"}
+                ],
+                [
+                    {"text": "📈 Investment (投資)", "callback_data": "agent_switch_investment"},
+                    {"text": "⚙️ Forge (機電軟韌)", "callback_data": "agent_switch_forge"}
+                ],
+                [
+                    {"text": "🔬 Matter (材料科學)", "callback_data": "agent_switch_matter"},
+                    {"text": "☀️ Nexus (系統架構)", "callback_data": "agent_switch_nexus"}
+                ],
+                [
+                    {"text": "🌱 Zenith (永續ESG)", "callback_data": "agent_switch_zenith"},
+                    {"text": "🎯 Apex (行銷拓展)", "callback_data": "agent_switch_apex"}
+                ],
+                [
+                    {"text": "⚖️ Vertex (法務合規)", "callback_data": "agent_switch_vertex"},
+                    {"text": "📣 Echo (公關客服)", "callback_data": "agent_switch_echo"}
+                ]
+            ]
+        }
+        await send_message(
+            settings.telegram_bot_token, 
+            chat_id, 
+            f"🤖 <b>AI 代理團隊</b>\n\n目前選擇的代理：<b>{store.get_agent(chat_id)}</b>\n\n請選擇您需要切換的專屬專家：",
+            parse_mode="HTML",
+            reply_markup=json.dumps(keyboard)
+        )
+        return
+
     # /start, /help
     if cmd in ("/help", "/start"):
         await send_message(
             settings.telegram_bot_token,
             chat_id,
             "🤖 <b>XXT-AGENT 總部大廳 (Lobby Portal)</b>\n\n"
+            "<b>🤵 個人貼身管家 (Personal Butler)：</b>\n"
+            "• /butler &lt;問題&gt; - 呼叫貼身管家為您服務\n\n"
             "<b>🏢 企業與個人管理 (Nova)：</b>\n"
             "• /info &lt;問題&gt; - 查詢客戶、公司與個人資訊\n"
             "• /vehicle &lt;問題&gt; - 查詢車輛保養資料\n\n"
-            "<b>🏗️ 工程管理 (Titan & Rusty)：</b>\n"
-            "• /eng &lt;問題&gt; - 查詢工程進度、BIM與營造管理\n\n"
+            "<b>🏗️ 工程管理 (Titan, Rusty & Lumi)：</b>\n"
+            "• /eng &lt;問題&gt; - 查詢工程進度、BIM與營造管理\n"
+            "• /estimator &lt;問題&gt; - 查詢工程估算與計價\n"
+            "• /interior &lt;問題&gt; - 查詢室內設計與裝潢建議\n\n"
+            "<b>🚁 無人機任務 (Scout)：</b>\n"
+            "• /scout &lt;問題&gt; - 無人機與飛行任務管理\n\n"
+            "<b>⚖️ 法務與數據分析 (Lex, Sage & Zora)：</b>\n"
+            "• /lex &lt;問題&gt; - 智財與合約法務諮詢\n"
+            "• /sage &lt;問題&gt; - 數據分析與統計解讀\n"
+            "• /zora &lt;問題&gt; - 企業社會責任與非營利參與\n\n"
             "<b>🛡️ 財務與保險 (Kay & Guardian)：</b>\n"
             "• /acc &lt;問題&gt; - 稅務/帳務自由問答\n"
             "• /loan &lt;問題&gt; - 貸款融資諮詢\n"
@@ -191,11 +344,15 @@ async def handle_telegram(request: web.Request) -> web.Response:
             "• /watchlist - 查看監控清單\n\n"
             "<b>📚 法規查詢 (本地 RAG)：</b>\n"
             "• /reg &lt;問題&gt; - 全分類法規語義搜尋\n\n"
+            "<b>💬 社群與其他功能：</b>\n"
+            "• /social [stats|top] - 社群信號與熱門話題掃描\n"
+            "• /admin &lt;問題&gt; - 行政與一般客服問題\n"
+            "• /ai &lt;問題&gt; - 本地 AI 自由問答 (Fallback)\n\n"
             "<b>⚙️ 系統狀態：</b>\n"
             "• /system - GPU / Ollama 狀態監控\n",
             parse_mode="HTML"
         )
-        return web.Response(status=204)
+        return
 
     # /social
     if cmd == "/social":
@@ -206,7 +363,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
             await send_message(settings.telegram_bot_token, chat_id, "🔥 <b>Top Social Signals</b>\n1. <b>TSMC</b>: Large sentiment spike on PTT\n2. <b>NVDA</b>: Earnings rumors on Twitter\n3. <b>AAPL</b>: Supply chain leak", parse_mode="HTML")
         else:
             await send_message(settings.telegram_bot_token, chat_id, "Usage: /social [stats|top]")
-        return web.Response(status=204)
+        return
 
     # /watch add/remove
     if cmd == "/watch" and len(args) >= 2:
@@ -221,7 +378,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
             await send_message(settings.telegram_bot_token, chat_id, f"🗑 Removed <b>{sym}</b> from watchlist.", parse_mode="HTML")
         else:
             await send_message(settings.telegram_bot_token, chat_id, "Usage: /watch add <SYM> or /watch remove <SYM>")
-        return web.Response(status=204)
+        return
 
     # /watchlist
     if cmd == "/watchlist":
@@ -235,19 +392,19 @@ async def handle_telegram(request: web.Request) -> web.Response:
             )
         else:
             await send_message(settings.telegram_bot_token, chat_id, "📌 Watchlist is empty. Use /watch add <SYM> to add symbols.")
-        return web.Response(status=204)
+        return
 
     # /analyze
     if cmd == "/analyze":
         if not args:
             await send_message(settings.telegram_bot_token, chat_id, "Usage: /analyze <SYM>")
-            return web.Response(status=204)
+            return
         
         sym = args[0].upper()
         
         if not settings.openclaw_gateway_url:
             await send_message(settings.telegram_bot_token, chat_id, "❌ Gateway URL not configured.")
-            return web.Response(status=204)
+            return
 
         await send_message(settings.telegram_bot_token, chat_id, f"🤖 <b>[系統]</b> 啟動多智能體投資分析 (標的: {sym})...", parse_mode="HTML")
         
@@ -255,7 +412,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
         
         if not resp.get("ok", True) and "error" in resp:
             await send_message(settings.telegram_bot_token, chat_id, f"❌ Analysis failed: {resp.get('error', 'unknown error')}")
-            return web.Response(status=204)
+            return
         
         # Simulation of agent message sequence
         
@@ -313,41 +470,97 @@ async def handle_telegram(request: web.Request) -> web.Response:
         user_msg = " ".join(args)
         await send_message(settings.telegram_bot_token, chat_id, "🏢 <b>Nova (行政客服)</b>\n收到您的資訊查詢請求，正在為您檢索 CRM 系統...", parse_mode="HTML")
         asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/nova/chat", f"[查詢客戶與公司資訊] {user_msg}", "🏢 <b>Nova (行政客服) 回覆：</b>"))
-        return web.Response(status=204)
+        return
 
     # /vehicle — 車輛保養資料
     if cmd == "/vehicle":
         user_msg = " ".join(args)
         await send_message(settings.telegram_bot_token, chat_id, "🚗 <b>Nova (總務代理)</b>\n正在為您查詢車輛保養與調度資料...", parse_mode="HTML")
         asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/nova/chat", f"[查詢車輛保養與調度] {user_msg}", "🚗 <b>Nova (總務代理) 回覆：</b>"))
-        return web.Response(status=204)
+        return
 
     # /eng — 工程與營造管理 (Titan/Rusty)
     if cmd == "/eng":
         user_msg = " ".join(args)
         await send_message(settings.telegram_bot_token, chat_id, "🏗️ <b>Titan & Rusty (工程管理)</b>\n收到您的工程查詢請求，正在檢索 BIM 與估算資料...", parse_mode="HTML")
         asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/bim/chat", f"[工程管理查詢] {user_msg}", "🏗️ <b>Titan (BIM/工程管理) 回覆：</b>"))
-        return web.Response(status=204)
+        return
+
+    # /estimator — 工程估算與計價 (Rusty)
+    if cmd == "/estimator":
+        user_msg = " ".join(args)
+        await send_message(settings.telegram_bot_token, chat_id, "🏗️ <b>Rusty (估算與計價)</b>\n收到您的估算請求，正在檢索數量與價格資料...", parse_mode="HTML")
+        asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/estimator/chat", f"[估算與計價] {user_msg}", "🏗️ <b>Rusty (估算與計價) 回覆：</b>"))
+        return
+
+    # /interior — 室內設計與裝潢 (Lumi)
+    if cmd == "/interior":
+        user_msg = " ".join(args)
+        await send_message(settings.telegram_bot_token, chat_id, "🏗️ <b>Lumi (室內設計)</b>\n收到您的設計查詢，正在為您提供裝潢建議...", parse_mode="HTML")
+        asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/interior/chat", f"[室內設計與裝潢] {user_msg}", "🏗️ <b>Lumi (室內設計) 回覆：</b>"))
+        return
+
+    # /scout — 無人機任務
+    if cmd == "/scout":
+        user_msg = " ".join(args)
+        await send_message(settings.telegram_bot_token, chat_id, "🚁 <b>Scout (無人機任務)</b>\n收到任務指令，正在調度無人機系統...", parse_mode="HTML")
+        asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/scout/chat", f"[無人機任務] {user_msg}", "🚁 <b>Scout (無人機任務) 回覆：</b>"))
+        return
+
+    # /lex — 法務諮詢
+    if cmd == "/lex":
+        user_msg = " ".join(args)
+        await send_message(settings.telegram_bot_token, chat_id, "⚖️ <b>Lex (法務諮詢)</b>\n收到您的法務問題，正在為您檢閱合約與智財資料...", parse_mode="HTML")
+        asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/lex/chat", f"[法務諮詢] {user_msg}", "⚖️ <b>Lex (法務諮詢) 回覆：</b>"))
+        return
+
+    # /sage — 數據分析
+    if cmd == "/sage":
+        user_msg = " ".join(args)
+        await send_message(settings.telegram_bot_token, chat_id, "⚖️ <b>Sage (數據分析)</b>\n收到您的數據需求，正在進行統計與解讀...", parse_mode="HTML")
+        asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/sage/chat", f"[數據分析] {user_msg}", "⚖️ <b>Sage (數據分析) 回覆：</b>"))
+        return
+
+    # /zora — CSR 與非營利
+    if cmd == "/zora":
+        user_msg = " ".join(args)
+        await send_message(settings.telegram_bot_token, chat_id, "⚖️ <b>Zora (CSR 與非營利)</b>\n收到您的 CSR 查詢，正在提供企業社會責任計畫建議...", parse_mode="HTML")
+        asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/zora/chat", f"[CSR 與非營利] {user_msg}", "⚖️ <b>Zora (CSR 與非營利) 回覆：</b>"))
+        return
+
+    # /butler — 個人貼身管家
+    if cmd == "/butler":
+        user_msg = " ".join(args)
+        await send_message(settings.telegram_bot_token, chat_id, "🤵 <b>貼身管家</b>\n收到您的請求，正在為您處理...", parse_mode="HTML")
+        asyncio.create_task(ollama_direct_reply(settings.ollama_base_url, settings.ollama_model, settings.telegram_bot_token, chat_id, user_msg, "🤵 <b>貼身管家 回覆：</b>"))
+        return
+
+    # /admin — 行政事務、一般客服
+    if cmd == "/admin":
+        await handle_admin(args, chat_id, settings)
+        return
 
     # /ai — 本地 AI 自由問答 (Fallback)
     if cmd == "/ai":
-        await send_message(settings.telegram_bot_token, chat_id, "🤖 <b>[系統]</b> 收到您的訊息，處理中...\n(目前 /ai 與 /reg 功能尚未完整實作，若為投資問題請重新輸入，或輸入 /help 查看可用指令)", parse_mode="HTML")
-        return web.Response(status=204)
+        user_msg = " ".join(args)
+        await send_message(settings.telegram_bot_token, chat_id, "🤖 <b>[系統]</b> 已將您的一般諮詢轉交給貼身管家處理中...", parse_mode="HTML")
+        asyncio.create_task(ollama_direct_reply(settings.ollama_base_url, settings.ollama_model, settings.telegram_bot_token, chat_id, user_msg, "🤵 <b>貼身管家 回覆：</b>"))
+        return
 
     # /reg — 法規查詢
     if cmd == "/reg":
         await send_message(settings.telegram_bot_token, chat_id, "📚 <b>[系統]</b> 法規查詢功能 (RAG) 正在建置中，請稍候...", parse_mode="HTML")
-        return web.Response(status=204)
+        return
 
     # /loan — 融鑫財務顧問（Finance，NemoClaw PRIVATE 本地推理）
     if cmd == "/loan":
         await handle_loan(args, chat_id, settings)
-        return web.Response(status=204)
+        return
 
     # /ins — 安盾保險顧問（Guardian，NemoClaw PRIVATE 本地推理）
     if cmd == "/ins":
         await handle_ins(args, chat_id, settings)
-        return web.Response(status=204)
+        return
 
     # /acc — 會計師幕僚（鳴鑫，NemoClaw PRIVATE 本地推理）
     if cmd == "/acc":
@@ -385,18 +598,18 @@ async def handle_telegram(request: web.Request) -> web.Response:
                 "  /acc export 202601",
                 parse_mode="HTML"
             )
-            return web.Response(status=204)
+            return
 
         # /acc invoice <amount>
         if sub == "invoice":
             if not sub_args:
                 await send_message(settings.telegram_bot_token, chat_id, "用法: /acc invoice <金額>")
-                return web.Response(status=204)
+                return
             try:
                 amount = float(sub_args[0].replace(",", ""))
             except ValueError:
                 await send_message(settings.telegram_bot_token, chat_id, "❌ 金額格式錯誤，請輸入數字")
-                return web.Response(status=204)
+                return
 
             tax_type = "taxed" if len(sub_args) < 2 or sub_args[1].lower() != "untaxed" else "untaxed"
             try:
@@ -425,7 +638,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
 
             except Exception as e:
                 await send_message(settings.telegram_bot_token, chat_id, f"❌ 計算失敗: {e}")
-            return web.Response(status=204)
+            return
 
         # /acc tax <type> <amount> [param]
         if sub == "tax":
@@ -434,19 +647,19 @@ async def handle_telegram(request: web.Request) -> web.Response:
                     "用法: /acc tax personal <年收入> [扶養人數]\n"
                     "      /acc tax corporate <年所得>\n"
                     "      /acc tax labor <月薪>")
-                return web.Response(status=204)
+                return
             tax_type_arg = sub_args[0].lower()
             try:
                 amount_arg = float(sub_args[1].replace(",", ""))
                 dep_arg = int(sub_args[2]) if len(sub_args) > 2 else 0
             except (ValueError, IndexError):
                 await send_message(settings.telegram_bot_token, chat_id, "❌ 金額格式錯誤")
-                return web.Response(status=204)
+                return
 
             tax_map = {"personal": "personal", "corporate": "corporate", "labor": "labor"}
             if tax_type_arg not in tax_map:
                 await send_message(settings.telegram_bot_token, chat_id, "類型請輸入: personal / corporate / labor")
-                return web.Response(status=204)
+                return
 
             await send_message(settings.telegram_bot_token, chat_id, "🦉 計算稅額中...")
             try:
@@ -504,7 +717,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
 
             except Exception as e:
                 await send_message(settings.telegram_bot_token, chat_id, f"❌ 稅務計算失敗: {e}")
-            return web.Response(status=204)
+            return
 
         # /acc ledger add <income|expense> <category> <amount> <description>
         # /acc ledger [YYYYMM]  — 查詢收支明細
@@ -553,7 +766,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                         "  /acc ledger add expense material 420000 鋼筋採購",
                         parse_mode="HTML"
                     )
-                    return web.Response(status=204)
+                    return
 
                 entry_type = sub_args[1].lower()
                 category_arg = sub_args[2].lower()
@@ -561,7 +774,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                     amount_val = float(sub_args[3].replace(",", ""))
                 except ValueError:
                     await send_message(settings.telegram_bot_token, chat_id, "❌ 金額格式錯誤，請輸入正整數（例：80000）")
-                    return web.Response(status=204)
+                    return
 
                 # 最後一個 arg 如果是 entity，取出
                 remaining = sub_args[4:]
@@ -572,11 +785,11 @@ async def handle_telegram(request: web.Request) -> web.Response:
                 description_val = " ".join(remaining).strip() if remaining else sub_args[4] if len(sub_args) > 4 else ""
                 if not description_val:
                     await send_message(settings.telegram_bot_token, chat_id, "❌ 請加入摘要說明")
-                    return web.Response(status=204)
+                    return
 
                 if entry_type not in ("income", "expense"):
                     await send_message(settings.telegram_bot_token, chat_id, "❌ 類型請輸入 income（收入）或 expense（支出）")
-                    return web.Response(status=204)
+                    return
 
                 valid_cats = ADD_INCOME_CATS if entry_type == "income" else ADD_EXPENSE_CATS
                 if category_arg not in valid_cats:
@@ -589,7 +802,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                         f"💡 /acc cats 查詢完整科目",
                         parse_mode="HTML"
                     )
-                    return web.Response(status=204)
+                    return
 
                 # 自動推斷實體（科目屬於個人/家庭時自動修正）
                 auto_entity = entity_arg
@@ -638,7 +851,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                     )
                 except Exception as e:
                     await send_message(settings.telegram_bot_token, chat_id, f"❌ 記錄失敗: {e}")
-                return web.Response(status=204)
+                return
 
             # /acc ledger [YYYYMM] — 查詢明細
             else:
@@ -687,7 +900,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                     await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines), parse_mode="HTML")
                 except Exception as e:
                     await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢失敗: {e}")
-                return web.Response(status=204)
+                return
 
         # /acc report <YYYYMM>          — 期間收支彙總
         # /acc report 401 <YYYYMM>      — 401 申報表格式
@@ -701,14 +914,14 @@ async def handle_telegram(request: web.Request) -> web.Response:
                     "      /acc report 401 202601",
                     parse_mode="HTML"
                 )
-                return web.Response(status=204)
+                return
 
             is_401 = sub_args[0].lower() == "401"
             period_arg = sub_args[1] if is_401 and len(sub_args) > 1 else sub_args[0]
 
             if not period_arg.isdigit() or len(period_arg) != 6:
                 await send_message(settings.telegram_bot_token, chat_id, "❌ 期間格式錯誤，請使用 YYYYMM（例: 202601）")
-                return web.Response(status=204)
+                return
 
             await send_message(settings.telegram_bot_token, chat_id, f"📊 產生{'401申報' if is_401 else '彙總'}報表中...")
 
@@ -770,7 +983,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                 await send_message(settings.telegram_bot_token, chat_id, txt, parse_mode="HTML")
             except Exception as e:
                 await send_message(settings.telegram_bot_token, chat_id, f"❌ 報表產生失敗: {e}")
-            return web.Response(status=204)
+            return
 
         # /acc export <YYYYMM> — CSV 匯出（以文字訊息回傳純文字 CSV 或提示下載連結）
         if sub == "export":
@@ -781,7 +994,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                     "範例: /acc export 202601",
                     parse_mode="HTML"
                 )
-                return web.Response(status=204)
+                return
 
             period_arg = sub_args[0]
             await send_message(settings.telegram_bot_token, chat_id, f"📥 產生 {period_arg} 期收支 CSV 中...")
@@ -815,7 +1028,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                 )
             except Exception as e:
                 await send_message(settings.telegram_bot_token, chat_id, f"❌ CSV 匯出失敗: {e}")
-            return web.Response(status=204)
+            return
 
 
         # ── Phase 2: /acc bank ─────────────────────────────────────────
@@ -834,7 +1047,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                         "  /acc bank add 第一銀行 9012 家用帳戶 family",
                         parse_mode="HTML"
                     )
-                    return web.Response(status=204)
+                    return
                 bank_name = sub_args[1]
                 acct_last4 = sub_args[2]
                 holder = sub_args[3]
@@ -863,7 +1076,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                     )
                 except Exception as e:
                     await send_message(settings.telegram_bot_token, chat_id, f"❌ 新增失敗: {e}")
-                return web.Response(status=204)
+                return
 
             elif bank_action == "txn":
                 if len(sub_args) < 5:
@@ -877,19 +1090,19 @@ async def handle_telegram(request: web.Request) -> web.Response:
                         "  /acc bank txn 5678 credit 80000 1月薪資 salary",
                         parse_mode="HTML"
                     )
-                    return web.Response(status=204)
+                    return
                 acct4 = sub_args[1]
                 txn_type = sub_args[2].lower()
                 try:
                     txn_amount = float(sub_args[3].replace(",", ""))
                 except ValueError:
                     await send_message(settings.telegram_bot_token, chat_id, "❌ 金額格式錯誤")
-                    return web.Response(status=204)
+                    return
                 txn_desc = sub_args[4]
                 txn_cat = sub_args[5].lower() if len(sub_args) > 5 else None
                 if txn_type not in ("credit", "debit"):
                     await send_message(settings.telegram_bot_token, chat_id, "❌ 類型請輸入 credit（存入）或 debit（提出）")
-                    return web.Response(status=204)
+                    return
                 payload = {"account_no_masked": acct4, "type": txn_type,
                            "amount": txn_amount, "description": txn_desc}
                 if txn_cat:
@@ -916,7 +1129,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                     )
                 except Exception as e:
                     await send_message(settings.telegram_bot_token, chat_id, f"❌ 記錄失敗: {e}")
-                return web.Response(status=204)
+                return
 
             elif bank_action == "history":
                 acct4 = sub_args[1] if len(sub_args) > 1 else ""
@@ -948,7 +1161,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                     await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines), parse_mode="HTML")
                 except Exception as e:
                     await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢失敗: {e}")
-                return web.Response(status=204)
+                return
 
             else:
                 # /acc bank → 餘額總覽
@@ -978,7 +1191,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                     await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines), parse_mode="HTML")
                 except Exception as e:
                     await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢失敗: {e}")
-                return web.Response(status=204)
+                return
 
         # ── /acc entity <company|personal|family|all> [YYYYMM] ─────────
         if sub == "entity":
@@ -1021,7 +1234,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                 await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines_e), parse_mode="HTML")
             except Exception as e:
                 await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢失敗: {e}")
-            return web.Response(status=204)
+            return
 
         # ── /acc taxplan [year|deduct] ─────────────────────────────────
         if sub == "taxplan":
@@ -1052,7 +1265,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                     await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines_d), parse_mode="HTML")
                 except Exception as e:
                     await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢失敗: {e}")
-                return web.Response(status=204)
+                return
 
             year_tp = int(taxplan_arg) if taxplan_arg.isdigit() and len(taxplan_arg) == 4 else None
             await send_message(
@@ -1089,7 +1302,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                 await send_message(settings.telegram_bot_token, chat_id, full_text, parse_mode="HTML")
             except Exception as e:
                 await send_message(settings.telegram_bot_token, chat_id, f"❌ 節稅規劃失敗: {e}")
-            return web.Response(status=204)
+            return
 
 
         # ── /acc summary — 全局一覽儀表板 ────────────────────────────
@@ -1170,7 +1383,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                 await send_message(settings.telegram_bot_token, chat_id, msg, parse_mode="HTML")
             except Exception as e:
                 await send_message(settings.telegram_bot_token, chat_id, f"❌ 儀表板載入失敗: {e}")
-            return web.Response(status=204)
+            return
 
         # ── /acc cats — 完整科目速查 ──────────────────────────────────
         if sub == "cats":
@@ -1218,7 +1431,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                 "💡 /acc ledger add income salary 80000 一月薪資 personal"
             )
             await send_message(settings.telegram_bot_token, chat_id, msg_cats, parse_mode="HTML")
-            return web.Response(status=204)
+            return
 
         # ── /acc accounts — 列出所有銀行帳戶（別名 /acc bank 的帳戶列表）──
         if sub == "accounts":
@@ -1238,7 +1451,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                         "💡 新增: /acc bank add 台灣銀行 1234 SENTENG company",
                         parse_mode="HTML"
                     )
-                    return web.Response(status=204)
+                    return
                 ent_icons4 = {"company": "🏢", "personal": "👤", "family": "🏠"}
                 lines_a = [f"🏦 <b>銀行帳戶列表（{data_a.get('count', 0)}個）</b>", "━━━━━━━━━━━━━━━"]
                 for a in accounts_list:
@@ -1252,7 +1465,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                 await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines_a), parse_mode="HTML")
             except Exception as e:
                 await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢帳戶失敗: {e}")
-            return web.Response(status=204)
+            return
 
         # /acc <自由問題> — 呼叫 qwen3:14b 會計師問答
         question = " ".join(args).strip()
@@ -1273,6 +1486,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
 
             reply = chat_data.get("reply", "無法取得回答")
             reply = _re.sub(r"<think>.*?</think>", "", reply, flags=0x10).strip()
+            reply = format_for_telegram(reply)
             latency = chat_data.get("latency_ms", 0)
 
             await send_message(
@@ -1283,7 +1497,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
             )
         except Exception as e:
             await send_message(settings.telegram_bot_token, chat_id, f"❌ 連線異常: {e}")
-        return web.Response(status=204)
+        return
 
     # /reg — 法規語義搜尋（NemoClaw Layer 4）
     if cmd == "/reg":
@@ -1304,7 +1518,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                 "範例: /reg building 住宅建蔽率限制\n"
                 "       /reg 統一發票申報期限"
             )
-            return web.Response(status=204)
+            return
 
         await send_message(settings.telegram_bot_token, chat_id, f"🔍 搜尋法規: {query}...")
 
@@ -1328,7 +1542,7 @@ async def handle_telegram(request: web.Request) -> web.Response:
                 await send_message(settings.telegram_bot_token, chat_id,
                     f"⚠️ 未找到相關法條: 「{query}」"
                 )
-                return web.Response(status=204)
+                return
 
             cat_label = f"[{category}] " if category else ""
             lines = [f"📚 <b>{cat_label}法規查詢: {query}</b>\n"]
@@ -1352,51 +1566,9 @@ async def handle_telegram(request: web.Request) -> web.Response:
             await send_message(settings.telegram_bot_token, chat_id,
                 f"❌ 法規服務異常: {e}\n請確認 Regulation RAG 服務已啟動")
 
-        return web.Response(status=204)
+        return
 
-    # /ai — 直接問 qwen3:14b（本地推理）
-    if cmd == "/ai":
-        question = " ".join(args).strip()
-        if not question:
-            await send_message(settings.telegram_bot_token, chat_id,
-                "ℹ️ 用法: /ai 你的問題\n範例: /ai 建蔽率和容積率有什麼差別")
-            return web.Response(status=204)
-
-        await send_message(settings.telegram_bot_token, chat_id,
-            f"🧠 詢問 {settings.ollama_model}...")
-
-        try:
-            import re
-            timeout = ClientTimeout(total=90)
-            async with ClientSession(timeout=timeout) as session:
-                async with session.post(
-                    f"{settings.ollama_base_url}/v1/chat/completions",
-                    json={
-                        "model": settings.ollama_model,
-                        "messages": [
-                            {"role": "system", "content": "你是 SENTENG ERP 的智能助理，精熟台灣建築、工程、財務領域。用繁體中文簡潔回答，重點優先。"},
-                            {"role": "user", "content": question + "\n/no_think"},
-                        ],
-                        "temperature": 0.3,
-                        "stream": False,
-                    },
-                ) as resp_ai:
-                    ai_data = await resp_ai.json()
-
-            answer = ai_data.get("choices", [{}])[0].get("message", {}).get("content", "無法取得回答")
-            # 移除 thinking block
-            answer = re.sub(r"<think>.*?</think>", "", answer, flags=re.DOTALL).strip()
-
-            await send_message(settings.telegram_bot_token, chat_id,
-                f"🧠 <b>{settings.ollama_model}</b>\n\n{answer[:3500]}",
-                parse_mode="HTML")
-
-        except Exception as e:
-            logger.error(f"/ai error: {e}")
-            await send_message(settings.telegram_bot_token, chat_id,
-                f"❌ 本地 AI 異常: {e}\n請確認 Ollama 已啟動")
-
-        return web.Response(status=204)
+    # The /ai block was moved to line 462
 
     # /system — GPU / Ollama 狀態
     if cmd == "/system":
@@ -1439,10 +1611,94 @@ async def handle_telegram(request: web.Request) -> web.Response:
             await send_message(settings.telegram_bot_token, chat_id,
                 f"❌ 無法取得系統狀態: {e}")
 
-        return web.Response(status=204)
+        return
 
+    return
+
+
+
+async def handle_telegram(request: web.Request) -> web.Response:
+    """Handle Telegram webhook updates (fallback for webhook mode)."""
+    settings = request.app["settings"]
+    store = request.app["watch_store"]
+
+    if settings.telegram_webhook_secret_token:
+        hdr = get_secret_header(request)
+        if hdr != settings.telegram_webhook_secret_token:
+            logger.warning("Invalid webhook secret token")
+            return web.Response(status=401)
+
+    try:
+        update = await request.json()
+    except Exception:
+        return web.Response(status=400)
+
+    import asyncio
+    asyncio.create_task(process_update(update, settings, store))
     return web.Response(status=204)
 
+async def telegram_polling_task(app: web.Application):
+    """Background task to long-poll Telegram for updates."""
+    import asyncio
+    from aiohttp import ClientSession, ClientTimeout
+    
+    settings = app["settings"]
+    store = app["watch_store"]
+    token = settings.telegram_bot_token
+    
+    if not token:
+        logger.error("No telegram_bot_token configured. Polling disabled.")
+        return
+
+    logger.info("Starting Telegram long polling task...")
+    
+    async with ClientSession(timeout=ClientTimeout(total=60)) as session:
+        try:
+            async with session.post(f"https://api.telegram.org/bot{token}/deleteWebhook") as resp:
+                if resp.status == 200:
+                    logger.info("Webhook deleted successfully.")
+                else:
+                    logger.warning(f"Failed to delete webhook: {resp.status}")
+        except Exception as e:
+            logger.error(f"Error deleting webhook: {e}")
+
+        offset = 0
+        while True:
+            try:
+                url = f"https://api.telegram.org/bot{token}/getUpdates"
+                payload = {"offset": offset, "timeout": 30}
+                async with session.post(url, json=payload) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        updates = data.get("result", [])
+                        for update in updates:
+                            offset = max(offset, update["update_id"] + 1)
+                            asyncio.create_task(process_update(update, settings, store))
+                    elif resp.status == 409:
+                        logger.error("Polling conflict 409: Webhook still active?")
+                        await asyncio.sleep(5)
+                    else:
+                        logger.error(f"Polling failed with {resp.status}")
+                        await asyncio.sleep(5)
+            except asyncio.CancelledError:
+                logger.info("Telegram polling task cancelled.")
+                break
+            except Exception as e:
+                logger.error(f"Polling error: {e}")
+                await asyncio.sleep(5)
+
+async def start_telegram_polling(app: web.Application):
+    import asyncio
+    app["telegram_polling"] = asyncio.create_task(telegram_polling_task(app))
+
+async def cleanup_telegram_polling(app: web.Application):
+    task = app.get("telegram_polling")
+    if task:
+        task.cancel()
+        import asyncio
+        import contextlib
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
 
 async def handle_health(request: web.Request) -> web.Response:
     """Health check endpoint."""
@@ -1460,9 +1716,30 @@ def create_app() -> web.Application:
     app.router.add_post("/telegram", handle_telegram)
     app.router.add_get("/healthz", handle_health)
     
+    app.on_startup.append(start_telegram_polling)
+    app.on_cleanup.append(cleanup_telegram_polling)
+    
     return app
 
 
+
+# ── /admin — 總部大廳行政管家與客服 ──────────────────────────────
+
+async def handle_admin(args: list, chat_id: str, settings: Settings) -> None:
+    """Nova — 總部大廳行政管家與客服"""
+    user_msg = " ".join(args).strip()
+    await send_message(settings.telegram_bot_token, chat_id, "🏢 <b>Nova (行政客服)</b>\n收到您的行政事務/客服請求，正在為您處理...", parse_mode="HTML")
+    import asyncio
+    asyncio.create_task(
+        call_agent_and_reply(
+            settings.openclaw_gateway_url,
+            settings.telegram_bot_token,
+            chat_id,
+            "/agents/nova/chat",
+            f"[行政與客服事項] {user_msg}",
+            "🏢 <b>Nova (行政客服) 回覆：</b>"
+        )
+    )
 
 # ── /loan — 融鑫財務顧問 ─────────────────────────────────────────
 
@@ -1577,7 +1854,7 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
                     headers={"Authorization": "Bearer dev-local-bypass"},
                 ) as resp_a:
                     data_a = await resp_a.json()
-            analysis = data_a.get("analysis", "")
+            analysis = format_for_telegram(data_a.get("analysis", ""))
             latency = data_a.get("latency_ms", 0)
             ds = data_a.get("data_summary", {})
             total_out = ds.get("total_outstanding", 0)
@@ -1815,7 +2092,7 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
                 ) as resp_pl:
                     d = await resp_pl.json()
 
-            plan = d.get("plan", "")
+            plan = format_for_telegram(d.get("plan", ""))
             latency = d.get("latency_ms", 0)
 
             # 負債整合額外資訊
@@ -2024,7 +2301,8 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
                 headers={"Authorization": "Bearer dev-local-bypass"},
             ) as resp_fc:
                 d = await resp_fc.json()
-        reply = d.get("reply", "")
+        reply = d.get("reply") or d.get("answer") or "無回應"
+        reply = format_for_telegram(reply)
         latency = d.get("latency_ms", 0)
         await send_message(settings.telegram_bot_token, chat_id,
             f"🐟 <b>融鑫 — 貸款諮詢</b>\n━━━━━━━━━━━━━━━\n\n{reply[:3500]}\n\n"
@@ -2152,7 +2430,7 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
                     headers={"Authorization": "Bearer dev-local-bypass"},
                 ) as resp_a:
                     data_a = await resp_a.json()
-            analysis = data_a.get("analysis", "")
+            analysis = format_for_telegram(data_a.get("analysis", ""))
             latency = data_a.get("latency_ms", 0)
             ds = data_a.get("data_summary", {})
             total_prem = ds.get("total_annual_premium", 0)
@@ -2351,7 +2629,7 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
                     headers={"Authorization": "Bearer dev-local-bypass"},
                 ) as resp_pl:
                     d = await resp_pl.json()
-            plan = d.get("plan", "")
+            plan = format_for_telegram(d.get("plan", ""))
             latency = d.get("latency_ms", 0)
             full_text = f"🐢 <b>安盾 — {zh_map.get(entity, entity)}保障規劃</b>\n━━━━━━━━━━━━━━━\n\n"
             full_text += plan[:3500]
@@ -2536,7 +2814,8 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
                 headers={"Authorization": "Bearer dev-local-bypass"},
             ) as resp_chat:
                 d = await resp_chat.json()
-        reply = d.get("reply", "")
+        reply = d.get("reply") or d.get("answer") or "無回應"
+        reply = format_for_telegram(reply)
         latency = d.get("latency_ms", 0)
         await send_message(settings.telegram_bot_token, chat_id,
             f"🐢 <b>安盾 — 保險諮詢</b>\n━━━━━━━━━━━━━━━\n\n{reply[:3500]}\n\n"

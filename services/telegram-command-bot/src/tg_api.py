@@ -8,7 +8,7 @@ import logging
 logger = logging.getLogger("telegram-command-bot.tg_api")
 
 
-async def send_message(token: str, chat_id: str, text: str, parse_mode: str = None) -> None:
+async def send_message(token: str, chat_id: str, text: str, parse_mode: str = None, reply_markup: str = None) -> None:
     """
     Send a message via Telegram Bot API.
     """
@@ -24,6 +24,10 @@ async def send_message(token: str, chat_id: str, text: str, parse_mode: str = No
     
     if parse_mode:
         payload["parse_mode"] = parse_mode
+        
+    if reply_markup:
+        import json
+        payload["reply_markup"] = json.loads(reply_markup) if isinstance(reply_markup, str) else reply_markup
     
     try:
         async with aiohttp.ClientSession() as session:

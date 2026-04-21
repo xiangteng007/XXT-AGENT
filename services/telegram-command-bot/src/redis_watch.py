@@ -67,3 +67,23 @@ class WatchStore:
                 logger.warning(f"Failed to get watchlist: {e}")
         return []
 
+    def get_agent(self, chat_id: str) -> str:
+        """Get active agent for user."""
+        r = self._get_redis()
+        if r:
+            try:
+                val = r.get(f"tg:agent:{chat_id}")
+                return val if val else "butler"
+            except Exception as e:
+                logger.warning(f"Failed to get agent: {e}")
+        return "butler"
+
+    def set_agent(self, chat_id: str, agent: str) -> None:
+        """Set active agent for user."""
+        r = self._get_redis()
+        if r:
+            try:
+                r.set(f"tg:agent:{chat_id}", agent)
+            except Exception as e:
+                logger.warning(f"Failed to set agent: {e}")
+
