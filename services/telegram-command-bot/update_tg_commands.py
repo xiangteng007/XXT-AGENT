@@ -32,6 +32,7 @@ def update_commands():
         {"command": "social", "description": "社群信號與熱門話題掃描"},
         {"command": "admin", "description": "行政與一般客服問題"},
         {"command": "ai", "description": "本地 AI 自由問答"},
+        {"command": "agents", "description": "切換對話代理(Agent)"},
         {"command": "system", "description": "GPU / Ollama 狀態監控"}
     ]
 

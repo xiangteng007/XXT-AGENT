@@ -345,6 +345,7 @@ async def process_update(update: dict, settings: Settings, store: WatchStore) ->
             "<b>📚 法規查詢 (本地 RAG)：</b>\n"
             "• /reg &lt;問題&gt; - 全分類法規語義搜尋\n\n"
             "<b>💬 社群與其他功能：</b>\n"
+            "• /agents - 切換對話專家代理(Agent)\n"
             "• /social [stats|top] - 社群信號與熱門話題掃描\n"
             "• /admin &lt;問題&gt; - 行政與一般客服問題\n"
             "• /ai &lt;問題&gt; - 本地 AI 自由問答 (Fallback)\n\n"
