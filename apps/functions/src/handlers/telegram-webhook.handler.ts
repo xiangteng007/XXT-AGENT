@@ -22,6 +22,8 @@ import { extractReceiptData } from '../services/butler/receipt-ocr.service';
 import {
     appendMessage,
     getPreviousMessages,
+    switchAgent,
+    getSession,
 } from '../services/butler/conversation-session.service';
 
 // Lazy-loaded Bot Token from Secret Manager
@@ -446,6 +448,9 @@ async function handleCommand(chatId: number, telegramUserId: number, text: strin
         case '/settings':
             await sendSettingsMenu(chatId);
             break;
+        case '/agents':
+            await sendAgentMenu(chatId, telegramUserId);
+            break;
         default:
             await sendMessage(chatId, '❓ 不認識的指令。輸入 /help 查看可用指令。');
     }
@@ -460,9 +465,10 @@ async function handleNaturalLanguage(chatId: number, telegramUserId: number, tex
     // Save user message and get history
     await appendMessage(userId, 'user', text);
     const history = await getPreviousMessages(userId);
+    const session = await getSession(userId);
 
     // Generate AI response WITH function calling
-    const response = await generateAIResponseWithTools(text, userId, history.join('\n'));
+    const response = await generateAIResponseWithTools(text, userId, history.join('\n'), session.activeAgent);
 
     if (response.toolCalls && response.toolCalls.length > 0) {
         const toolResults = await executeTelegramToolCalls(userId, response.toolCalls);
@@ -531,8 +537,9 @@ async function sendHelpMessage(chatId: number): Promise<void> {
 /balance - 帳戶餘額
 /link - 綁定帳號
 /settings - 設定
+/agents - 切換 AI 代理
 
-**自然語言（AI 理財）：**
+**自然語言（AI 理財/專業代理）：**
 • 「買了 10 張 0050，均價 150」
 • 「房貸 800 萬、利率 2.1%、30 年」
 • 「年薪 120 萬，估算稅額」
@@ -658,6 +665,9 @@ async function sendMainMenu(chatId: number): Promise<void> {
                 [
                     { text: '💳 帳戶餘額', callback_data: 'cmd_balance' },
                     { text: '⚙️ 設定', callback_data: 'cmd_settings' },
+                ],
+                [
+                    { text: '🤖 切換 AI 代理', callback_data: 'cmd_agents' },
                 ],
             ],
         },
@@ -1024,6 +1034,7 @@ async function sendSettingsMenu(chatId: number): Promise<void> {
     });
 }
 
+
 // ================================
 // Financial Advisory Commands
 // ================================
@@ -1163,6 +1174,50 @@ async function sendFinancialAdvice(chatId: number, telegramUserId: number): Prom
                 [{ text: '📋 稅務優化', callback_data: 'advice_topic_tax_optimization' }],
                 [{ text: '🏖️ 退休規劃', callback_data: 'advice_topic_retirement_planning' }],
                 [{ text: '🛡️ 緊急預備金', callback_data: 'advice_topic_emergency_fund' }],
+                [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+            ],
+        },
+    });
+}
+
+async function sendAgentMenu(chatId: number, telegramUserId: number): Promise<void> {
+    const linkedUid = await getLinkedFirebaseUid(telegramUserId);
+    const userId = linkedUid || `telegram:${telegramUserId}`;
+    const session = await getSession(userId);
+    const currentAgent = session.activeAgent || 'butler';
+
+    await sendMessage(chatId, `🤖 **AI 代理團隊**\n\n目前選擇的代理：**${currentAgent}**\n\n請選擇您需要切換的專屬專家：`, {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '👔 小秘書 (預設)', callback_data: 'agent_switch_butler' }],
+                [
+                    { text: '🏛️ Titan (建築/BIM)', callback_data: 'agent_switch_titan' },
+                    { text: '✨ Lumi (室內設計)', callback_data: 'agent_switch_lumi' }
+                ],
+                [
+                    { text: '📐 Rusty (估算工務)', callback_data: 'agent_switch_rusty' },
+                    { text: '💰 Accountant (財務)', callback_data: 'agent_switch_accountant' }
+                ],
+                [
+                    { text: '🛡️ Argus (資安情報)', callback_data: 'agent_switch_argus' },
+                    { text: '👥 Nova (人力營運)', callback_data: 'agent_switch_nova' }
+                ],
+                [
+                    { text: '📈 Investment (投資)', callback_data: 'agent_switch_investment' },
+                    { text: '⚙️ Forge (機電軟韌)', callback_data: 'agent_switch_forge' }
+                ],
+                [
+                    { text: '🔬 Matter (材料科學)', callback_data: 'agent_switch_matter' },
+                    { text: '☁️ Nexus (系統架構)', callback_data: 'agent_switch_nexus' }
+                ],
+                [
+                    { text: '🌍 Zenith (永續ESG)', callback_data: 'agent_switch_zenith' },
+                    { text: '🎯 Apex (行銷拓展)', callback_data: 'agent_switch_apex' }
+                ],
+                [
+                    { text: '⚖️ Vertex (法務合規)', callback_data: 'agent_switch_vertex' },
+                    { text: '🗣️ Echo (公關客服)', callback_data: 'agent_switch_echo' }
+                ],
                 [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
             ],
         },
@@ -1328,6 +1383,31 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<void> {
     if (data.startsWith('cmd_')) {
         const command = '/' + data.replace('cmd_', '');
         await handleCommand(chatId, query.from.id, command);
+    } else if (data.startsWith('agent_switch_')) {
+        const agentId = data.replace('agent_switch_', '');
+        const linkedUid = await getLinkedFirebaseUid(query.from.id);
+        const userId = linkedUid || `telegram:${query.from.id}`;
+        await switchAgent(userId, agentId);
+        
+        const agentNames: Record<string, string> = {
+            butler: '小秘書 (預設助理)',
+            titan: 'Titan (建築/BIM設計師)',
+            lumi: 'Lumi (室內設計師)',
+            rusty: 'Rusty (估算/工務)',
+            accountant: 'Accountant (財務會計)',
+            argus: 'Argus (資安與情報研究員)',
+            nova: 'Nova (人力與營運管理)',
+            investment: 'Investment (投資顧問)',
+            forge: 'Forge (機電與軟韌體工程師)',
+            matter: 'Matter (材料科學專家)',
+            nexus: 'Nexus (系統整合與架構專家)',
+            zenith: 'Zenith (永續發展與 ESG 專家)',
+            apex: 'Apex (行銷與業務拓展專家)',
+            vertex: 'Vertex (法務與合規專家)',
+            echo: 'Echo (公關與客服專家)'
+        };
+        const agentName = agentNames[agentId] || agentId;
+        await sendMessage(chatId, `✅ 已成功切換至 **${agentName}**！\n\n請問有什麼我可以協助您的？`);
     } else if (data.startsWith('expense_')) {
         const category = data.replace('expense_', '');
         await handleExpenseCategory(chatId, query.from.id, category);
