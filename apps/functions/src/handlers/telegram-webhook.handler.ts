@@ -396,64 +396,11 @@ async function handlePhotoMessage(chatId: number, telegramUserId: number, messag
 }
 
 async function handleCommand(chatId: number, telegramUserId: number, text: string): Promise<void> {
-    const [command] = text.split(' ');
-    const commandName = command.replace(/@\w+$/, '').toLowerCase();
-
-    switch (commandName) {
-        case '/start':
-            await sendWelcomeMessage(chatId);
-            break;
-        case '/help':
-            await sendHelpMessage(chatId);
-            break;
-        case '/menu':
-            await sendMainMenu(chatId);
-            break;
-        case '/today':
-            await sendTodaySchedule(chatId, telegramUserId);
-            break;
-        case '/expense':
-            await sendExpenseMenu(chatId);
-            break;
-        case '/health':
-            await sendHealthSnapshot(chatId, telegramUserId);
-            break;
-        case '/car':
-            await sendVehicleStatus(chatId, telegramUserId);
-            break;
-        case '/balance':
-            await sendBalanceInfo(chatId, telegramUserId);
-            break;
-        case '/invest':
-            await sendInvestmentSummary(chatId, telegramUserId);
-            break;
-        case '/loan':
-            await sendLoanSummary(chatId, telegramUserId);
-            break;
-        case '/tax':
-            await sendTaxEstimation(chatId, telegramUserId);
-            break;
-        case '/advice':
-            await sendFinancialAdvice(chatId, telegramUserId);
-            break;
-        case '/price':
-            await sendStockPrice(chatId, text);
-            break;
-        case '/report':
-            await sendMonthlyReport(chatId, telegramUserId);
-            break;
-        case '/link':
-            await sendLinkInstructions(chatId, telegramUserId);
-            break;
-        case '/settings':
-            await sendSettingsMenu(chatId);
-            break;
-        case '/agents':
-            await sendAgentMenu(chatId, telegramUserId);
-            break;
-        default:
-            await sendMessage(chatId, '❓ 不認識的指令。輸入 /help 查看可用指令。');
-    }
+    // Delegate to the modular command handler in handlers/telegram/commands.ts
+    // This ensures /agents, /discuss, /reflect, /memory and all future commands
+    // are routed correctly through the new modular architecture.
+    const { handleCommand: modularHandleCommand } = await import('./telegram/commands');
+    await modularHandleCommand(chatId, telegramUserId, text);
 }
 
 async function handleNaturalLanguage(chatId: number, telegramUserId: number, text: string): Promise<void> {

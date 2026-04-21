@@ -9,7 +9,7 @@ import { logger } from 'firebase-functions/v2';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { sendMessage, sendChatAction, getLinkedFirebaseUid, answerCallbackQuery } from './api';
 import type { CallbackQuery } from './types';
-import { handleCommand } from './commands';
+import { handleCommand, sendReflectTrigger } from './commands';
 import { financeService } from '../../services/finance.service';
 import { investmentService } from '../../services/butler/investment.service';
 import { loanService } from '../../services/butler/loan.service';
@@ -17,6 +17,7 @@ import { vehicleService } from '../../services/vehicle.service';
 import { scheduleService } from '../../services/schedule.service';
 import { taxService } from '../../services/butler/tax.service';
 import { financialAdvisorService } from '../../services/butler/financial-advisor.service';
+import { switchAgent } from '../../services/butler/conversation-session.service';
 
 const db = getFirestore();
 
@@ -34,6 +35,30 @@ export async function handleCallbackQuery(query: CallbackQuery): Promise<void> {
     if (data.startsWith('cmd_')) {
         const command = '/' + data.replace('cmd_', '');
         await handleCommand(chatId, query.from.id, command);
+    } else if (data.startsWith('agent_switch_')) {
+        // Agent switching via /agents inline buttons
+        const agentId = data.replace('agent_switch_', '');
+        const linkedUid = await getLinkedFirebaseUid(query.from.id);
+        const userId = linkedUid || `telegram:${query.from.id}`;
+        try {
+            await switchAgent(userId, agentId);
+            const agentNames: Record<string, string> = {
+                butler: '👔 小秘書', titan: '🏛️ Titan (BIM)', lumi: '✨ Lumi (設計)',
+                rusty: '📐 Rusty (工務)', accountant: '💰 Accountant (財務)',
+                argus: '🛡️ Argus (情報)', nova: '👥 Nova (人資)',
+                investment: '📈 Investment (投資)', forge: '⚙️ Forge (製造)',
+                nexus: '☁️ Nexus (架構)',
+            };
+            const displayName = agentNames[agentId] || agentId;
+            await sendMessage(chatId, `✅ 已切換至 **${displayName}**\n\n直接輸入訊息開始對話，AI 將以 ${displayName} 的角色回應你。\n\n輸入 /agents 查看所有探員。`);
+        } catch (err) {
+            logger.error('[Telegram] switchAgent error:', err);
+            await sendMessage(chatId, '❌ 切換探員失敗，請稍後再試。');
+        }
+    } else if (data === 'reflect_now') {
+        await sendReflectTrigger(chatId, query.from.id);
+    } else if (data === 'discuss_prompt') {
+        await sendMessage(chatId, '🧠 請直接輸入討論主題，例如：\n\n`/discuss 我應該如何優化投資組合？`');
     } else if (data.startsWith('expense_')) {
         const category = data.replace('expense_', '');
         await handleExpenseCategory(chatId, query.from.id, category);
