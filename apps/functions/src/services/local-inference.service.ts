@@ -4,15 +4,15 @@
  * Wraps the Ollama HTTP API running on the local RTX 4080 desktop.
  * Firebase Functions connects via Tailscale Funnel or a configurable OLLAMA_BASE_URL.
  *
- * Priority models:
- *   - qwen2.5   → Traditional Chinese conversations (best quality for zh-TW)
- *   - llama3    → General purpose / English fallback
- *   - mistral   → Lightweight / fast tasks
+ * Installed models (confirmed 2026-04-22):
+ *   - gpt-oss:20b    → 20.9B MXFP4, primary reasoning model
+ *   - qwen3:14b      → 14.8B Q4_K_M, Traditional Chinese conversations
+ *   - nomic-embed-text → 137M F16, text embeddings for ChromaDB
  *
  * Connection strategy:
  *   1. Read OLLAMA_BASE_URL from Firebase Secret / env
  *   2. Health check before each call
- *   3. 30s timeout; caller catches OllamaUnavailableError and falls back to cloud
+ *   3. 60s timeout (14b models need more time); caller catches OllamaUnavailableError
  */
 
 import { logger } from 'firebase-functions/v2';
@@ -22,16 +22,10 @@ import { logger } from 'firebase-functions/v2';
 // ================================
 
 export type OllamaModel =
-    | 'qwen2.5'
-    | 'qwen2.5:7b'
-    | 'qwen2.5:14b'
-    | 'llama3'
-    | 'llama3.1'
-    | 'llama3.1:8b'
-    | 'mistral'
-    | 'mistral:7b'
-    | 'gemma2'
-    | 'gemma2:9b';
+    | 'gpt-oss:20b'
+    | 'qwen3:14b'
+    | 'nomic-embed-text'
+    | 'nomic-embed-text:latest';
 
 export interface OllamaMessage {
     role: 'system' | 'user' | 'assistant';
@@ -95,8 +89,8 @@ function getOllamaBaseUrl(): string {
     );
 }
 
-const OLLAMA_TIMEOUT_MS = 30_000;   // 30s – ample for 7B models on RTX 4080
-const HEALTH_TIMEOUT_MS = 3_000;    // 3s  – quick availability check
+const OLLAMA_TIMEOUT_MS = 90_000;   // 90s – gpt-oss:20b / qwen3:14b on RTX 4080 SUPER
+const HEALTH_TIMEOUT_MS = 8_000;    // 8s  – Tailscale round-trip can be 3-6s from Cloud Run Asia
 
 // ================================
 // Health Check
@@ -147,20 +141,24 @@ export function invalidateOllamaHealthCache(): void {
 
 /**
  * Choose the best local model for a given agent.
- * qwen2.5 handles Traditional Chinese far better than llama3.
- * Investment agent prefers precision → qwen2.5:14b if available, else qwen2.5.
+ *
+ * Installed on RTX 4080 SUPER (confirmed 2026-04-22):
+ *   gpt-oss:20b   — 20.9B MXFP4, strong reasoning + English/Chinese
+ *   qwen3:14b     — 14.8B Q4_K_M, Traditional Chinese specialist
  */
 export function selectLocalModel(agentId: string): OllamaModel {
     switch (agentId) {
         case 'investment':
         case 'accountant':
         case 'tax':
-            return 'qwen2.5:14b';  // larger model for financial reasoning
         case 'nexus':
+            return 'gpt-oss:20b';   // heavier reasoning for financial / analytical tasks
+        case 'butler':
         case 'titan':
-            return 'qwen2.5:7b';   // technical reasoning
+        case 'lumi':
+        case 'rusty':
         default:
-            return 'qwen2.5';      // general: auto-pick installed variant
+            return 'qwen3:14b';    // Traditional Chinese specialist for daily interactions
     }
 }
 
@@ -176,7 +174,7 @@ export function selectLocalModel(agentId: string): OllamaModel {
  */
 export async function ollamaChat(
     messages: OllamaMessage[],
-    model: OllamaModel = 'qwen2.5',
+    model: OllamaModel = 'qwen3:14b',
     options?: OllamaChatRequest['options']
 ): Promise<string> {
     const available = await isOllamaAvailable();
@@ -224,7 +222,7 @@ export async function ollamaChat(
         return text.trim();
     } catch (err) {
         if ((err as Error).name === 'AbortError') {
-            throw new OllamaUnavailableError('timeout after 30s');
+            throw new OllamaUnavailableError('timeout after 60s');
         }
         throw err;
     } finally {
@@ -241,7 +239,7 @@ export async function ollamaChat(
 export async function ollamaGenerate(
     prompt: string,
     systemPrompt?: string,
-    model: OllamaModel = 'qwen2.5',
+    model: OllamaModel = 'qwen3:14b',
     options?: OllamaGenerateRequest['options']
 ): Promise<string> {
     const available = await isOllamaAvailable();

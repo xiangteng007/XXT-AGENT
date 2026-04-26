@@ -54,3 +54,5 @@ gcp-sa-key*.json
 **/sa-key*.json
 # Secret keys reference
 .env.keys
+
+logs/

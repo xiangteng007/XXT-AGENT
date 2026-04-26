@@ -14,6 +14,12 @@ import {
     getPreviousMessages,
 } from '../../services/butler/conversation-session.service';
 import { isOllamaAvailable, getAvailableModels } from '../../services/local-inference.service';
+import {
+    handleSignalCommand,
+    handleMpeCommand,
+    handlePredictCommand,
+    handleBacktestCommand,
+} from './mpe-commands';
 
 import { investmentService } from '../../services/butler/investment.service';
 import { loanService } from '../../services/butler/loan.service';
@@ -52,6 +58,11 @@ export async function handleCommand(chatId: number, telegramUserId: number, text
         case '/discuss': await sendDiscussMenu(chatId, telegramUserId, text); break;
         case '/reflect': await sendReflectTrigger(chatId, telegramUserId); break;
         case '/memory': await sendMemoryStatus(chatId, telegramUserId); break;
+        // ── MPE Market Prediction Engine ──
+        case '/signal': await handleSignalCommand({ reply: (t: string, o?: unknown) => sendMessage(chatId, t, o as Record<string, unknown>) }); break;
+        case '/mpe': await handleMpeCommand({ reply: (t: string, o?: unknown) => sendMessage(chatId, t, o as Record<string, unknown>) }); break;
+        case '/predict': await handlePredictCommand({ message: { text }, reply: (t: string, o?: unknown) => sendMessage(chatId, t, o as Record<string, unknown>) }); break;
+        case '/backtest': await handleBacktestCommand({ message: { text }, reply: (t: string, o?: unknown) => sendMessage(chatId, t, o as Record<string, unknown>) }); break;
         default:
             await sendMessage(chatId, '❓ 不認識的指令。輸入 /help 查看可用指令。');
     }
@@ -113,6 +124,10 @@ export async function sendHelpMessage(chatId: number): Promise<void> {
 /link - 綁定帳號
 /settings - 設定
 /agents - 探員目錄
+/mpe - 市場預測引擎狀態
+/signal - 今日交易訊號
+/predict [代號] - 即時分析（如 /predict 2330）
+/backtest [代號] - 歷史訊號準確率
 
 **自然語言（AI 理財）：**
 • 「買了 10 張 0050，均價 150」
@@ -238,6 +253,10 @@ export async function sendMainMenu(chatId: number): Promise<void> {
                 [
                     { text: '💳 帳戶餘額', callback_data: 'cmd_balance' },
                     { text: '⚙️ 設定', callback_data: 'cmd_settings' },
+                ],
+                [
+                    { text: '🔮 市場預測 MPE', callback_data: 'cmd_mpe' },
+                    { text: '📡 交易訊號', callback_data: 'cmd_signal' },
                 ],
             ],
         },
@@ -904,6 +923,14 @@ export async function sendMemoryStatus(chatId: number, telegramUserId: number): 
             ? `✅ 運作中 (${ollamaModels.length > 0 ? ollamaModels.slice(0, 3).join(', ') : '模型載入中...'})`
             : '❌ 離線（雲端 fallback 啟動中）';
 
+        // Dynamically check ChromaDB (NAS) status
+        const { getMemorySystemStatus } = await import('../../services/memory-store.service');
+        const memStatus = await getMemorySystemStatus();
+        const chromaStatus = memStatus.chromaDbOnline
+            ? `✅ 運作中 (${memStatus.chromaDbUrl})`
+            : `❌ 離線 — fallback 至 Firestore (${memStatus.chromaDbUrl})`;
+        const layerLabel = memStatus.layer === 'dual' ? '雙層模式' : 'Firestore 單層';
+
         const msg = `🧠 **記憶狀態**
 
 👤 用戶 ID：\`${userId}\`
@@ -916,9 +943,9 @@ export async function sendMemoryStatus(chatId: number, telegramUserId: number): 
 🖥️ 本地 Ollama (RTX 4080)：${ollamaStatus}
 
 ─────────────────
-*記憶層狀態：*
+*記憶層狀態（${layerLabel}）：*
 ☁️ Firestore 會話快取：✅ 運作中
-📊 NAS ChromaDB 向量記憶：🔧 建設中
+📊 NAS ChromaDB 向量記憶：${chromaStatus}
 
 💡 使用 /reflect 生成對話摘要並強化記憶。`;
 

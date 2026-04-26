@@ -60,9 +60,30 @@ const CLOUD_REQUIRED_PATTERNS: RegExp[] = [
 const CLOUD_REQUIRED_AGENTS = new Set(['investment']);
 
 /**
- * Patterns that are safe for local inference
+ * Patterns that MUST stay local due to sensitive personal data.
+ * These are intercepted by local-tool-parser.service BEFORE any cloud call.
+ * Listing them here as LOCAL_SAFE ensures classifyTask() never
+ * accidentally sends them to Gemini/OpenAI even if the tool parser
+ * hasn't fired yet.
+ */
+const SENSITIVE_TOOL_PATTERNS: RegExp[] = [
+    // Financial recording
+    /花了|消費了|買了.*元|付了|結帳|刷卡了|記帳|支出|扣款/,
+    // Health recording
+    /體重.*公斤|公斤.*體重|今天.*kg|昨晚睡|睡了.*小時|跑了|騎了.*公里|健身.*分鐘/,
+    // Vehicle
+    /加油|公升.*元|每公升|油費/,
+    // Investment recording (buying/selling)
+    /買了.*股|賣了.*股|買進.*張|賣出.*張|進場.*元|出場.*元/,
+    // Tax / loan pure-math
+    /貸款試算|所得稅估算|稅務試算/,
+];
+
+/**
+ * Patterns that are safe for local inference (conversational)
  */
 const LOCAL_SAFE_PATTERNS: RegExp[] = [
+    ...SENSITIVE_TOOL_PATTERNS, // sensitive ops always route local
     /你好|哈囉|早安|晚安|謝謝|再見/,
     /行程|待辦|提醒|安排/,
     /健康|睡眠|運動|體重|卡路里/,
@@ -72,6 +93,10 @@ const LOCAL_SAFE_PATTERNS: RegExp[] = [
     /車|Jimny|保養|油耗/,
     /貸款|利率計算|還款/,
     /工程|建築|設計|BIM|圖面/,
+    // MPE — fully local (quantitative math, Ollama only)
+    /\/signal|\/mpe|\/predict|\/backtest/,
+    /市場預測|交易訊號|MPE|蒙特卡洛|量化指標|風險報酬/,
+    /Hurst|Shannon|VIX|DXY|美債/,
 ];
 
 // ================================
@@ -82,7 +107,7 @@ const LOCAL_SAFE_PATTERNS: RegExp[] = [
  * Classify a user message to determine the best inference backend.
  */
 export function classifyTask(message: string, agentId: string = 'butler'): RoutingDecision {
-    const msg = message.toLowerCase();
+    const msgLower = message.toLowerCase();
 
     // Agent-level override: investment always uses cloud for live data
     if (CLOUD_REQUIRED_AGENTS.has(agentId)) {
@@ -95,7 +120,7 @@ export function classifyTask(message: string, agentId: string = 'butler'): Routi
 
     // Check cloud-required patterns
     for (const pattern of CLOUD_REQUIRED_PATTERNS) {
-        if (pattern.test(message)) {
+        if (pattern.test(msgLower)) {
             return {
                 backend: 'cloud',
                 reason: `matches cloud-required pattern: ${pattern.source.slice(0, 30)}`,
@@ -106,7 +131,7 @@ export function classifyTask(message: string, agentId: string = 'butler'): Routi
 
     // Check local-safe patterns
     for (const pattern of LOCAL_SAFE_PATTERNS) {
-        if (pattern.test(message)) {
+        if (pattern.test(msgLower)) {
             return {
                 backend: 'local',
                 reason: `matches local-safe pattern: ${pattern.source.slice(0, 30)}`,
@@ -199,10 +224,10 @@ export async function routedSummarize(
         const text = await ollamaGenerate(
             content,
             systemInstruction,
-            'qwen2.5',
+            'qwen3:14b',
             { temperature: 0.3, num_predict: 600 }
         );
-        return { text, backend: 'local', model: 'qwen2.5' };
+        return { text, backend: 'local', model: 'qwen3:14b' };
     } catch (err) {
         if (err instanceof OllamaUnavailableError) {
             logger.warn('[Router] Ollama unavailable for summarize, using cloud');

@@ -38,6 +38,10 @@ import { processScheduledReminders, cleanupNotificationMarkers } from './service
 
 // Secrets
 const telegramBotToken = defineSecret('TELEGRAM_BOT_TOKEN');
+const geminiApiKey = defineSecret('GEMINI_API_KEY');
+const openaiApiKey = defineSecret('OPENAI_API_KEY');
+const ollamaBaseUrl = defineSecret('OLLAMA_BASE_URL');
+const chromadbUrl = defineSecret('CHROMADB_URL');
 
 // Type assertion helper for cross-library type compatibility
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,8 +98,9 @@ export const telegramWebhook = onRequest(
         cors: false,
         invoker: 'public',
         maxInstances: 30,
-        timeoutSeconds: 30,
-        secrets: [telegramBotToken],
+        timeoutSeconds: 90,   // extended for local Ollama inference (14B model)
+        memory: '512MiB',
+        secrets: [telegramBotToken, geminiApiKey, openaiApiKey, ollamaBaseUrl, chromadbUrl],
     },
     handleTelegramWebhook as AnyHandler
 );
@@ -328,3 +333,91 @@ export const marketStreamerScheduled = onSchedule(
  * Firestore Scheduled Backup (DE-01)
  */
 export { scheduledFirestoreBackup } from './scheduled/backup';
+
+// ================================
+// MPE — Market Prediction Engine Schedulers
+// ================================
+
+/**
+ * MPE Scheduler — Sentiment scan every 15 minutes (market hours)
+ */
+export const mpeSentimentScan = onSchedule(
+    {
+        schedule: 'every 15 minutes',
+        timeZone: 'Asia/Taipei',
+        memory: '512MiB',
+        timeoutSeconds: 120,
+        maxInstances: 1,
+    },
+    async () => {
+        // Only run during market hours (9:00-13:30 TW, 9:30-16:00 US)
+        const now = new Date();
+        const hour = now.getHours();
+        if (hour < 9 || hour > 22) return; // Off hours skip
+        const { runOsintScan } = await import('./services/mpe/osint-scanner.service');
+        await runOsintScan();
+    }
+);
+
+/**
+ * MPE Scheduler — Daily post-market signal audit
+ */
+export const mpeDailyAudit = onSchedule(
+    {
+        schedule: 'every day 14:30',
+        timeZone: 'Asia/Taipei',
+        memory: '512MiB',
+        timeoutSeconds: 300,
+        maxInstances: 1,
+    },
+    async () => {
+        const db = (await import('firebase-admin/firestore')).getFirestore();
+        const { Timestamp } = await import('firebase-admin/firestore');
+        // Expire stale signals
+        const stale = await db.collection('mpe_signals')
+            .where('status', '==', 'ACTIVE')
+            .where('validUntil', '<', Timestamp.now())
+            .get();
+        const batch = db.batch();
+        stale.docs.forEach(d => batch.update(d.ref, { status: 'EXPIRED' }));
+        await batch.commit();
+        logger.info(`[MPE Audit] Expired ${stale.size} stale signals`);
+    }
+);
+
+
+/**
+ * Memory Organizer — Layer B: Daily summary at 2:00 AM
+ */
+export const memoryOrganizerDaily = onSchedule(
+    {
+        schedule: 'every day 02:00',
+        timeZone: 'Asia/Taipei',
+        memory: '512MiB',
+        timeoutSeconds: 600,
+        maxInstances: 1,
+        secrets: [ollamaBaseUrl, chromadbUrl],
+    },
+    async () => {
+        const { runMemoryOrganizerDaily } = await import('./scheduled/memory-organizer');
+        await runMemoryOrganizerDaily();
+    }
+);
+
+/**
+ * Memory Organizer — Layer C: Weekly cross-domain insights at Sunday 2:30 AM
+ */
+export const memoryOrganizerWeekly = onSchedule(
+    {
+        schedule: 'every sunday 02:30',
+        timeZone: 'Asia/Taipei',
+        memory: '512MiB',
+        timeoutSeconds: 900,
+        maxInstances: 1,
+        secrets: [ollamaBaseUrl, chromadbUrl],
+    },
+    async () => {
+        const { runMemoryOrganizerWeekly } = await import('./scheduled/memory-organizer');
+        await runMemoryOrganizerWeekly();
+    }
+);
