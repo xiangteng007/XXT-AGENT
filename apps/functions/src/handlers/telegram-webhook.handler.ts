@@ -20,7 +20,7 @@ import {
 } from '../services/butler/conversation-session.service';
 import { generateStreamingResponse } from '../services/butler-ai.service';
 import { retrieveRAGContext } from '../services/rag-context.service';
-import { preWarmModel } from '../services/local-inference.service';
+import { preWarmModel, getLoadedModels } from '../services/local-inference.service';
 import { parseLocalToolCall } from '../services/local-tool-parser.service';
 
 // ---- Modular V3 sub-modules ----
@@ -44,7 +44,7 @@ function triggerPreWarm(): void {
     if (_preWarmed) return;
     _preWarmed = true;
     // Fire-and-forget — don't block the request
-    preWarmModel('qwen3:14b').catch(() => {/* silent */});
+    preWarmModel('qwen3:14b').then(() => getLoadedModels()).catch(() => {/* silent */});
 }
 
 // ================================
@@ -264,9 +264,11 @@ async function handleStreamingResponse(
             }
         }
 
-        // Final edit with inline keyboard
+        // Final edit with source indicator + inline keyboard
+        const sourceEmoji = finalBackend === 'local' ? '⚡' : '☁️';
+        const displayFinal = `${finalText}\n\n${sourceEmoji} _${finalModel}_`;
         const suggestedButtons = inferNextActions(text, finalText, activeAgent);
-        await editMessage(chatId, messageId, finalText, {
+        await editMessage(chatId, messageId, displayFinal, {
             reply_markup: { inline_keyboard: suggestedButtons },
         });
 

@@ -11,27 +11,16 @@
 import { logger } from 'firebase-functions/v2';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { embedText, isOllamaAvailable } from './local-inference.service';
+import {
+    CHROMADB_BASE_URL,
+    CHROMADB_TENANT,
+    CHROMADB_DATABASE,
+    COLLECTION_MEMORIES,
+    chromaFetch,
+    isChromaDbAvailable,
+} from '../config/chromadb';
 
 const db = getFirestore();
-
-// ================================
-// ChromaDB 連線設定
-// ================================
-
-/** ChromaDB 端點 (NAS 192.168.31.77:8001 �?Tailscale URL) */
-const CHROMADB_BASE_URL = (process.env.CHROMADB_URL || 'http://192.168.31.77:8001').replace(/\/$/, '');
-const CHROMADB_AUTH_TOKEN = process.env.CHROMADB_TOKEN || '';
-const CHROMADB_COLLECTION = 'xxt_agent_memories';
-const CHROMADB_TENANT = 'default_tenant';
-const CHROMADB_DATABASE = 'default_database';
-
-/** ChromaDB v2 API 基礎路徑 */
-const CHROMA_API = `${CHROMADB_BASE_URL}/api/v2`;
-
-/** 快取 ChromaDB 連線狀態，避免每次請求都做健康檢查 */
-let chromadbAvailableCache: boolean | null = null;
-let chromadbLastCheck = 0;
-const CHROMADB_CACHE_TTL_MS = 30_000; // 30s 快取
 
 // ================================
 // Types
@@ -60,51 +49,10 @@ export interface MemorySearchResult {
 // ChromaDB v2 Helpers
 // ================================
 
-function chromaHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (CHROMADB_AUTH_TOKEN) headers['Authorization'] = `Bearer ${CHROMADB_AUTH_TOKEN}`;
-    return headers;
-}
-
-async function chromaFetch(path: string, init?: RequestInit): Promise<Response> {
-    const ctrl = new AbortController();
-    const timeout = setTimeout(() => ctrl.abort(), 8000);
-    try {
-        return await fetch(`${CHROMA_API}${path}`, {
-            ...init,
-            headers: { ...chromaHeaders(), ...(init?.headers as Record<string, string> || {}) },
-            signal: ctrl.signal,
-        });
-    } finally {
-        clearTimeout(timeout);
-    }
-}
 
 // ================================
 // ChromaDB Health Check
 // ================================
-
-export async function isChromaDbAvailable(): Promise<boolean> {
-    const now = Date.now();
-    if (chromadbAvailableCache !== null && (now - chromadbLastCheck) < CHROMADB_CACHE_TTL_MS) {
-        return chromadbAvailableCache;
-    }
-
-    try {
-        const resp = await chromaFetch('/heartbeat');
-        chromadbAvailableCache = resp.ok;
-        chromadbLastCheck = Date.now();
-        if (!resp.ok) {
-            logger.warn(`[MemoryStore] ChromaDB heartbeat returned ${resp.status}`);
-        }
-        return resp.ok;
-    } catch (err) {
-        chromadbAvailableCache = false;
-        chromadbLastCheck = Date.now();
-        logger.warn('[MemoryStore] ChromaDB unreachable, falling back to Firestore:', err instanceof Error ? err.message : err);
-        return false;
-    }
-}
 
 // ================================
 // Collection Management
@@ -114,7 +62,7 @@ export async function isChromaDbAvailable(): Promise<boolean> {
 async function ensureChromaCollection(): Promise<string | null> {
     try {
         // Try to get existing collection first
-        const getResp = await chromaFetch(`/tenants/${CHROMADB_TENANT}/databases/${CHROMADB_DATABASE}/collections/${CHROMADB_COLLECTION}`);
+        const getResp = await chromaFetch(`/tenants/${CHROMADB_TENANT}/databases/${CHROMADB_DATABASE}/collections/${COLLECTION_MEMORIES}`);
         if (getResp.ok) {
             const col = await getResp.json() as { id: string };
             return col.id;
@@ -124,7 +72,7 @@ async function ensureChromaCollection(): Promise<string | null> {
         const createResp = await chromaFetch(`/tenants/${CHROMADB_TENANT}/databases/${CHROMADB_DATABASE}/collections`, {
             method: 'POST',
             body: JSON.stringify({
-                name: CHROMADB_COLLECTION,
+                name: COLLECTION_MEMORIES,
                 configuration: { hnsw: { space: 'cosine' } },
                 get_or_create: true,
             }),

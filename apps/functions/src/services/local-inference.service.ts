@@ -151,6 +151,35 @@ export function invalidateOllamaHealthCache(): void {
 }
 
 /**
+ * Query loaded models in VRAM via `ollama ps`.
+ * Returns model names currently resident, useful for VRAM monitoring.
+ */
+export async function getLoadedModels(): Promise<string[]> {
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(`${getOllamaBaseUrl()}/api/ps`, {
+            method: 'GET',
+            signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (!res.ok) return [];
+
+        const data = await res.json() as { models?: { name: string; size: number; size_vram: number }[] };
+        const models = (data.models || []).map(m => {
+            const vramGB = (m.size_vram / 1e9).toFixed(1);
+            return `${m.name}(${vramGB}GB)`;
+        });
+        if (models.length > 0) {
+            logger.info(`[Ollama] VRAM: ${models.join(', ')}`);
+        }
+        return models;
+    } catch {
+        return [];
+    }
+}
+
+/**
  * Pre-warm a model into VRAM by sending a minimal generate request.
  * Call during Cloud Run startup to avoid first-request model loading delay (~10s).
  * Non-blocking: failures are silently ignored.

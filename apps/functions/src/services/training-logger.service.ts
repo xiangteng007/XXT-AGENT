@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Training Logger Service
  *
  * 知識蒸餾管線 (Knowledge Distillation Pipeline)
@@ -18,16 +18,14 @@
 
 import { logger } from 'firebase-functions/v2';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import {
+    CHROMADB_TENANT,
+    CHROMADB_DATABASE,
+    COLLECTION_TRAINING,
+    chromaFetch,
+} from '../config/chromadb';
 
 const db = getFirestore();
-
-// ChromaDB 設定 (複用 memory-store 的環境變�?
-const CHROMADB_BASE_URL = (process.env.CHROMADB_URL || 'http://192.168.31.77:8001').replace(/\/$/, '');
-const CHROMADB_AUTH_TOKEN = process.env.CHROMADB_TOKEN || '';
-const CHROMA_API = `${CHROMADB_BASE_URL}/api/v2`;
-const TRAINING_COLLECTION_NAME = 'training_knowledge';
-const CHROMADB_TENANT = 'default_tenant';
-const CHROMADB_DATABASE = 'default_database';
 
 // ============================================================================
 // Types
@@ -57,34 +55,10 @@ export interface TrainingRecord {
 }
 
 // ============================================================================
-// ChromaDB Helpers (獨立�?memory-store，使�?training 專屬 collection)
-// ============================================================================
-
-function chromaHeaders(): Record<string, string> {
-    const h: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (CHROMADB_AUTH_TOKEN) h['Authorization'] = `Bearer ${CHROMADB_AUTH_TOKEN}`;
-    return h;
-}
-
-async function chromaFetch(path: string, init?: RequestInit): Promise<Response> {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 8000);
-    try {
-        return await fetch(`${CHROMA_API}${path}`, {
-            ...init,
-            headers: { ...chromaHeaders(), ...(init?.headers as Record<string, string> || {}) },
-            signal: ctrl.signal,
-        });
-    } finally {
-        clearTimeout(t);
-    }
-}
-
-/** 確保 training_knowledge collection 存在，回�?collection ID */
 async function ensureTrainingCollection(): Promise<string | null> {
     try {
         const listResp = await chromaFetch(
-            `/tenants/${CHROMADB_TENANT}/databases/${CHROMADB_DATABASE}/collections?name=${TRAINING_COLLECTION_NAME}`
+            `/tenants/${CHROMADB_TENANT}/databases/${CHROMADB_DATABASE}/collections?name=${COLLECTION_TRAINING}`
         );
         if (listResp.ok) {
             const cols = await listResp.json() as Array<{ id: string; name: string }>;
@@ -96,7 +70,7 @@ async function ensureTrainingCollection(): Promise<string | null> {
             {
                 method: 'POST',
                 body: JSON.stringify({
-                    name: TRAINING_COLLECTION_NAME,
+                    name: COLLECTION_TRAINING,
                     metadata: { description: 'AI training data for local model fine-tuning' },
                 }),
             }
