@@ -3,7 +3,12 @@
  *
  * A-01: 路由設定已模組化至 app.ts
  * 本檔僅負責：HTTP Server、WebSocket、Graceful Shutdown
+ *
+ * v9.0: OpenTelemetry 追蹤已啟用（tracing.ts 必須是第一個 import）
  */
+
+// ── OTEL Instrumentation（必須在所有其他 import 之前）──────────
+import './tracing';
 
 import "dotenv/config";
 import * as http from "http";
@@ -117,10 +122,15 @@ wss.on("connection", async (ws: WebSocket, req) => {
   });
 });
 
+import { registerAllExecutors } from './agent-executor-bridge';
+
 // ── 啟動時的 Local Runner 狀態初始化 ─────────────────────────
 server.listen(PORT, async () => {
   logger.info(`OpenClaw Gateway listening on port ${PORT}`);
   logger.info(`Deploy mode: ${DEPLOY_MODE}`);
+
+  // 註冊所有 Agent Executor 至 AOP 協調引擎
+  registerAllExecutors();
 
   // 觸發初始 Local Runner 狀態偵測
   const initialStatus = await localRunner.probe();

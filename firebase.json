@@ -3,6 +3,9 @@
     {
       "source": "apps/functions",
       "codebase": "default",
+      "predeploy": [
+        "npm --prefix apps/functions run build"
+      ],
       "ignore": [
         "node_modules",
         ".git",

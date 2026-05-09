@@ -112,13 +112,28 @@ ledgerRouter.post('/ledger', async (req: Request, res: Response) => {
     entity_type?: EntityType; payment_method?: string; bank_account_id?: string;
   };
 
-  if (!type || !category || !description || !amount || amount <= 0) {
+  if (
+    typeof type !== 'string' || !type.trim() ||
+    typeof category !== 'string' || !category.trim() ||
+    typeof description !== 'string' || !description.trim() ||
+    typeof amount !== 'number' || amount <= 0 || !Number.isFinite(amount)
+  ) {
     res.status(400).json({
-      error: 'type, category, description, amount are required',
+      error: 'type, category, description (string), amount (positive number) are required',
       income_categories: ['engineering_payment','advance_payment','design_fee','consulting_fee','material_rebate','other_income','salary','freelance','rental_income','investment_gain','allowance'],
       expense_categories: ['material','labor','subcontract','equipment','overhead','insurance','tax_payment','utilities','rent','office_supply','entertainment','transportation','professional_service','other_expense','medical','education','life_insurance','house_rent','family_living'],
       entity_types: ['personal','family','co_drone','co_construction','co_renovation','co_design','assoc_rescue'],
     });
+    return;
+  }
+
+  if (description.length > 2000) {
+    res.status(400).json({ error: 'description exceeds maximum length of 2000 characters' });
+    return;
+  }
+
+  if (tax_rate !== undefined && (typeof tax_rate !== 'number' || tax_rate < 0 || tax_rate > 100)) {
+    res.status(400).json({ error: 'tax_rate must be a number between 0 and 100' });
     return;
   }
 
@@ -227,7 +242,7 @@ ledgerRouter.get('/ledger', async (req: Request, res: Response) => {
 // ── GET /report/summary ── 期間彙總 ──────────────────────────
 ledgerRouter.get('/report/summary', async (req: Request, res: Response) => {
   const { period } = req.query as { period?: string };
-  if (!period || !/^\d{6}$/.test(period)) { res.status(400).json({ error: 'period required (YYYYMM)' }); return; }
+  if (!period || typeof period !== 'string' || !/^\d{6}$/.test(period)) { res.status(400).json({ error: 'period required (YYYYMM) as a string' }); return; }
   res.json(await calcPeriodSummary(period));
 });
 
@@ -235,7 +250,7 @@ ledgerRouter.get('/report/summary', async (req: Request, res: Response) => {
 ledgerRouter.get('/report/401', async (req: Request, res: Response) => {
   const { period, company_name = 'SENTENG 建工股份有限公司', tax_id = '' } =
     req.query as { period?: string; company_name?: string; tax_id?: string };
-  if (!period || !/^\d{6}$/.test(period)) { res.status(400).json({ error: 'period required (YYYYMM)' }); return; }
+  if (!period || typeof period !== 'string' || !/^\d{6}$/.test(period)) { res.status(400).json({ error: 'period required (YYYYMM) as a string' }); return; }
   const summary = await calcPeriodSummary(period);
   res.json({
     generated_by: 'accountant-agent-v1',
@@ -256,7 +271,7 @@ ledgerRouter.get('/report/annual', async (req: Request, res: Response) => {
 // ── GET /export/csv ── CSV 匯出 ───────────────────────────────
 ledgerRouter.get('/export/csv', async (req: Request, res: Response) => {
   const { period, year } = req.query as { period?: string; year?: string };
-  if (!period && !year) { res.status(400).json({ error: 'period (YYYYMM) or year (YYYY) required' }); return; }
+  if ((!period || typeof period !== 'string') && (!year || typeof year !== 'string')) { res.status(400).json({ error: 'period (YYYYMM) or year (YYYY) required as string' }); return; }
   const csv = await generateLedgerCsv(period, year ? parseInt(year) : undefined);
   const filename = period ? `收支明細_${period}.csv` : `收支明細_${year}年.csv`;
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');

@@ -87,8 +87,23 @@ regulationRouter.post('/query', async (req: Request, res: Response) => {
     top_k?: number;
   };
 
-  if (!query?.trim()) {
-    res.status(400).json({ error: 'query is required' });
+  if (typeof query !== 'string' || !query.trim()) {
+    res.status(400).json({ error: 'query must be a non-empty string' });
+    return;
+  }
+
+  if (query.length > 2000) {
+    res.status(400).json({ error: 'query exceeds maximum length of 2000 characters' });
+    return;
+  }
+
+  if (category !== undefined && typeof category !== 'string') {
+    res.status(400).json({ error: 'category must be a string' });
+    return;
+  }
+
+  if (top_k !== undefined && (typeof top_k !== 'number' || top_k <= 0 || top_k > 100)) {
+    res.status(400).json({ error: 'top_k must be a positive number between 1 and 100' });
     return;
   }
 
@@ -120,8 +135,18 @@ regulationRouter.post('/ask', async (req: Request, res: Response) => {
     category?: string;
   };
 
-  if (!question?.trim()) {
-    res.status(400).json({ error: 'question is required' });
+  if (typeof question !== 'string' || !question.trim()) {
+    res.status(400).json({ error: 'question must be a non-empty string' });
+    return;
+  }
+
+  if (question.length > 2000) {
+    res.status(400).json({ error: 'question exceeds maximum length of 2000 characters' });
+    return;
+  }
+
+  if (category !== undefined && typeof category !== 'string') {
+    res.status(400).json({ error: 'category must be a string' });
     return;
   }
 

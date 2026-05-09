@@ -50,7 +50,7 @@ const v2_1 = require("firebase-functions/v2");
 const admin = __importStar(require("firebase-admin"));
 const db = admin.firestore();
 const MAX_HISTORY = 10; // Keep last N messages per user
-const SESSION_TTL_MS = 30 * 60 * 1000; // 30 min inactivity = new session
+const SESSION_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours inactivity = new session (was 30min, too short)
 // ================================
 // Session Management
 // ================================
@@ -67,10 +67,10 @@ async function getSession(userId) {
         const session = doc.data();
         const lastActive = new Date(session.lastActiveAt).getTime();
         const now = Date.now();
-        // Check if session expired
+        // Check if session expired — but preserve the chosen agent across resets
         if (now - lastActive > SESSION_TTL_MS) {
-            v2_1.logger.info(`[Session] Expired for ${userId}, creating new session`);
-            return createNewSession(userId);
+            v2_1.logger.info(`[Session] Expired for ${userId}, creating new session (preserving agent: ${session.activeAgent || 'butler'})`);
+            return createNewSession(userId, session.activeAgent);
         }
         return session;
     }
@@ -79,12 +79,14 @@ async function getSession(userId) {
 /**
  * Create a fresh conversation session
  */
-async function createNewSession(userId) {
+async function createNewSession(userId, preservedAgent) {
     const session = {
         userId,
         messages: [],
         lastActiveAt: new Date().toISOString(),
         sessionId: `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        // Preserve agent across session resets so user stays with chosen agent
+        activeAgent: preservedAgent || 'butler',
     };
     await sessionRef(userId).set(session);
     return session;

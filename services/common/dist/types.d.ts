@@ -406,13 +406,13 @@ export declare const FusedEventSchemaV2: z.ZodObject<{
     id: string;
     title: string;
     version: string;
+    tags: string[];
     ts: string;
     eventType: "market" | "social" | "news" | "fusion";
     severity: number;
     sentiment: "unknown" | "bullish" | "bearish" | "neutral" | "mixed";
     confidence: number;
     symbols: string[];
-    tags: string[];
     location?: string | undefined;
     summary?: string | undefined;
     instrument?: {
@@ -483,6 +483,7 @@ export declare const FusedEventSchemaV2: z.ZodObject<{
     location?: string | undefined;
     summary?: string | undefined;
     version?: string | undefined;
+    tags?: string[] | undefined;
     instrument?: {
         symbol: string;
         type: "crypto" | "stock" | "future" | "fund" | "fx" | "etf";
@@ -508,7 +509,6 @@ export declare const FusedEventSchemaV2: z.ZodObject<{
         explain?: string | undefined;
     } | undefined;
     symbols?: string[] | undefined;
-    tags?: string[] | undefined;
     sources?: {
         market?: {
             symbol: string;
@@ -773,13 +773,13 @@ export declare const FusedEventSchema: z.ZodObject<{
     id: string;
     title: string;
     version: string;
+    tags: string[];
     ts: string;
     eventType: "market" | "social" | "news" | "fusion";
     severity: number;
     sentiment: "unknown" | "bullish" | "bearish" | "neutral" | "mixed";
     confidence: number;
     symbols: string[];
-    tags: string[];
     location?: string | undefined;
     summary?: string | undefined;
     instrument?: {
@@ -850,6 +850,7 @@ export declare const FusedEventSchema: z.ZodObject<{
     location?: string | undefined;
     summary?: string | undefined;
     version?: string | undefined;
+    tags?: string[] | undefined;
     instrument?: {
         symbol: string;
         type: "crypto" | "stock" | "future" | "fund" | "fx" | "etf";
@@ -875,7 +876,6 @@ export declare const FusedEventSchema: z.ZodObject<{
         explain?: string | undefined;
     } | undefined;
     symbols?: string[] | undefined;
-    tags?: string[] | undefined;
     sources?: {
         market?: {
             symbol: string;

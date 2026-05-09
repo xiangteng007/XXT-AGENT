@@ -34,8 +34,13 @@ bankRouter.post('/bank/account', async (req: Request, res: Response) => {
     account_holder?: string; entity_type?: string; currency?: string;
     current_balance?: number; notes?: string;
   };
-  if (!b.bank_name || !b.account_no || !b.account_holder) {
-    res.status(400).json({ error: 'bank_name, account_no, account_holder required' }); return;
+  if (typeof b.bank_name !== 'string' || !b.bank_name.trim() ||
+      typeof b.account_no !== 'string' || !b.account_no.trim() ||
+      typeof b.account_holder !== 'string' || !b.account_holder.trim()) {
+    res.status(400).json({ error: 'bank_name, account_no, account_holder required as non-empty strings' }); return;
+  }
+  if (b.current_balance !== undefined && (typeof b.current_balance !== 'number' || !Number.isFinite(b.current_balance))) {
+    res.status(400).json({ error: 'current_balance must be a finite number' }); return;
   }
   const entity: EntityType = validEntities.includes(b.entity_type as EntityType) ? b.entity_type as EntityType : 'co_construction';
   const account: BankAccount = {
@@ -85,7 +90,12 @@ bankRouter.post('/bank/txn', async (req: Request, res: Response) => {
     txn_date?: string; description?: string; counterparty?: string;
     reference_no?: string; balance_after?: number; ledger_category?: string; payment_method?: string;
   };
-  if (!b.type || !b.amount || !b.description) { res.status(400).json({ error: 'type, amount, description required' }); return; }
+  if (!b.type || typeof b.amount !== 'number' || !Number.isFinite(b.amount) || b.amount <= 0 || typeof b.description !== 'string' || !b.description.trim()) {
+    res.status(400).json({ error: 'type, amount (positive number), description (non-empty string) required' }); return;
+  }
+  if (b.description.length > 2000) {
+    res.status(400).json({ error: 'description exceeds maximum length of 2000 characters' }); return;
+  }
   if (b.type !== 'credit' && b.type !== 'debit') { res.status(400).json({ error: 'type must be credit or debit' }); return; }
 
   let account = null;

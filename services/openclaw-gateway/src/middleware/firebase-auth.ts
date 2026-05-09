@@ -43,6 +43,17 @@ export async function firebaseAuthMiddleware(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
+  // Internal Secret Bypass (For microservices like telegram-bot)
+  const internalSecretHeader = req.headers['x-internal-secret'];
+  if (internalSecretHeader && internalSecretHeader === process.env['INTERNAL_SECRET']) {
+    (req as Request & { user?: object }).user = {
+      uid: "internal-service",
+      role: "admin",
+    };
+    next();
+    return;
+  }
+
   // 開發模式：跳過
   if (DEV_BYPASS_AUTH) {
     (req as Request & { user?: object }).user = {

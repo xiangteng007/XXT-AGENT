@@ -1,0 +1,12 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'asia-east1-docker.pkg.dev/xxt-agent/ai-me-services/ai-gateway:latest'
+      - '-f'
+      - 'Dockerfile.deploy'
+      - '.'
+images:
+  - 'asia-east1-docker.pkg.dev/xxt-agent/ai-me-services/ai-gateway:latest'
+timeout: 300s

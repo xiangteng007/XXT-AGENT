@@ -46,6 +46,16 @@ def candle_change_pct(open_: float, close: float) -> float:
     return ((close - open_) / open_) * 100.0
 
 
+def safe_float(val, default: float = 0.0) -> float:
+    """Safely cast value to float, handling None and bad strings."""
+    try:
+        if val is None:
+            return default
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
 def compute_severity(pct: float, news_count: int, social_count: int = 0) -> int:
     """
     Compute severity score (0-100) based on price move, news count, and social signals.
@@ -65,8 +75,9 @@ async def handle_pubsub(request: web.Request) -> web.Response:
 
     try:
         payload = await request.json()
-    except Exception:
-        return web.Response(status=400)
+    except Exception as e:
+        logger.error(f"Invalid JSON payload: {e}")
+        return web.Response(status=400, text="Invalid JSON")
     
     decoded = pubsub_decode(payload)
     if not decoded:
@@ -156,12 +167,12 @@ async def handle_pubsub(request: web.Request) -> web.Response:
     # ==================
     if event_type == "candle_1m":
         symbol = decoded.get("symbol", "")
-        o = float(decoded.get("open", 0))
-        c = float(decoded.get("close", 0))
-        h = float(decoded.get("high", 0))
-        l = float(decoded.get("low", 0))
-        v = float(decoded.get("volume", 0))
-        minute_ts_ms = int(decoded.get("minute_ts_ms", 0))
+        o = safe_float(decoded.get("open", 0))
+        c = safe_float(decoded.get("close", 0))
+        h = safe_float(decoded.get("high", 0))
+        l = safe_float(decoded.get("low", 0))
+        v = safe_float(decoded.get("volume", 0))
+        minute_ts_ms = int(safe_float(decoded.get("minute_ts_ms", 0)))
 
         # Store latest close for reference
         store.set_latest_close(symbol, c, minute_ts_ms)

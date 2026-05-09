@@ -12,6 +12,9 @@ locals {
     telegram_bot      = "${local.ar_host}/${var.project_id}/${local.ar_repo}/telegram-command-bot:latest"
     quote_normalizer  = "${local.ar_host}/${var.project_id}/${local.ar_repo}/quote-normalizer:latest"
     ai_gateway        = "${local.ar_host}/${var.project_id}/${local.ar_repo}/ai-gateway:latest"
+    # v9.0 新增
+    regulation_rag    = "${local.ar_host}/${var.project_id}/${local.ar_repo}/regulation-rag:latest"
+    openclaw_gateway  = "${local.ar_host}/${var.project_id}/${local.ar_repo}/openclaw-gateway:latest"
   }
 }
 
@@ -139,6 +142,19 @@ resource "google_cloud_run_v2_service" "news_collector" {
       env {
         name  = "TOPIC_RAW_NEWS"
         value = data.google_pubsub_topic.raw_news.name
+      }
+      # v9.0: audit log + news.raw topic
+      env {
+        name  = "TOPIC_AUDIT_LOG"
+        value = google_pubsub_topic.audit_log.name
+      }
+      env {
+        name  = "TOPIC_NEWS_RAW"
+        value = google_pubsub_topic.news_raw.name
+      }
+      env {
+        name  = "TOPIC_LAW_UPDATES"
+        value = google_pubsub_topic.law_updates.name
       }
       startup_probe {
         tcp_socket {
@@ -280,6 +296,19 @@ resource "google_cloud_run_v2_service" "fusion_engine" {
         name  = "REDIS_HOST"
         value = data.google_redis_instance.cache.host
       }
+      # v9.0: audit log + OTel traceparent propagation
+      env {
+        name  = "TOPIC_AUDIT_LOG"
+        value = google_pubsub_topic.audit_log.name
+      }
+      env {
+        name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+        value = "http://otel-collector:4317"
+      }
+      env {
+        name  = "OTEL_SERVICE_NAME"
+        value = "event-fusion-engine"
+      }
       startup_probe {
         tcp_socket {
           port = 8080
@@ -417,6 +446,28 @@ resource "google_cloud_run_v2_service" "telegram_bot" {
         name  = "REDIS_HOST"
         value = data.google_redis_instance.cache.host
       }
+      # v9.0: internal auth + gateway URL + audit log
+      env {
+        name = "INTERNAL_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = "internal-service-secret"
+            version = "latest"
+          }
+        }
+      }
+      env {
+        name  = "OPENCLAW_GATEWAY_URL"
+        value = google_cloud_run_v2_service.openclaw_gateway.uri
+      }
+      env {
+        name  = "TOPIC_AUDIT_LOG"
+        value = google_pubsub_topic.audit_log.name
+      }
+      env {
+        name  = "REGULATION_RAG_URL"
+        value = google_cloud_run_v2_service.regulation_rag.uri
+      }
       startup_probe {
         http_get {
           path = "/healthz"
@@ -427,6 +478,139 @@ resource "google_cloud_run_v2_service" "telegram_bot" {
         period_seconds        = 10
         failure_threshold     = 10
       }
+    }
+  }
+}
+
+# ── v9.0 新增服務 ─────────────────────────────────────────────
+
+# regulation-rag: Internal-only（不對外暴露）
+resource "google_cloud_run_v2_service" "regulation_rag" {
+  name     = "regulation-rag"
+  location = var.region
+
+  # 僅允許 VPC 內部及 runtime SA 存取
+  ingress = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+
+  template {
+    service_account = google_service_account.runtime_sa.email
+    containers {
+      image = local.img.regulation_rag
+      ports {
+        container_port = 8080
+      }
+      env {
+        name  = "GCP_PROJECT_ID"
+        value = var.project_id
+      }
+      env {
+        name  = "CHROMADB_URL"
+        value_source {
+          secret_key_ref {
+            secret  = "chromadb-url"
+            version = "latest"
+          }
+        }
+      }
+      env {
+        name  = "CHROMADB_TOKEN"
+        value_source {
+          secret_key_ref {
+            secret  = "chromadb-token"
+            version = "latest"
+          }
+        }
+      }
+      env {
+        name  = "CHROMADB_COLLECTION"
+        value = "regulation_tw"
+      }
+      startup_probe {
+        http_get {
+          path = "/health"
+          port = 8080
+        }
+        initial_delay_seconds = 10
+        timeout_seconds       = 10
+        period_seconds        = 15
+        failure_threshold     = 5
+      }
+    }
+  }
+}
+
+# openclaw-gateway: 補齊 CHROMADB secrets
+resource "google_cloud_run_v2_service" "openclaw_gateway" {
+  name     = "openclaw-gateway"
+  location = var.region
+
+  template {
+    service_account = google_service_account.runtime_sa.email
+    containers {
+      image = local.img.openclaw_gateway
+      ports {
+        container_port = 3100
+      }
+      env {
+        name  = "GCP_PROJECT_ID"
+        value = var.project_id
+      }
+      env {
+        name  = "NODE_ENV"
+        value = "production"
+      }
+      env {
+        name  = "PORT"
+        value = "3100"
+      }
+      env {
+        name  = "OTEL_ENABLED"
+        value = "true"
+      }
+      env {
+        name = "CHROMADB_URL"
+        value_source {
+          secret_key_ref {
+            secret  = "chromadb-url"
+            version = "latest"
+          }
+        }
+      }
+      env {
+        name = "CHROMADB_TOKEN"
+        value_source {
+          secret_key_ref {
+            secret  = "chromadb-token"
+            version = "latest"
+          }
+        }
+      }
+      env {
+        name = "INTERNAL_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = "internal-service-secret"
+            version = "latest"
+          }
+        }
+      }
+      env {
+        name  = "REDIS_HOST"
+        value = data.google_redis_instance.cache.host
+      }
+      startup_probe {
+        http_get {
+          path = "/health"
+          port = 3100
+        }
+        initial_delay_seconds = 5
+        timeout_seconds       = 10
+        period_seconds        = 10
+        failure_threshold     = 5
+      }
+    }
+    scaling {
+      min_instance_count = 1
     }
   }
 }

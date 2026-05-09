@@ -27,49 +27,49 @@ export interface BankingWidgetProps {
 
 export function BankingWidget({ actionType, data }: BankingWidgetProps) {
   return (
-    <div className="flex flex-col w-full max-w-sm mt-2 border border-[#D97706]/30 bg-[#1a1a1a]/90 backdrop-blur-md rounded shadow-[0_0_15px_rgba(217,119,6,0.1)] overflow-hidden font-mono">
-      <div className="bg-[#2d2d2d] px-3 py-1 border-b border-[#D97706]/30 flex justify-between items-center">
-        <span className="text-[#D97706] text-xs font-bold tracking-widest uppercase">
+    <div className="flex flex-col w-full mt-2 bg-[var(--glass-bg)] border border-[var(--glass-border)] backdrop-blur-[var(--glass-blur)] rounded-xl shadow-md overflow-hidden font-mono text-[var(--text-primary)] transition-all">
+      <div className="bg-[var(--glass-bg)] px-3 py-1.5 border-b border-[var(--glass-border)] flex justify-between items-center">
+        <span className="text-[var(--accent-primary)] text-xs font-bold tracking-widest uppercase">
           [ {actionType.replace(/_/g, ' ').toUpperCase()} ]
         </span>
-        <span className="text-[#9ca3af] text-[10px] tracking-wider">KAY_ACCOUNTING</span>
+        <span className="text-[var(--text-muted)] text-[10px] tracking-wider">KAY_ACCOUNTING</span>
       </div>
       <div className="p-4 space-y-3">
         {actionType === 'tax_plan' && data && (
           <div className="flex flex-col gap-2 text-sm">
-            <div className="flex justify-between items-center text-[#D97706] font-bold border-b border-[#3d3d3d] pb-1">
-              <span>Tax Year</span>
+            <div className="flex justify-between items-center text-[var(--accent-primary)] font-bold border-b border-[var(--glass-border)] pb-1">
+              <span>報稅年度</span>
               <span>{data.year}</span>
             </div>
             
             <div className="flex justify-between items-center mt-2">
-              <span className="text-[#9ca3af] text-xs">Total Deductibles</span>
-              <span className="text-[#22c55e]">{data.total_deductible?.toLocaleString()} NTD</span>
+              <span className="text-[var(--text-muted)] text-xs">總扣除額</span>
+              <span className="text-[var(--success)]">{data.total_deductible?.toLocaleString()} NTD</span>
             </div>
 
             {data.deductions && data.deductions.map((d, i) => (
               <div key={i} className="flex justify-between items-center">
-                <span className="text-[#9ca3af] text-[10px] uppercase">{d.category}</span>
-                <span className="text-[#f5f5f5] text-xs">{d.claimable?.toLocaleString()} / {d.limit?.toLocaleString()}</span>
+                <span className="text-[var(--text-muted)] text-[10px] uppercase">{d.category}</span>
+                <span className="text-[var(--text-primary)] text-xs">{d.claimable?.toLocaleString()} / {d.limit?.toLocaleString()}</span>
               </div>
             ))}
             
-            <div className="text-[10px] text-[#ef4444] mt-2 italic">
-              * {data.note || 'Estimate only'}
+            <div className="text-[10px] text-[var(--danger)] mt-2 italic">
+              * {data.note || '僅供估算'}
             </div>
           </div>
         )}
 
         {actionType === 'bank_summary' && data && (
           <div className="flex flex-col gap-2 text-sm">
-             <div className="flex justify-between items-center text-[#D97706] font-bold border-b border-[#3d3d3d] pb-1">
-              <span>Grand Total</span>
+             <div className="flex justify-between items-center text-[var(--accent-primary)] font-bold border-b border-[var(--glass-border)] pb-1">
+              <span>總資產餘額</span>
               <span>{data.grand_total_twd?.toLocaleString()} NTD</span>
             </div>
             {data.by_entity?.map((ent, i) => (
               <div key={i} className="flex justify-between items-center mt-1">
-                <span className="text-[#9ca3af] text-xs">{ent.entity_label}</span>
-                <span className="text-[#f5f5f5]">{ent.total_balance?.toLocaleString()} NTD</span>
+                <span className="text-[var(--text-muted)] text-xs">{ent.entity_label}</span>
+                <span className="text-[var(--text-primary)]">{ent.total_balance?.toLocaleString()} NTD</span>
               </div>
             ))}
           </div>
@@ -78,11 +78,11 @@ export function BankingWidget({ actionType, data }: BankingWidgetProps) {
         {actionType === 'bank_transaction' && data && (
           <div className="flex flex-col gap-2 text-sm">
             {/* Amount — color-coded by transaction type */}
-            <div className="flex justify-between items-center border-b border-[#3d3d3d] pb-2">
-              <span className="text-[#9ca3af] text-xs uppercase tracking-wider">
+            <div className="flex justify-between items-center border-b border-[var(--glass-border)] pb-2">
+              <span className="text-[var(--text-muted)] text-xs uppercase tracking-wider">
                 {data.type === 'income' ? '▲ 收入' : '▼ 支出'}
               </span>
-              <span className={`text-lg font-bold ${data.type === 'income' ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+              <span className={`text-lg font-bold ${data.type === 'income' ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
                 {data.type === 'expense' ? '-' : '+'}{data.amount?.toLocaleString()} {data.currency ?? 'NTD'}
               </span>
             </div>
@@ -90,46 +90,46 @@ export function BankingWidget({ actionType, data }: BankingWidgetProps) {
             {/* Date */}
             {data.date && (
               <div className="flex justify-between items-center">
-                <span className="text-[#9ca3af] text-[10px] uppercase">日期</span>
-                <span className="text-[#f5f5f5] text-xs">{data.date}</span>
+                <span className="text-[var(--text-muted)] text-[10px] uppercase">日期</span>
+                <span className="text-[var(--text-primary)] text-xs">{data.date}</span>
               </div>
             )}
 
             {/* Category */}
             {data.category && (
               <div className="flex justify-between items-center">
-                <span className="text-[#9ca3af] text-[10px] uppercase">類別</span>
-                <span className="text-[#D97706] text-xs">{data.category}</span>
+                <span className="text-[var(--text-muted)] text-[10px] uppercase">類別</span>
+                <span className="text-[var(--accent-primary)] text-xs">{data.category}</span>
               </div>
             )}
 
             {/* Entity */}
             {data.entity && (
               <div className="flex justify-between items-center">
-                <span className="text-[#9ca3af] text-[10px] uppercase">法人</span>
-                <span className="text-[#f5f5f5] text-xs">{data.entity}</span>
+                <span className="text-[var(--text-muted)] text-[10px] uppercase">法人</span>
+                <span className="text-[var(--text-primary)] text-xs">{data.entity}</span>
               </div>
             )}
 
             {/* Description / Note */}
             {data.description && (
-              <div className="mt-1 text-[10px] text-[#9ca3af] italic border-t border-[#3d3d3d] pt-2">
+              <div className="mt-1 text-[10px] text-[var(--text-muted)] italic border-t border-[var(--glass-border)] pt-2">
                 {data.description}
               </div>
             )}
 
             {/* Entry ID — small reference */}
             {data.entry_id && (
-              <div className="text-[9px] text-[#4b5563] mt-1">
+              <div className="text-[9px] text-[var(--text-muted)] mt-1">
                 REF: {data.entry_id}
               </div>
             )}
           </div>
         )}
       </div>
-      <div className="bg-[#1a1a1a] px-3 py-1 border-t border-[#3d3d3d] text-[10px] text-[#9ca3af] flex justify-between">
-        <span>ACCOUNTANT COMPLIANCE</span>
-        <span>VERIFIED</span>
+      <div className="bg-[var(--glass-bg)] px-3 py-1.5 border-t border-[var(--glass-border)] text-[10px] text-[var(--text-muted)] flex justify-between">
+        <span>會計稽核狀態</span>
+        <span className="text-[var(--success)]">已驗證</span>
       </div>
     </div>
   );

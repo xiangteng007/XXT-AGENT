@@ -64,4 +64,20 @@ export declare const marketStreamerScheduled: import("firebase-functions/schedul
  * Firestore Scheduled Backup (DE-01)
  */
 export { scheduledFirestoreBackup } from './scheduled/backup';
+/**
+ * MPE Scheduler — Sentiment scan every 15 minutes (market hours)
+ */
+export declare const mpeSentimentScan: import("firebase-functions/scheduler").ScheduleFunction;
+/**
+ * MPE Scheduler — Daily post-market signal audit
+ */
+export declare const mpeDailyAudit: import("firebase-functions/scheduler").ScheduleFunction;
+/**
+ * Memory Organizer — Layer B: Daily summary at 2:00 AM
+ */
+export declare const memoryOrganizerDaily: import("firebase-functions/scheduler").ScheduleFunction;
+/**
+ * Memory Organizer — Layer C: Weekly cross-domain insights at Sunday 2:30 AM
+ */
+export declare const memoryOrganizerWeekly: import("firebase-functions/scheduler").ScheduleFunction;
 //# sourceMappingURL=index.d.ts.map

@@ -1,12 +1,15 @@
+"use strict";
 // ============================================================
 // OpenClaw Contracts — PR-1
 // 加入 packages/types/src/openclaw.ts
 // 在 index.ts 中 re-export 此檔案
 // ============================================================
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.EVENT_ANIMATION_MAP = exports.EventType = void 0;
 // ────────────────────────────────────────────────────────────
 // § 1  EventType 列舉（所有 OpenClaw 事件的單一來源）
 // ────────────────────────────────────────────────────────────
-export var EventType;
+var EventType;
 (function (EventType) {
     // ── Task 生命週期 ──────────────────────────────────────────
     EventType["TASK_QUEUED"] = "TASK_QUEUED";
@@ -35,8 +38,8 @@ export var EventType;
     EventType["INVESTMENT_ANALYSIS_START"] = "INVESTMENT_ANALYSIS_START";
     EventType["INVESTMENT_ANALYSIS_PROGRESS"] = "INVESTMENT_ANALYSIS_PROGRESS";
     EventType["INVESTMENT_ANALYSIS_COMPLETE"] = "INVESTMENT_ANALYSIS_COMPLETE";
-})(EventType || (EventType = {}));
-export const EVENT_ANIMATION_MAP = {
+})(EventType || (exports.EventType = EventType = {}));
+exports.EVENT_ANIMATION_MAP = {
     [EventType.TASK_QUEUED]: {
         agent: "director",
         animation: "stand-announce",

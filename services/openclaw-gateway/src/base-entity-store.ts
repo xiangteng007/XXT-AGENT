@@ -57,6 +57,33 @@ export interface EntityStoreContract<T extends BaseEntity> {
   count(): number;
 }
 
+// ── v9.0 稽核日誌型別 ─────────────────────────────────────
+
+/**
+ * 操作主體資訊，注入至稽核日誌記錄
+ */
+export interface AuditActor {
+  /** Firebase UID 或系統 ID */
+  uid: string;
+  /** 操作者顯示名稱（可選） */
+  displayName?: string;
+  /** 關聯的 OpenTelemetry Trace ID（來自 X-Trace-ID 或 W3C traceparent） */
+  traceId?: string;
+  /** 觸發來源：'api' | 'telegram' | 'cron' | 'system' */
+  source?: 'api' | 'telegram' | 'cron' | 'system';
+}
+
+/** 稽核日誌記錄格式（_audit_log 集合） */
+export interface AuditLogEntry {
+  id: string;
+  collection: string;
+  entityId: string;
+  action: 'create' | 'update' | 'delete';
+  actor: AuditActor;
+  diff: Record<string, { before: unknown; after: unknown }>;
+  timestamp: string;
+}
+
 // ── 加密模組 ──────────────────────────────────────────────
 
 function encrypt(text: string): string {
@@ -211,6 +238,109 @@ export class EntityStore<T extends BaseEntity> implements EntityStoreContract<T>
           logger.warn(`[EntityStore] Firestore update failed for ${this.collectionName}/${id}: ${err}`);
         }
       }
+    }
+  }
+
+  /**
+   * v9.0: 稽核日誌雙寫 update
+   *
+   * 在更新主文件的同時，於 `_audit_log` 集合寫入操作記錄。
+   * 提供完整的 before/after diff、操作者資訊和 OpenTelemetry traceId。
+   *
+   * @param id       實體 ID
+   * @param updates  要更新的欄位
+   * @param actor    操作者資訊（uid, traceId 等）
+   *
+   * @example
+   * ```ts
+   * await store.updateWithAudit(
+   *   agentId,
+   *   { status: 'active' },
+   *   { uid: req.user.uid, traceId: req.headers['x-trace-id'] as string, source: 'api' },
+   * );
+   * ```
+   */
+  public async updateWithAudit(
+    id: string,
+    updates: Partial<T>,
+    actor: AuditActor,
+  ): Promise<void> {
+    if (!this._initialized) await this.initialize();
+
+    const idx = this.items.findIndex((i) => i.id === id);
+    if (idx === -1) return;
+
+    const before = { ...this.items[idx] } as Record<string, unknown>;
+    this.items[idx] = { ...this.items[idx], ...updates };
+    const after = { ...this.items[idx] } as Record<string, unknown>;
+
+    // 計算 diff（只記錄有變更的欄位）
+    const diff: Record<string, { before: unknown; after: unknown }> = {};
+    for (const key of Object.keys(updates as object)) {
+      if (before[key] !== after[key]) {
+        diff[key] = { before: before[key], after: after[key] };
+      }
+    }
+
+    const db = this.getDb();
+    if (!db) {
+      logger.warn(`[EntityStore] Audit log skipped: Firestore unavailable for ${this.collectionName}/${id}`);
+      return;
+    }
+
+    const auditEntry: AuditLogEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      collection: this.collectionName,
+      entityId: id,
+      action: 'update',
+      actor,
+      diff,
+      timestamp: new Date().toISOString(),
+    };
+
+    try {
+      // 雙寫：主文件 update + 稽核日誌 create（Firestore batch 保證原子性）
+      const batch = db.batch();
+
+      const docRef = db.collection(this.collectionName).doc(id);
+      batch.update(docRef, processForStorage(this.items[idx]!, this.encryptedFields));
+
+      const auditRef = db.collection('_audit_log').doc(auditEntry.id);
+      batch.set(auditRef, auditEntry);
+
+      await batch.commit();
+
+      logger.info(`[AuditLog] ${this.collectionName}/${id} updated by ${actor.uid} (trace: ${actor.traceId ?? 'n/a'})`);
+    } catch (err) {
+      logger.warn(`[EntityStore] Firestore batch update+audit failed for ${this.collectionName}/${id}: ${err}`);
+    }
+  }
+
+  // ── v9.0: 稽核日誌查詢 ────────────────────────────────────
+
+  /**
+   * 查詢特定實體的稽核歷史
+   *
+   * @param entityId  要查詢的實體 ID
+   * @param limit     最多返回筆數（預設 20）
+   */
+  public async getAuditHistory(entityId: string, limit = 20): Promise<AuditLogEntry[]> {
+    const db = this.getDb();
+    if (!db) return [];
+
+    try {
+      const snap = await db
+        .collection('_audit_log')
+        .where('collection', '==', this.collectionName)
+        .where('entityId', '==', entityId)
+        .orderBy('timestamp', 'desc')
+        .limit(limit)
+        .get();
+
+      return snap.docs.map((doc) => doc.data() as AuditLogEntry);
+    } catch (err) {
+      logger.warn(`[AuditLog] Query failed for ${this.collectionName}/${entityId}: ${err}`);
+      return [];
     }
   }
 

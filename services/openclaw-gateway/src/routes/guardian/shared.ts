@@ -32,7 +32,7 @@ export async function fetchAccountantData(entity_type?: EntityType, year?: numbe
     const resp = await fetch(
       `${ACCOUNTANT_URL}/agents/accountant/ledger?${params}`,
       {
-        headers: { 'Authorization': 'Bearer dev-local-bypass' },
+        headers: { 'X-Internal-Secret': process.env['INTERNAL_SECRET'] ?? '' },
         signal: AbortSignal.timeout(8000),
       },
     );

@@ -4,13 +4,13 @@ WORKDIR /workspace
 
 # Copy types package first (dependency)
 COPY packages/types/ packages/types/
-RUN cd packages/types && npm ci && npm run build
+RUN cd packages/types && npm install --ignore-scripts && npm run build
 
 # Copy gateway source
 COPY services/openclaw-gateway/ services/openclaw-gateway/
 WORKDIR /workspace/services/openclaw-gateway
 
-RUN npm ci
+RUN npm install --legacy-peer-deps
 RUN npm run build
 
 # ── Production stage ──────────────────────────────────────────
@@ -26,7 +26,7 @@ COPY --from=builder /workspace/services/openclaw-gateway/package.json .
 COPY --from=builder /workspace/services/openclaw-gateway/package-lock.json .
 
 # Production deps only
-RUN npm ci --omit=dev
+RUN npm install --omit=dev --legacy-peer-deps
 
 # Agent configs (mounted as volume in Cloud Run, or baked-in for immutable builds)
 COPY .agent/agents/ /app/.agent/agents/

@@ -75,7 +75,7 @@ async function createNewSession(userId: string, preservedAgent?: string): Promis
         lastActiveAt: new Date().toISOString(),
         sessionId: `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         // Preserve agent across session resets so user stays with chosen agent
-        activeAgent: preservedAgent,
+        activeAgent: preservedAgent || 'butler',
     };
 
     await sessionRef(userId).set(session);

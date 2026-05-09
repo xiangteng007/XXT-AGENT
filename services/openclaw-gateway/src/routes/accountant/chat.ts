@@ -70,8 +70,13 @@ chatRouter.post('/chat', async (req: Request, res: Response) => {
     context?: string;
   };
 
-  if (!message?.trim()) {
-    res.status(400).json({ error: 'message is required' });
+  if (typeof message !== 'string' || !message.trim()) {
+    res.status(400).json({ error: 'message must be a non-empty string' });
+    return;
+  }
+
+  if (message.length > 5000) {
+    res.status(400).json({ error: 'message exceeds maximum length of 5000 characters' });
     return;
   }
 
@@ -122,8 +127,23 @@ chatRouter.post('/invoice', async (req: Request, res: Response) => {
     amount?: number; type?: 'taxed' | 'untaxed'; tax_rate?: number; note?: string;
   };
 
-  if (!amount || amount <= 0) {
-    res.status(400).json({ error: 'amount must be a positive number' });
+  if (typeof amount !== 'number' || amount <= 0 || !Number.isFinite(amount)) {
+    res.status(400).json({ error: 'amount must be a positive finite number' });
+    return;
+  }
+
+  if (type !== 'taxed' && type !== 'untaxed') {
+    res.status(400).json({ error: 'type must be either "taxed" or "untaxed"' });
+    return;
+  }
+
+  if (typeof tax_rate !== 'number' || tax_rate < 0 || tax_rate > 100) {
+    res.status(400).json({ error: 'tax_rate must be a number between 0 and 100' });
+    return;
+  }
+
+  if (note !== undefined && typeof note !== 'string') {
+    res.status(400).json({ error: 'note must be a string' });
     return;
   }
 
@@ -163,8 +183,23 @@ chatRouter.post('/payment', async (req: Request, res: Response) => {
     items?: Array<{ description: string; amount: number }>;
   };
 
-  if (!contract_amount || !current_progress_pct) {
-    res.status(400).json({ error: 'contract_amount and current_progress_pct are required' });
+  if (typeof contract_amount !== 'number' || contract_amount <= 0 || !Number.isFinite(contract_amount)) {
+    res.status(400).json({ error: 'contract_amount must be a positive finite number' });
+    return;
+  }
+
+  if (typeof current_progress_pct !== 'number' || current_progress_pct <= 0 || current_progress_pct > 100) {
+    res.status(400).json({ error: 'current_progress_pct must be a number between 0 and 100' });
+    return;
+  }
+
+  if (advance_paid !== undefined && (typeof advance_paid !== 'number' || advance_paid < 0)) {
+    res.status(400).json({ error: 'advance_paid must be a non-negative number' });
+    return;
+  }
+
+  if (!Array.isArray(items)) {
+    res.status(400).json({ error: 'items must be an array' });
     return;
   }
 
@@ -199,8 +234,18 @@ chatRouter.post('/tax', async (req: Request, res: Response) => {
     type?: 'personal' | 'corporate' | 'labor'; annual_income?: number; dependents?: number;
   };
 
-  if (!type || !annual_income) {
-    res.status(400).json({ error: 'type and annual_income are required', valid_types: ['personal', 'corporate', 'labor'] });
+  if (!type || (type !== 'personal' && type !== 'corporate' && type !== 'labor')) {
+    res.status(400).json({ error: 'type must be one of "personal", "corporate", "labor"', valid_types: ['personal', 'corporate', 'labor'] });
+    return;
+  }
+
+  if (typeof annual_income !== 'number' || annual_income <= 0 || !Number.isFinite(annual_income)) {
+    res.status(400).json({ error: 'annual_income must be a positive finite number' });
+    return;
+  }
+
+  if (dependents !== undefined && (typeof dependents !== 'number' || dependents < 0 || !Number.isInteger(dependents))) {
+    res.status(400).json({ error: 'dependents must be a non-negative integer' });
     return;
   }
 

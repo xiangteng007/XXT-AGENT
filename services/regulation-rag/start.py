@@ -32,18 +32,18 @@ def main():
         print("\n[1/4] 建立 Python 虛擬環境...")
         rc = run([sys.executable, "-m", "venv", str(VENV_DIR)])
         if rc != 0:
-            print("❌ venv 建立失敗")
+            print("[X] venv 建立失敗")
             sys.exit(1)
     else:
-        print("\n[1/4] venv 已存在 ✓")
+        print("\n[1/4] venv 已存在 [OK]")
 
     # 2. 安裝依賴
     print("\n[2/4] 安裝 Python 依賴...")
     rc = run([PIP, "install", "-r", "requirements.txt", "-q"])
     if rc != 0:
-        print("❌ pip install 失敗")
+        print("[X] pip install 失敗")
         sys.exit(1)
-    print("✅ 依賴安裝完成")
+    print("[OK] 依賴安裝完成")
 
     # 3. 生成種子資料（若 data/ 目錄是空的）
     data_dir = Path("data")
@@ -55,7 +55,7 @@ def main():
         print("\n       開始 Ingest 種子資料到 Chroma DB...")
         rc = run([PYTHON, "ingest.py"])
         if rc != 0:
-            print("⚠️  Ingest 失敗（可能是 Ollama 未啟動）")
+            print("[!] Ingest 失敗（可能是 Ollama 未啟動）")
             print("   稍後可手動執行: python ingest.py")
     else:
         print("\n[3/4] 法規資料已存在，跳過種子生成")

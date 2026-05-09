@@ -1,5 +1,5 @@
 /**
- * AI Gateway Service
+ * AI Gateway Service (v9.0)
  *
  * Multi-provider AI gateway supporting Gemini, OpenAI GPT, and Anthropic Claude.
  * - Loads API keys from Secret Manager (not exposed to frontend)
@@ -8,7 +8,11 @@
  * - MCP-ready architecture (providers + tools separation)
  *
  * Refactored 2026-03-27: Split from monolithic 573-line file into modules.
+ * v9.0: OpenTelemetry 全鏈路追蹤已啟用
  */
+
+// ── OTEL Instrumentation（必須在所有其他 import 之前）──────────
+import './tracing';
 
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
@@ -17,6 +21,14 @@ import rateLimit from 'express-rate-limit';
 import * as Sentry from '@sentry/node';
 import { SUPPORTED_MODELS, DEFAULT_MODEL } from './config';
 import { initializeProviders, generateText, getProviderStatus } from './providers';
+import { logger } from './logger';
+import {
+    requestIdMiddleware,
+    requestTimingMiddleware,
+    globalErrorHandler,
+    notFoundHandler,
+    Errors
+} from './middleware/error-handler';
 
 // Initialize Sentry for error tracking
 if (process.env.SENTRY_DSN) {
@@ -43,15 +55,18 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 app.use(helmet());
 
+app.use(requestIdMiddleware);
+app.use(requestTimingMiddleware);
+
 // API Key validation for AI endpoints
 const API_KEYS = (process.env.AI_GATEWAY_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
-console.log(JSON.stringify({ severity: 'INFO', message: `API Key auth: ${API_KEYS.length} key(s) configured` }));
+logger.info(`API Key auth: ${API_KEYS.length} key(s) configured`);
 
 app.use('/ai/', (req: Request, res: Response, next: NextFunction) => {
     if (API_KEYS.length === 0) return next(); // Skip if no keys configured
     const key = (req.headers['x-api-key'] as string || '').trim();
     if (!key || !API_KEYS.includes(key)) {
-        return res.status(401).json({ error: '未授權：請提供有效的 API Key' });
+        return next(Errors.unauthorized('未授權：請提供有效的 API Key'));
     }
     next();
 });
@@ -64,16 +79,6 @@ app.use('/ai/', rateLimit({
     legacyHeaders: false,
     message: { error: '請求過於頻繁，請稍後再試' }
 }) as any);
-
-// Request logging
-app.use((req: Request, _res: Response, next: NextFunction) => {
-    console.log(JSON.stringify({
-        severity: 'INFO',
-        message: `${req.method} ${req.path}`,
-        timestamp: new Date().toISOString()
-    }));
-    next();
-});
 
 // ── Health Check ─────────────────────────────────────────────
 
@@ -142,34 +147,42 @@ function parseJsonResponse(text: string): unknown {
 /**
  * POST /ai/summarize — Generate text summary
  */
-app.post('/ai/summarize', async (req: Request, res: Response) => {
+app.post('/ai/summarize', async (req: Request, res: Response, next: NextFunction) => {
     try {
         await initializeProviders();
         const { text, maxLength = 200, language = 'zh-TW', model: modelId } = req.body;
 
-        if (!text) {
-            return res.status(400).json({ error: 'Missing required field: text' });
+        if (!text || typeof text !== 'string') {
+            return next(Errors.badRequest('Missing or invalid required field: text'));
+        }
+        if (typeof maxLength !== 'number' || maxLength <= 0 || maxLength > 5000) {
+            return next(Errors.badRequest('Invalid field: maxLength must be a positive number (max 5000)'));
+        }
+        if (typeof language !== 'string' || language.trim().length === 0) {
+            return next(Errors.badRequest('Invalid field: language must be a non-empty string'));
         }
 
         const prompt = `請用${language}簡潔摘要以下內容，最多${maxLength}字：\n\n${text}`;
         const summary = await generateText(prompt, modelId);
         res.json({ summary, model: modelId || DEFAULT_MODEL });
     } catch (error) {
-        console.error('Summarize error:', error);
-        res.status(500).json({ error: 'Failed to generate summary' });
+        next(error);
     }
 });
 
 /**
  * POST /ai/sentiment — Analyze sentiment of text
  */
-app.post('/ai/sentiment', async (req: Request, res: Response) => {
+app.post('/ai/sentiment', async (req: Request, res: Response, next: NextFunction) => {
     try {
         await initializeProviders();
         const { text, context, model: modelId } = req.body;
 
-        if (!text) {
-            return res.status(400).json({ error: 'Missing required field: text' });
+        if (!text || typeof text !== 'string') {
+            return next(Errors.badRequest('Missing or invalid required field: text'));
+        }
+        if (context && typeof context !== 'string') {
+            return next(Errors.badRequest('Invalid field: context must be a string'));
         }
 
         const prompt = `分析以下文字的情緒，以 JSON 格式回應：
@@ -196,21 +209,26 @@ ${context ? `背景：${context}\n` : ''}
         const sentiment = parseJsonResponse(responseText);
         res.json(sentiment);
     } catch (error) {
-        console.error('Sentiment error:', error);
-        res.status(500).json({ error: 'Failed to analyze sentiment' });
+        next(error);
     }
 });
 
 /**
  * POST /ai/impact — Assess impact of news/event on market
  */
-app.post('/ai/impact', async (req: Request, res: Response) => {
+app.post('/ai/impact', async (req: Request, res: Response, next: NextFunction) => {
     try {
         await initializeProviders();
         const { title, content, symbols = [], newsType, model: modelId } = req.body;
 
-        if (!title) {
-            return res.status(400).json({ error: 'Missing required field: title' });
+        if (!title || typeof title !== 'string') {
+            return next(Errors.badRequest('Missing or invalid required field: title'));
+        }
+        if (content && typeof content !== 'string') {
+            return next(Errors.badRequest('Invalid field: content must be a string'));
+        }
+        if (!Array.isArray(symbols)) {
+            return next(Errors.badRequest('Invalid field: symbols must be an array of strings'));
         }
 
         const prompt = `評估以下新聞對市場的影響，以 JSON 格式回應：
@@ -236,21 +254,26 @@ ${newsType ? `類型：${newsType}` : ''}
         const impact = parseJsonResponse(responseText);
         res.json(impact);
     } catch (error) {
-        console.error('Impact error:', error);
-        res.status(500).json({ error: 'Failed to assess impact' });
+        next(error);
     }
 });
 
 /**
  * POST /ai/chat — General chat/Q&A
  */
-app.post('/ai/chat', async (req: Request, res: Response) => {
+app.post('/ai/chat', async (req: Request, res: Response, next: NextFunction) => {
     try {
         await initializeProviders();
         const { message, context, systemPrompt, model: modelId } = req.body;
 
-        if (!message) {
-            return res.status(400).json({ error: 'Missing required field: message' });
+        if (!message || typeof message !== 'string') {
+            return next(Errors.badRequest('Missing or invalid required field: message'));
+        }
+        if (context && typeof context !== 'string') {
+            return next(Errors.badRequest('Invalid field: context must be a string'));
+        }
+        if (systemPrompt && typeof systemPrompt !== 'string') {
+            return next(Errors.badRequest('Invalid field: systemPrompt must be a string'));
         }
 
         const fullPrompt = [
@@ -262,21 +285,20 @@ app.post('/ai/chat', async (req: Request, res: Response) => {
         const reply = await generateText(fullPrompt, modelId);
         res.json({ reply, model: modelId || DEFAULT_MODEL });
     } catch (error) {
-        console.error('Chat error:', error);
-        res.status(500).json({ error: 'Failed to generate response' });
+        next(error);
     }
 });
 
 /**
  * POST /ai/batch-sentiment — Batch sentiment analysis
  */
-app.post('/ai/batch-sentiment', async (req: Request, res: Response) => {
+app.post('/ai/batch-sentiment', async (req: Request, res: Response, next: NextFunction) => {
     try {
         await initializeProviders();
         const { items, model: modelId } = req.body;
 
         if (!items || !Array.isArray(items) || items.length === 0) {
-            return res.status(400).json({ error: 'Missing or invalid items array' });
+            return next(Errors.badRequest('Missing or invalid items array'));
         }
 
         const batchItems = items.slice(0, 20);
@@ -295,21 +317,23 @@ ${batchItems.map((item: { id: string; content: string }, i: number) =>
         const results = parseJsonResponse(responseText);
         res.json({ results });
     } catch (error) {
-        console.error('Batch sentiment error:', error);
-        res.status(500).json({ error: 'Failed to analyze batch sentiment' });
+        next(error);
     }
 });
 
 /**
  * POST /ai/butler/chat — Butler context-enriched chat
  */
-app.post('/ai/butler/chat', async (req: Request, res: Response) => {
+app.post('/ai/butler/chat', async (req: Request, res: Response, next: NextFunction) => {
     try {
         await initializeProviders();
         const { message, model: modelId, context, conversationHistory } = req.body;
 
-        if (!message) {
-            return res.status(400).json({ error: 'Missing message' });
+        if (!message || typeof message !== 'string') {
+            return next(Errors.badRequest('Missing or invalid required field: message'));
+        }
+        if (conversationHistory && !Array.isArray(conversationHistory)) {
+            return next(Errors.badRequest('Invalid field: conversationHistory must be an array'));
         }
 
         const contextSections: string[] = [];
@@ -346,8 +370,7 @@ ${contextSections.length > 0 ? '# 用戶個人數據\n' + contextSections.join('
             hasContext: contextSections.length > 0,
         });
     } catch (error) {
-        console.error('Butler chat error:', error);
-        res.status(500).json({ error: 'Failed to generate butler response' });
+        next(error);
     }
 });
 
@@ -364,22 +387,16 @@ if (process.env.SENTRY_DSN) {
     Sentry.setupExpressErrorHandler(app);
 }
 
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    console.error(JSON.stringify({
-        severity: 'ERROR',
-        message: err.message,
-        stack: err.stack
-    }));
-    res.status(500).json({ error: 'Internal server error' });
-});
+// 404 Fallback
+app.use(notFoundHandler);
+
+// 全局 Error Handler
+app.use(globalErrorHandler);
 
 // ── Start Server ─────────────────────────────────────────────
 
 app.listen(PORT, async () => {
-    console.log(JSON.stringify({
-        severity: 'INFO',
-        message: `AI Gateway v2.1.0 listening on port ${PORT}`
-    }));
+    logger.info(`AI Gateway v2.1.0 listening on port ${PORT}`);
     await initializeProviders();
 });
 

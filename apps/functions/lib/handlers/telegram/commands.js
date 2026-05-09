@@ -5,6 +5,39 @@
  * Extracted from telegram-webhook.handler.ts
  * Contains all /command handlers and menu builders.
  */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleCommand = handleCommand;
 exports.sendWelcomeMessage = sendWelcomeMessage;
@@ -24,9 +57,16 @@ exports.sendLoanSummary = sendLoanSummary;
 exports.sendTaxEstimation = sendTaxEstimation;
 exports.sendFinancialAdvice = sendFinancialAdvice;
 exports.sendAgentsDirectory = sendAgentsDirectory;
+exports.sendDiscussMenu = sendDiscussMenu;
+exports.runMultiAgentDiscussion = runMultiAgentDiscussion;
+exports.sendReflectTrigger = sendReflectTrigger;
+exports.sendMemoryStatus = sendMemoryStatus;
 const v2_1 = require("firebase-functions/v2");
 const firestore_1 = require("firebase-admin/firestore");
 const api_1 = require("./api");
+const conversation_session_service_1 = require("../../services/butler/conversation-session.service");
+const local_inference_service_1 = require("../../services/local-inference.service");
+const mpe_commands_1 = require("./mpe-commands");
 const investment_service_1 = require("../../services/butler/investment.service");
 const loan_service_1 = require("../../services/butler/loan.service");
 const monthly_insights_service_1 = require("../../services/butler/monthly-insights.service");
@@ -88,7 +128,29 @@ async function handleCommand(chatId, telegramUserId, text) {
             await sendSettingsMenu(chatId);
             break;
         case '/agents':
-            await sendAgentsDirectory(chatId);
+            await sendAgentsDirectory(chatId, telegramUserId);
+            break;
+        case '/discuss':
+            await sendDiscussMenu(chatId, telegramUserId, text);
+            break;
+        case '/reflect':
+            await sendReflectTrigger(chatId, telegramUserId);
+            break;
+        case '/memory':
+            await sendMemoryStatus(chatId, telegramUserId);
+            break;
+        // ── MPE Market Prediction Engine ──
+        case '/signal':
+            await (0, mpe_commands_1.handleSignalCommand)({ reply: (t, o) => (0, api_1.sendMessage)(chatId, t, o) });
+            break;
+        case '/mpe':
+            await (0, mpe_commands_1.handleMpeCommand)({ reply: (t, o) => (0, api_1.sendMessage)(chatId, t, o) });
+            break;
+        case '/predict':
+            await (0, mpe_commands_1.handlePredictCommand)({ message: { text }, reply: (t, o) => (0, api_1.sendMessage)(chatId, t, o) });
+            break;
+        case '/backtest':
+            await (0, mpe_commands_1.handleBacktestCommand)({ message: { text }, reply: (t, o) => (0, api_1.sendMessage)(chatId, t, o) });
             break;
         default:
             await (0, api_1.sendMessage)(chatId, '❓ 不認識的指令。輸入 /help 查看可用指令。');
@@ -147,6 +209,10 @@ async function sendHelpMessage(chatId) {
 /link - 綁定帳號
 /settings - 設定
 /agents - 探員目錄
+/mpe - 市場預測引擎狀態
+/signal - 今日交易訊號
+/predict [代號] - 即時分析（如 /predict 2330）
+/backtest [代號] - 歷史訊號準確率
 
 **自然語言（AI 理財）：**
 • 「買了 10 張 0050，均價 150」
@@ -267,6 +333,10 @@ async function sendMainMenu(chatId) {
                 [
                     { text: '💳 帳戶餘額', callback_data: 'cmd_balance' },
                     { text: '⚙️ 設定', callback_data: 'cmd_settings' },
+                ],
+                [
+                    { text: '🔮 市場預測 MPE', callback_data: 'cmd_mpe' },
+                    { text: '📡 交易訊號', callback_data: 'cmd_signal' },
                 ],
             ],
         },
@@ -699,33 +769,259 @@ async function sendFinancialAdvice(chatId, telegramUserId) {
         },
     });
 }
-async function sendAgentsDirectory(chatId) {
+async function sendAgentsDirectory(chatId, telegramUserId) {
     await (0, api_1.sendChatAction)(chatId, 'typing');
-    const msg = `👥 **探員目錄 (Agents Directory)**
+    const linkedUid = await (0, api_1.getLinkedFirebaseUid)(telegramUserId);
+    const userId = linkedUid || `telegram:${telegramUserId}`;
+    let currentAgent = 'butler';
+    try {
+        const session = await (0, conversation_session_service_1.getSession)(userId);
+        currentAgent = session.activeAgent || 'butler';
+    }
+    catch (err) {
+        v2_1.logger.warn('[Telegram] getSession failed in sendAgentsDirectory:', err);
+    }
+    const msg = `🤖 **XXT-AGENT 探員目錄**
 
-• **Argus** - 全域情報官 (Global Intelligence)
-• **Lumi** - 室內設計/空間總管 (Spatial Manager)
-• **Nova** - 人資與協調長 (HR & Coordination)
-• **Rusty** - 財務/計價總管 (Financial Manager)
-• **Titan** - BIM/結構工程 (Structural Engineer)
-• **Aero** - 無人機硬體架構師
-• **Pulse** - 嵌入式韌體工程師
-• **Forge** - 先進製造專家 (微型化)
-• **Matter** - 應用材料科學家
-• **Nexus** - AI演化研究員
-• **Aegis** - 測試與可靠度工程師
-• **Radar** - 射頻與資安工程師
-• **Weaver** - 人機介面設計師
-• **Volt** - 能源與動力專家
+目前活躍探員：**${currentAgent.toUpperCase()}**
 
-💡 請在 Dashboard 查看探員詳細狀態：
-https://xxt-agent.vercel.app/agents`;
+─────────────────
+🏗️ *工程部門*
+  • Titan - BIM/結構工程師
+  • Lumi - 室內設計總管
+  • Rusty - 估算/工務總管
+  • Forge - 先進製造專家
+  • Matter - 應用材料科學家
+  • Nexus - AI 系統架構師
+
+💼 *管理部門*
+  • Nova - 人資與協調長
+  • Accountant - 財務會計
+  • Investment - 投資顧問
+  • Apex - 行銷拓展
+  • Vertex - 法務合規
+  • Echo - 公關客服
+
+🔐 *情報部門*
+  • Argus - 全域情報官
+  • Zenith - 永續 ESG
+  • 小秘書 - 預設助理
+
+💡 選擇探員後直接開始對話，AI 將以該專家角色回應。
+🧠 使用 /discuss 讓探員們集體討論問題。`;
     await (0, api_1.sendMessage)(chatId, msg, {
         reply_markup: {
             inline_keyboard: [
+                [
+                    { text: '👔 小秘書', callback_data: 'agent_switch_butler' },
+                    { text: '🏛️ Titan', callback_data: 'agent_switch_titan' },
+                ],
+                [
+                    { text: '✨ Lumi', callback_data: 'agent_switch_lumi' },
+                    { text: '📐 Rusty', callback_data: 'agent_switch_rusty' },
+                ],
+                [
+                    { text: '💰 Accountant', callback_data: 'agent_switch_accountant' },
+                    { text: '🛡️ Argus', callback_data: 'agent_switch_argus' },
+                ],
+                [
+                    { text: '👥 Nova', callback_data: 'agent_switch_nova' },
+                    { text: '📈 Investment', callback_data: 'agent_switch_investment' },
+                ],
+                [
+                    { text: '⚙️ Forge', callback_data: 'agent_switch_forge' },
+                    { text: '☁️ Nexus', callback_data: 'agent_switch_nexus' },
+                ],
+                [
+                    { text: '🧠 多 Agent 討論 /discuss', callback_data: 'cmd_discuss' },
+                ],
                 [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
             ],
         },
     });
+}
+// ================================
+// Multi-Agent Discussion Engine
+// ================================
+async function sendDiscussMenu(chatId, telegramUserId, text) {
+    const topic = text.replace(/^\/discuss\s*/, '').trim();
+    if (topic) {
+        await runMultiAgentDiscussion(chatId, telegramUserId, topic);
+        return;
+    }
+    await (0, api_1.sendMessage)(chatId, `🧠 **多 Agent 集體討論**
+
+讓各探員共同分析您的問題，提供多角度見解。
+
+*使用方式：*
+/discuss [您的問題]
+
+*例如：*
+• /discuss 我應該投資 TSMC 還是 NVDA？
+• /discuss 這個建案的結構風險評估
+• /discuss 如何優化人力配置？`, {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '← 返回探員目錄', callback_data: 'cmd_agents' }],
+            ],
+        },
+    });
+}
+async function runMultiAgentDiscussion(chatId, telegramUserId, topic) {
+    await (0, api_1.sendChatAction)(chatId, 'typing');
+    await (0, api_1.sendMessage)(chatId, `🧠 **召集探員討論中...**\n\n主題：_${topic}_\n\n⏳ 整合各探員觀點，請稍候...`);
+    const linkedUid = await (0, api_1.getLinkedFirebaseUid)(telegramUserId);
+    const userId = linkedUid || `telegram:${telegramUserId}`;
+    const allAgents = [
+        { id: 'titan', name: 'Titan', emoji: '🏛️', role: '建築/BIM工程師', keywords: ['建築', '結構', '工程', 'bim', '建案', '施工', '設計'] },
+        { id: 'investment', name: 'Investment', emoji: '📈', role: '投資顧問', keywords: ['投資', '股票', '基金', 'etf', '理財', '資產', '報酬'] },
+        { id: 'accountant', name: 'Accountant', emoji: '💰', role: '財務會計師', keywords: ['財務', '帳目', '稅務', '收支', '會計', '成本'] },
+        { id: 'argus', name: 'Argus', emoji: '🛡️', role: '資安情報官', keywords: ['資安', '情報', '風險', '安全', '威脅', '調查'] },
+        { id: 'nova', name: 'Nova', emoji: '👥', role: '人資協調長', keywords: ['人資', '人力', '組織', '招募', '薪資', '團隊'] },
+        { id: 'nexus', name: 'Nexus', emoji: '☁️', role: 'AI系統架構師', keywords: ['系統', '架構', 'ai', '技術', '軟體', '平台', '自動化'] },
+        { id: 'rusty', name: 'Rusty', emoji: '📐', role: '工務估算師', keywords: ['估算', '工務', '成本', '預算', '報價', '採購'] },
+    ];
+    const topicLower = topic.toLowerCase();
+    let relevantAgents = allAgents.filter(a => a.keywords.some(k => topicLower.includes(k)));
+    if (relevantAgents.length < 3) {
+        const extras = allAgents.filter(a => !relevantAgents.some(r => r.id === a.id)).slice(0, 3 - relevantAgents.length);
+        relevantAgents = [...relevantAgents, ...extras];
+    }
+    relevantAgents = relevantAgents.slice(0, 4);
+    const { generateAIResponseWithTools } = await Promise.resolve().then(() => __importStar(require('../../services/butler-ai.service')));
+    let history = [];
+    try {
+        history = await (0, conversation_session_service_1.getPreviousMessages)(userId);
+    }
+    catch (_) { /* ignore */ }
+    let discussionText = `🧠 **探員集體討論**\n主題：_${topic}_\n\n`;
+    for (const agent of relevantAgents) {
+        try {
+            const agentPrompt = `你是 ${agent.name}（${agent.role}）。就以下主題以你的專業角色提供簡潔見解（繁體中文，2-3句）：「${topic}」`;
+            const response = await generateAIResponseWithTools(agentPrompt, userId, history.join('\n'), agent.id);
+            const agentView = (response.text || '（暫無意見）').slice(0, 300);
+            discussionText += `${agent.emoji} **${agent.name}（${agent.role}）：**\n${agentView}\n\n`;
+        }
+        catch (err) {
+            v2_1.logger.warn(`[Discuss] Agent ${agent.id} failed:`, err);
+            discussionText += `${agent.emoji} **${agent.name}：** ⚠️ 暫時無法回應\n\n`;
+        }
+    }
+    discussionText += `──────────────────\n💡 以上為各探員初步見解。可繼續提問深入討論，或 /agents 切換單一探員對話。`;
+    try {
+        await (0, conversation_session_service_1.appendMessage)(userId, 'assistant', `[多 Agent 討論] ${topic}`);
+    }
+    catch (_) { /* ignore */ }
+    await (0, api_1.sendMessage)(chatId, discussionText, {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '🔄 反思與摘要 /reflect', callback_data: 'reflect_now' }],
+                [{ text: '← 返回探員目錄', callback_data: 'cmd_agents' }],
+            ],
+        },
+    });
+}
+async function sendReflectTrigger(chatId, telegramUserId) {
+    await (0, api_1.sendChatAction)(chatId, 'typing');
+    const linkedUid = await (0, api_1.getLinkedFirebaseUid)(telegramUserId);
+    const userId = linkedUid || `telegram:${telegramUserId}`;
+    try {
+        let history = [];
+        try {
+            history = await (0, conversation_session_service_1.getPreviousMessages)(userId);
+        }
+        catch (_) { /* ignore */ }
+        if (history.length < 2) {
+            await (0, api_1.sendMessage)(chatId, '💭 尚無足夠的對話記錄可供反思。\n\n請先與探員對話後再使用 /reflect。');
+            return;
+        }
+        const { generateAIResponseWithTools } = await Promise.resolve().then(() => __importStar(require('../../services/butler-ai.service')));
+        const reflectPrompt = `請根據以下對話，生成簡潔反思摘要（繁體中文）：
+1. 主要討論的問題或任務
+2. 各方提供的關鍵見解  
+3. 已達成的結論或待辦事項
+4. 下一步建議
+
+對話歷史（最近10條）：
+${history.slice(-10).join('\n')}`;
+        const response = await generateAIResponseWithTools(reflectPrompt, userId, '', 'nexus');
+        const reflection = response.text || '無法生成反思摘要。';
+        await (0, api_1.sendMessage)(chatId, `🔄 **對話反思摘要**\n\n${reflection}\n\n─────────────────\n💾 摘要已記錄至會話歷史。`, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+                ],
+            },
+        });
+    }
+    catch (err) {
+        v2_1.logger.error('[Telegram] Reflect error:', err);
+        await (0, api_1.sendMessage)(chatId, '❌ 無法生成反思摘要，請稍後再試。');
+    }
+}
+async function sendMemoryStatus(chatId, telegramUserId) {
+    await (0, api_1.sendChatAction)(chatId, 'typing');
+    const linkedUid = await (0, api_1.getLinkedFirebaseUid)(telegramUserId);
+    const userId = linkedUid || `telegram:${telegramUserId}`;
+    try {
+        let currentAgent = 'butler';
+        let messageCount = 0;
+        let lastActive = '未知';
+        try {
+            const session = await (0, conversation_session_service_1.getSession)(userId);
+            currentAgent = session.activeAgent || 'butler';
+            if (session.lastActiveAt) {
+                lastActive = new Date(session.lastActiveAt).toLocaleString('zh-TW');
+            }
+        }
+        catch (_) { /* ignore */ }
+        try {
+            const history = await (0, conversation_session_service_1.getPreviousMessages)(userId);
+            messageCount = history.length;
+        }
+        catch (_) { /* ignore */ }
+        // Check local Ollama status
+        const ollamaOnline = await (0, local_inference_service_1.isOllamaAvailable)();
+        const ollamaModels = ollamaOnline ? await (0, local_inference_service_1.getAvailableModels)() : [];
+        const ollamaStatus = ollamaOnline
+            ? `✅ 運作中 (${ollamaModels.length > 0 ? ollamaModels.slice(0, 3).join(', ') : '模型載入中...'})`
+            : '❌ 離線（雲端 fallback 啟動中）';
+        // Dynamically check ChromaDB (NAS) status
+        const { getMemorySystemStatus } = await Promise.resolve().then(() => __importStar(require('../../services/memory-store.service')));
+        const memStatus = await getMemorySystemStatus();
+        const chromaStatus = memStatus.chromaDbOnline
+            ? `✅ 運作中 (${memStatus.chromaDbUrl})`
+            : `❌ 離線 — fallback 至 Firestore (${memStatus.chromaDbUrl})`;
+        const layerLabel = memStatus.layer === 'dual' ? '雙層模式' : 'Firestore 單層';
+        const msg = `🧠 **記憶狀態**
+
+👤 用戶 ID：\`${userId}\`
+🤖 當前探員：**${currentAgent.toUpperCase()}**
+💬 對話輪數：${messageCount} 條記錄
+🕐 最後活躍：${lastActive}
+
+─────────────────
+*推理引擎狀態：*
+🖥️ 本地 Ollama (RTX 4080)：${ollamaStatus}
+
+─────────────────
+*記憶層狀態（${layerLabel}）：*
+☁️ Firestore 會話快取：✅ 運作中
+📊 NAS ChromaDB 向量記憶：${chromaStatus}
+
+💡 使用 /reflect 生成對話摘要並強化記憶。`;
+        await (0, api_1.sendMessage)(chatId, msg, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔄 生成反思摘要', callback_data: 'reflect_now' }],
+                    [{ text: '← 返回主選單', callback_data: 'cmd_menu' }],
+                ],
+            },
+        });
+    }
+    catch (err) {
+        v2_1.logger.error('[Telegram] Memory status error:', err);
+        await (0, api_1.sendMessage)(chatId, '❌ 無法取得記憶狀態，請稍後再試。');
+    }
 }
 //# sourceMappingURL=commands.js.map

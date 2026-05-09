@@ -1,4 +1,4 @@
-/**
+﻿/**
  * RAG Context Service �?Retrieval-Augmented Generation
  *
  * 閉合 ChromaDB �?Ollama 的記憶注入迴路�? *
@@ -7,6 +7,7 @@
  * 回傳格式化的 context 字串，可直接附加�?Ollama system prompt�? * 任何 ChromaDB 錯誤都靜默降級，不影響主流程�? */
 
 import { logger } from 'firebase-functions/v2';
+import { embedText, isOllamaAvailable } from './local-inference.service';
 
 // ──────────────────────────────────────────────
 // ChromaDB 連線 (對齊 memory-store.service.ts)
@@ -64,18 +65,27 @@ async function queryCollection(
     const col = await getResp.json() as { id: string };
     const collectionId = col.id;
 
-    // Vector query
+    // Vector query — use Ollama embedding if available for consistency with saveMemory
+    const ollamaUp = await isOllamaAvailable();
+    const queryEmbedding = ollamaUp ? await embedText(queryText).catch(() => null) : null;
+
+    const queryPayload: Record<string, unknown> = {
+        n_results: nResults,
+        where: { userId },
+        include: ['documents', 'metadatas', 'distances'],
+    };
+    if (queryEmbedding) {
+        queryPayload.query_embeddings = [queryEmbedding];
+    } else {
+        queryPayload.query_texts = [queryText];
+    }
+
     const qResp = await fetch(
         `${CHROMA_API}/tenants/${CHROMADB_TENANT}/databases/${CHROMADB_DATABASE}/collections/${collectionId}/query`,
         {
             method: 'POST',
             headers: chromaHeaders(),
-            body: JSON.stringify({
-                query_texts: [queryText],
-                n_results: nResults,
-                where: { userId },
-                include: ['documents', 'metadatas', 'distances'],
-            }),
+            body: JSON.stringify(queryPayload),
             signal: AbortSignal.timeout(5000),
         },
     );

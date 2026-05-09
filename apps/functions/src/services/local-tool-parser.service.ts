@@ -132,6 +132,28 @@ estimate_tax — 稅務估算（純數學）
 }
 
 // ================================
+// Sensitive Data Patterns (Single Source of Truth)
+// ================================
+
+/**
+ * Patterns that indicate sensitive personal data in the message.
+ * Exported so inference-router.service.ts can use the same patterns
+ * to ensure these messages are ALWAYS routed to local backend.
+ */
+export const SENSITIVE_TOOL_PATTERNS: RegExp[] = [
+    // Financial recording
+    /花了|消費了|買了.*元|付了|結帳|刷卡了|記帳|支出|扣款/,
+    // Health recording
+    /體重.*公斤|公斤.*體重|今天.*kg|昨晚睡|睡了.*小時|跑了|騎了.*公里|健身.*分鐘/,
+    // Vehicle
+    /加油|公升.*元|每公升|油費/,
+    // Investment recording (buying/selling)
+    /買了.*股|賣了.*股|買進.*張|賣出.*張|進場.*元|出場.*元/,
+    // Tax / loan pure-math
+    /貸款試算|所得稅估算|稅務試算/,
+];
+
+// ================================
 // Pattern Pre-filter (cheap check before Ollama call)
 // ================================
 

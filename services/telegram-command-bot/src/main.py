@@ -103,7 +103,7 @@ async def call_agent_and_reply(gateway_url: str, bot_token: str, chat_id: str, a
             async with session.post(
                 f"{gateway_url}{agent_path}",
                 json={"message": enhanced_msg, "session_id": f"tg-{chat_id}"},
-                headers={"Authorization": "Bearer dev-local-bypass"},
+                headers={"X-Internal-Secret": settings.internal_secret},
             ) as resp:
                 if resp.status == 200:
                     data = await resp.json()
@@ -157,6 +157,105 @@ async def ollama_direct_reply(ollama_url: str, model: str, bot_token: str, chat_
     except Exception as e:
         await send_message(bot_token, chat_id, f"❌ Request failed: {e}")
 
+# ── 安全白名單：禁止危險指令 ──
+CMD_BLOCKLIST = [
+    "rm -rf", "rm -r /", "del /s /q", "format ", "mkfs",
+    "shutdown", "reboot", "poweroff", "halt",
+    ":(){ :|:& };:",  # fork bomb
+    "dd if=", "\nrm", "; rm", "&& rm",
+    "curl | sh", "curl | bash", "wget | sh",
+    "net user", "net localgroup", "reg delete",
+    "taskkill /f /im",
+]
+
+async def handle_cmd(args: list[str], chat_id: str, settings: Settings):
+    """Handle secure shell execution via Telegram."""
+    command_str = " ".join(args)
+    logger.info(f"Received /cmd from {chat_id}: {command_str}")
+    if not settings.admin_chat_ids or chat_id not in settings.admin_chat_ids:
+        await send_message(settings.telegram_bot_token, chat_id, "❌ 無權限執行此指令。")
+        return
+        
+    if not args:
+        await send_message(settings.telegram_bot_token, chat_id, "ℹ️ 語法: /cmd <shell_command>")
+        return
+        
+    command_str = " ".join(args)
+    
+    # Security: Block dangerous commands
+    cmd_lower = command_str.lower()
+    for blocked in CMD_BLOCKLIST:
+        if blocked in cmd_lower:
+            await send_message(settings.telegram_bot_token, chat_id, f"🚫 安全阻斷：指令包含危險操作 `{blocked}`")
+            logger.warning(f"BLOCKED dangerous cmd from {chat_id}: {command_str}")
+            return
+    await send_message(settings.telegram_bot_token, chat_id, f"⚙️ 執行中:\n<code>{html.escape(command_str)}</code>", parse_mode="HTML")
+    
+    try:
+        import asyncio
+        import re
+        
+        import os
+        
+        # If on Windows, wrap command in powershell for better compatibility with Unix-like commands (e.g., ls)
+        exec_cmd = command_str
+        if os.name == 'nt':
+            # Use PowerShell to execute the command string to support aliases like 'ls'
+            exec_cmd = f'powershell.exe -NonInteractive -Command "{command_str}"'
+            
+        proc = await asyncio.create_subprocess_shell(
+            exec_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        
+        try:
+            # Add a 15-second timeout to prevent hanging commands (like pm2 starting a daemon)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15.0)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            stdout, stderr = await proc.communicate()
+            stderr = (stderr or b"") + b"\n\n[Command execution timed out after 15 seconds]"
+        
+        stdout_str = stdout.decode('utf-8', errors='replace') if stdout else ""
+        stderr_str = stderr.decode('utf-8', errors='replace') if stderr else ""
+        
+        # Remove ANSI escape sequences (e.g. colors) to prevent Telegram HTML parsing errors
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        stdout_str = ansi_escape.sub('', stdout_str)
+        stderr_str = ansi_escape.sub('', stderr_str)
+        
+        # Safe truncation before HTML formatting to prevent Telegram parsing errors
+        max_total_len = 3800
+        if len(stdout_str) + len(stderr_str) > max_total_len:
+            if len(stdout_str) > max_total_len:
+                stdout_str = stdout_str[:max_total_len] + "...\n(STDOUT truncated)"
+                stderr_str = ""
+            else:
+                stderr_str = stderr_str[:max_total_len - len(stdout_str)] + "...\n(STDERR truncated)"
+        
+        output = ""
+        if stdout_str:
+            output += f"<b>STDOUT:</b>\n<pre><code>{html.escape(stdout_str)}</code></pre>\n"
+        if stderr_str:
+            output += f"<b>STDERR:</b>\n<pre><code>{html.escape(stderr_str)}</code></pre>\n"
+            
+        if not output:
+            output = "<i>(無輸出)</i>"
+            
+        exit_code = proc.returncode
+        output += f"\n<b>Exit Code:</b> {exit_code}"
+            
+        await send_message(settings.telegram_bot_token, chat_id, output, parse_mode="HTML")
+        
+    except Exception as e:
+        logger.error(f"Command execution error: {e}")
+        await send_message(settings.telegram_bot_token, chat_id, f"❌ 系統錯誤: {e}")
+        await send_message(settings.telegram_bot_token, chat_id, f"❌ 執行失敗:\n<code>{html.escape(str(e))}</code>", parse_mode="HTML")
+
 async def process_update(update: dict, settings: Settings, store: WatchStore) -> None:
     """Process a single Telegram update."""
 
@@ -197,10 +296,26 @@ async def process_update(update: dict, settings: Settings, store: WatchStore) ->
             
         current_agent = store.get_agent(chat_id)
         if current_agent != "butler":
-            # Direct route to selected agent
-            await send_message(settings.telegram_bot_token, chat_id, f"🤖 <b>[{current_agent}]</b> 收到訊息，處理中...", parse_mode="HTML")
-            asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, f"/agents/{current_agent}/chat", user_text, f"🤖 <b>{current_agent} 回覆：</b>"))
-            return
+            # Special handling for investment agent — uses /invest/analyze, not /agents/investment/chat
+            if current_agent == "investment":
+                import re as _re
+                match = _re.search(r'\d{4}', user_text)
+                sym = match.group(0) + ".TW" if match else "2330.TW"
+                cmd = "/analyze"
+                args = [sym]
+                # Fall through to /analyze handler below
+            else:
+                # Direct route to selected agent via Gateway
+                agent_labels = {
+                    "accountant": "🦦 Kay", "guardian": "🛡️ Guardian", "finance": "💰 Finance",
+                    "nova": "🏢 Nova", "bim": "🏗️ Titan", "interior": "✨ Lumi",
+                    "estimator": "🦊 Rusty", "scout": "🚁 Scout", "zora": "🌟 Zora",
+                    "lex": "⚖️ Lex", "sage": "📊 Sage"
+                }
+                label = agent_labels.get(current_agent, current_agent)
+                await send_message(settings.telegram_bot_token, chat_id, f"🤖 <b>[{label}]</b> 收到訊息，處理中...", parse_mode="HTML")
+                asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, f"/agents/{current_agent}/chat", user_text, f"🤖 <b>{label} 回覆：</b>"))
+                return
             
         await send_message(settings.telegram_bot_token, chat_id, "🤖 <b>[大廳管家]</b> 收到大廳訊息，意圖分發中...", parse_mode="HTML")
         
@@ -268,46 +383,62 @@ async def process_update(update: dict, settings: Settings, store: WatchStore) ->
                 cmd = "/ai"
                 args = [user_text]
     
-    # /agents
+    # /agents — 代理人選單（對齊 OpenClaw Gateway 已掛載路由）
     if cmd == "/agents":
         import json
+        current = store.get_agent(chat_id)
         keyboard = {
             "inline_keyboard": [
-                [{"text": "🤖 小秘書(預設)", "callback_data": "agent_switch_butler"}],
+                # ── AUTO 模式（小秘書/大廳管家）──
+                [{"text": "🤖 Nova — 全局小秘書 (AUTO)", "callback_data": "agent_switch_butler"}],
+                # ── Division 5: 財務部 ──
                 [
-                    {"text": "🏗️ Titan (建築/BIM)", "callback_data": "agent_switch_titan"},
-                    {"text": "✨ Lumi (室內設計)", "callback_data": "agent_switch_lumi"}
+                    {"text": "🦦 Kay (會計/稅務)", "callback_data": "agent_switch_accountant"},
+                    {"text": "🛡️ Guardian (風控)", "callback_data": "agent_switch_guardian"}
                 ],
                 [
-                    {"text": "📐 Rusty (估算工務)", "callback_data": "agent_switch_rusty"},
-                    {"text": "💰 Accountant (財務)", "callback_data": "agent_switch_accountant"}
+                    {"text": "💰 Finance (融資)", "callback_data": "agent_switch_finance"},
+                    {"text": "🏢 Nova (行政/HR)", "callback_data": "agent_switch_nova"}
+                ],
+                # ── Division 6: 工程部 ──
+                [
+                    {"text": "🏗️ Titan (BIM/建築)", "callback_data": "agent_switch_bim"},
+                    {"text": "✨ Lumi (室內設計)", "callback_data": "agent_switch_interior"}
                 ],
                 [
-                    {"text": "🛡️ Argus (資安情報)", "callback_data": "agent_switch_argus"},
-                    {"text": "👩 Nova (人力營運)", "callback_data": "agent_switch_nova"}
+                    {"text": "🦊 Rusty (估算/工務)", "callback_data": "agent_switch_estimator"}
+                ],
+                # ── Division 7: 業務部 ──
+                [
+                    {"text": "🚁 Scout (無人機)", "callback_data": "agent_switch_scout"},
+                    {"text": "🌟 Zora (NGO/CSR)", "callback_data": "agent_switch_zora"}
                 ],
                 [
-                    {"text": "📈 Investment (投資)", "callback_data": "agent_switch_investment"},
-                    {"text": "⚙️ Forge (機電軟韌)", "callback_data": "agent_switch_forge"}
+                    {"text": "⚖️ Lex (法務/合約)", "callback_data": "agent_switch_lex"},
+                    {"text": "📊 Sage (數據分析)", "callback_data": "agent_switch_sage"}
                 ],
-                [
-                    {"text": "🔬 Matter (材料科學)", "callback_data": "agent_switch_matter"},
-                    {"text": "☀️ Nexus (系統架構)", "callback_data": "agent_switch_nexus"}
-                ],
-                [
-                    {"text": "🌱 Zenith (永續ESG)", "callback_data": "agent_switch_zenith"},
-                    {"text": "🎯 Apex (行銷拓展)", "callback_data": "agent_switch_apex"}
-                ],
-                [
-                    {"text": "⚖️ Vertex (法務合規)", "callback_data": "agent_switch_vertex"},
-                    {"text": "📣 Echo (公關客服)", "callback_data": "agent_switch_echo"}
-                ]
+                # ── 市場分析 ──
+                [{"text": "📈 Investment Brain (投資分析)", "callback_data": "agent_switch_investment"}]
             ]
         }
+        # Build status display
+        agent_labels = {
+            "butler": "🤖 Nova (AUTO)", "accountant": "🦦 Kay", "guardian": "🛡️ Guardian",
+            "finance": "💰 Finance", "nova": "🏢 Nova", "bim": "🏗️ Titan",
+            "interior": "✨ Lumi", "estimator": "🦊 Rusty", "scout": "🚁 Scout",
+            "zora": "🌟 Zora", "lex": "⚖️ Lex", "sage": "📊 Sage",
+            "investment": "📈 Investment"
+        }
+        current_label = agent_labels.get(current, current)
         await send_message(
-            settings.telegram_bot_token, 
-            chat_id, 
-            f"🤖 <b>AI 代理團隊</b>\n\n目前選擇的代理：<b>{store.get_agent(chat_id)}</b>\n\n請選擇您需要切換的專屬專家：",
+            settings.telegram_bot_token,
+            chat_id,
+            f"🤖 <b>XXT-AGENT 代理團隊</b>\n\n"
+            f"目前模式：<b>{current_label}</b>\n\n"
+            f"<b>Division 5</b> — 財務部\n"
+            f"<b>Division 6</b> — 工程部\n"
+            f"<b>Division 7</b> — 業務部\n\n"
+            f"選擇 Agent 後，所有對話將自動路由至該專家：",
             parse_mode="HTML",
             reply_markup=json.dumps(keyboard)
         )
@@ -508,25 +639,19 @@ async def process_update(update: dict, settings: Settings, store: WatchStore) ->
         asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/scout/chat", f"[無人機任務] {user_msg}", "🚁 <b>Scout (無人機任務) 回覆：</b>"))
         return
 
-    # /lex — 法務諮詢
+    # /lex — (delegated to handlers/advisory.py, v9.2)
     if cmd == "/lex":
-        user_msg = " ".join(args)
-        await send_message(settings.telegram_bot_token, chat_id, "⚖️ <b>Lex (法務諮詢)</b>\n收到您的法務問題，正在為您檢閱合約與智財資料...", parse_mode="HTML")
-        asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/lex/chat", f"[法務諮詢] {user_msg}", "⚖️ <b>Lex (法務諮詢) 回覆：</b>"))
+        await handle_lex(args, chat_id, settings, call_agent_and_reply)
         return
 
-    # /sage — 數據分析
+    # /sage — (delegated to handlers/advisory.py, v9.2)
     if cmd == "/sage":
-        user_msg = " ".join(args)
-        await send_message(settings.telegram_bot_token, chat_id, "⚖️ <b>Sage (數據分析)</b>\n收到您的數據需求，正在進行統計與解讀...", parse_mode="HTML")
-        asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/sage/chat", f"[數據分析] {user_msg}", "⚖️ <b>Sage (數據分析) 回覆：</b>"))
+        await handle_sage(args, chat_id, settings, call_agent_and_reply)
         return
 
-    # /zora — CSR 與非營利
+    # /zora — (delegated to handlers/advisory.py, v9.2)
     if cmd == "/zora":
-        user_msg = " ".join(args)
-        await send_message(settings.telegram_bot_token, chat_id, "⚖️ <b>Zora (CSR 與非營利)</b>\n收到您的 CSR 查詢，正在提供企業社會責任計畫建議...", parse_mode="HTML")
-        asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/zora/chat", f"[CSR 與非營利] {user_msg}", "⚖️ <b>Zora (CSR 與非營利) 回覆：</b>"))
+        await handle_zora(args, chat_id, settings, call_agent_and_reply)
         return
 
     # /butler — 個人貼身管家
@@ -534,6 +659,20 @@ async def process_update(update: dict, settings: Settings, store: WatchStore) ->
         user_msg = " ".join(args)
         await send_message(settings.telegram_bot_token, chat_id, "🤵 <b>貼身管家</b>\n收到您的請求，正在為您處理...", parse_mode="HTML")
         asyncio.create_task(ollama_direct_reply(settings.ollama_base_url, settings.ollama_model, settings.telegram_bot_token, chat_id, user_msg, "🤵 <b>貼身管家 回覆：</b>"))
+        return
+
+    # /guardian — 風險控管 (Guardian)
+    if cmd == "/guardian":
+        user_msg = " ".join(args)
+        await send_message(settings.telegram_bot_token, chat_id, "🛡️ <b>Guardian (風險控管)</b>\n收到您的風控查詢，正在分析風險...", parse_mode="HTML")
+        asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/guardian/chat", f"[風險控管] {user_msg}", "🛡️ <b>Guardian (風控) 回覆：</b>"))
+        return
+
+    # /finance — 融資與資本結構 (Finance)
+    if cmd == "/finance":
+        user_msg = " ".join(args)
+        await send_message(settings.telegram_bot_token, chat_id, "💰 <b>Finance (融資顧問)</b>\n收到您的融資諮詢，正在分析資本結構...", parse_mode="HTML")
+        asyncio.create_task(call_agent_and_reply(settings.openclaw_gateway_url, settings.telegram_bot_token, chat_id, "/agents/finance/chat", f"[融資諮詢] {user_msg}", "💰 <b>Finance (融資) 回覆：</b>"))
         return
 
     # /admin — 行政事務、一般客服
@@ -548,10 +687,7 @@ async def process_update(update: dict, settings: Settings, store: WatchStore) ->
         asyncio.create_task(ollama_direct_reply(settings.ollama_base_url, settings.ollama_model, settings.telegram_bot_token, chat_id, user_msg, "🤵 <b>貼身管家 回覆：</b>"))
         return
 
-    # /reg — 法規查詢
-    if cmd == "/reg":
-        await send_message(settings.telegram_bot_token, chat_id, "📚 <b>[系統]</b> 法規查詢功能 (RAG) 正在建置中，請稍候...", parse_mode="HTML")
-        return
+
 
     # /loan — 融鑫財務顧問（Finance，NemoClaw PRIVATE 本地推理）
     if cmd == "/loan":
@@ -563,944 +699,11 @@ async def process_update(update: dict, settings: Settings, store: WatchStore) ->
         await handle_ins(args, chat_id, settings)
         return
 
-    # /acc — 會計師幕僚（鳴鑫，NemoClaw PRIVATE 本地推理）
+    # /acc — 會計師幕僚 (delegated to handlers/accounting.py with audit, v9.2)
     if cmd == "/acc":
-        ACC_SUBCOMMANDS = {
-            "invoice", "payment", "tax", "ledger", "report", "export", "help",
-            "bank", "entity", "taxplan",  # Phase 2
-            "summary", "cats", "accounts",  # Phase 3
-        }
-        sub = args[0].lower() if args else ""
-        sub_args = args[1:]
-
-        if sub == "help" or not sub:
-            await send_message(
-                settings.telegram_bot_token, chat_id,
-                "🦦 <b>Kay 🦦 稅務暨財務合規顧問（本地 AI，資料不出境）</b>\n\n"
-                "<b>💬 問答：</b>\n"
-                "• /acc &lt;問題&gt; — 稅務/帳務自由問答\n\n"
-                "<b>🧮 快捷計算：</b>\n"
-                "• /acc invoice &lt;含稅金額&gt; — 發票拆算\n"
-                "• /acc tax personal &lt;年收入&gt; [扶養] — 個人所得稅\n"
-                "• /acc tax corporate &lt;年所得&gt; — 公司所得稅\n"
-                "• /acc tax labor &lt;月薪&gt; — 勞健保費用\n\n"
-                "<b>📒 帳本操作：</b>\n"
-                "• /acc ledger add &lt;income|expense&gt; &lt;科目&gt; &lt;金額&gt; &lt;摘要&gt; — 新增記錄\n"
-                "• /acc ledger [YYYYMM] — 查詢本期/指定期間收支明細\n"
-                "• /acc report &lt;YYYYMM&gt; — 期間收支彙總\n"
-                "• /acc report 401 &lt;YYYYMM&gt; — 輸出 401 营業稅申報表\n"
-                "• /acc export &lt;YYYYMM&gt; — 匯出 CSV 收支明細\n\n"
-                "<b>範例：</b>\n"
-                "  /acc 如何申報統一發票？\n"
-                "  /acc invoice 105000\n"
-                "  /acc ledger add income engineering_payment 210000 台積電備料款\n"
-                "  /acc ledger 202601\n"
-                "  /acc report 202601\n"
-                "  /acc export 202601",
-                parse_mode="HTML"
-            )
-            return
-
-        # /acc invoice <amount>
-        if sub == "invoice":
-            if not sub_args:
-                await send_message(settings.telegram_bot_token, chat_id, "用法: /acc invoice <金額>")
-                return
-            try:
-                amount = float(sub_args[0].replace(",", ""))
-            except ValueError:
-                await send_message(settings.telegram_bot_token, chat_id, "❌ 金額格式錯誤，請輸入數字")
-                return
-
-            tax_type = "taxed" if len(sub_args) < 2 or sub_args[1].lower() != "untaxed" else "untaxed"
-            try:
-                timeout = ClientTimeout(total=10)
-                async with ClientSession(timeout=timeout) as session:
-                    async with session.post(
-                        f"{settings.openclaw_gateway_url}/agents/accountant/invoice",
-                        json={"amount": amount, "type": tax_type},
-                        headers={"Authorization": "Bearer dev-local-bypass"},
-                    ) as resp_acc:
-                        data = await resp_acc.json()
-
-                c = data["calculation"]
-                text = (
-                    f"🦉 <b>發票計算 — Kay 🦦</b>\n"
-                    f"━━━━━━━━━━━━━━━\n"
-                    f"輸入金額: NT$ {c['input_amount']:,.0f}（{'含稅' if tax_type == 'taxed' else '未稅'}）\n\n"
-                    f"📊 <b>拆解結果（稅率 {c['tax_rate_pct']}%）：</b>\n"
-                    f"  未稅金額 = NT$ {c['untaxed_amount']:,.0f}\n"
-                    f"  營業稅   = NT$ {c['tax_amount']:,.0f}\n"
-                    f"  含稅合計 = NT$ {c['taxed_amount']:,.0f}\n\n"
-                    f"📋 <b>建議開立：</b>\n  {data['invoice_suggestion']}\n\n"
-                    f"⚖️ {data['legal_basis']}"
-                )
-                await send_message(settings.telegram_bot_token, chat_id, text, parse_mode="HTML")
-
-            except Exception as e:
-                await send_message(settings.telegram_bot_token, chat_id, f"❌ 計算失敗: {e}")
-            return
-
-        # /acc tax <type> <amount> [param]
-        if sub == "tax":
-            if len(sub_args) < 2:
-                await send_message(settings.telegram_bot_token, chat_id,
-                    "用法: /acc tax personal <年收入> [扶養人數]\n"
-                    "      /acc tax corporate <年所得>\n"
-                    "      /acc tax labor <月薪>")
-                return
-            tax_type_arg = sub_args[0].lower()
-            try:
-                amount_arg = float(sub_args[1].replace(",", ""))
-                dep_arg = int(sub_args[2]) if len(sub_args) > 2 else 0
-            except (ValueError, IndexError):
-                await send_message(settings.telegram_bot_token, chat_id, "❌ 金額格式錯誤")
-                return
-
-            tax_map = {"personal": "personal", "corporate": "corporate", "labor": "labor"}
-            if tax_type_arg not in tax_map:
-                await send_message(settings.telegram_bot_token, chat_id, "類型請輸入: personal / corporate / labor")
-                return
-
-            await send_message(settings.telegram_bot_token, chat_id, "🦉 計算稅額中...")
-            try:
-                timeout = ClientTimeout(total=15)
-                async with ClientSession(timeout=timeout) as session:
-                    async with session.post(
-                        f"{settings.openclaw_gateway_url}/agents/accountant/tax",
-                        json={"type": tax_map[tax_type_arg], "annual_income": amount_arg, "dependents": dep_arg},
-                        headers={"Authorization": "Bearer dev-local-bypass"},
-                    ) as resp_tax:
-                        data = await resp_tax.json()
-
-                if tax_type_arg == "personal":
-                    txt = (
-                        f"🦉 <b>個人所得稅試算 — Kay 🦦</b>\n"
-                        f"━━━━━━━━━━━━━━━\n"
-                        f"年收入: NT$ {data['annual_income']:,.0f}\n"
-                        f"扣除額合計: NT$ {data['deductions']['total']:,.0f}\n"
-                        f"應納稅所得額: NT$ {data['taxable_income']:,.0f}\n\n"
-                        f"💰 <b>預估應納稅額: NT$ {data['estimated_tax']:,.0f}</b>\n"
-                        f"📊 有效稅率: {data['effective_rate']}\n\n"
-                        f"⚖️ {data['legal_basis']}\n"
-                        f"⚠️ {data['note']}"
-                    )
-                elif tax_type_arg == "corporate":
-                    txt = (
-                        f"🦉 <b>公司所得稅試算 — Kay 🦦</b>\n"
-                        f"━━━━━━━━━━━━━━━\n"
-                        f"年所得: NT$ {data['annual_income']:,.0f}\n"
-                        f"起徵點: NT$ {data['basic_threshold']:,.0f}\n"
-                        f"應稅所得: NT$ {data['taxable_income']:,.0f}\n"
-                        f"稅率: {data['tax_rate']}\n\n"
-                        f"💰 <b>預估稅額: NT$ {data['estimated_tax']:,.0f}</b>\n\n"
-                        f"⚖️ {data['legal_basis']}"
-                    )
-                else:  # labor
-                    emp = data["costs"]["employer"]
-                    ee = data["costs"]["employee"]
-                    txt = (
-                        f"🦉 <b>勞健保費用試算 — 鳴鑫</b>\n"
-                        f"━━━━━━━━━━━━━━━\n"
-                        f"月薪: NT$ {data['monthly_salary']:,.0f}\n\n"
-                        f"🏢 <b>雇主負擔：</b>\n"
-                        f"  勞保: NT$ {emp['labor_insurance']:,.0f}\n"
-                        f"  健保: NT$ {emp['health_insurance']:,.0f}\n"
-                        f"  勞退: NT$ {emp['labor_pension']:,.0f}\n"
-                        f"  小計: NT$ {emp['total']:,.0f}\n\n"
-                        f"👤 <b>員工負擔：</b>\n"
-                        f"  勞保: NT$ {ee['labor_insurance']:,.0f}\n"
-                        f"  健保: NT$ {ee['health_insurance']:,.0f}\n"
-                        f"  小計: NT$ {ee['total']:,.0f}\n\n"
-                        f"💰 <b>每月總人力成本: NT$ {data['total_labor_cost']:,.0f}</b>"
-                    )
-                await send_message(settings.telegram_bot_token, chat_id, txt, parse_mode="HTML")
-
-            except Exception as e:
-                await send_message(settings.telegram_bot_token, chat_id, f"❌ 稅務計算失敗: {e}")
-            return
-
-        # /acc ledger add <income|expense> <category> <amount> <description>
-        # /acc ledger [YYYYMM]  — 查詢收支明細
-        if sub == "ledger":
-            action = sub_args[0].lower() if sub_args else ""
-
-            if action == "add":
-                # 格式: /acc ledger add <income|expense> <科目> <金額> <摘要> [entity]
-                # entity: company(預設) | personal | family
-                ADD_INCOME_CATS = {
-                    # 公司
-                    "engineering_payment", "advance_payment", "design_fee",
-                    "consulting_fee", "material_rebate", "other_income",
-                    # 個人
-                    "salary", "freelance", "rental_income", "investment_gain",
-                    # 家庭
-                    "allowance",
-                }
-                ADD_EXPENSE_CATS = {
-                    # 公司
-                    "material", "labor", "subcontract", "equipment", "overhead",
-                    "insurance", "tax_payment", "utilities", "rent", "office_supply",
-                    "entertainment", "transportation", "professional_service", "other_expense",
-                    # 家庭（綜所稅扣除額）
-                    "medical", "education", "life_insurance", "house_rent", "family_living",
-                }
-                ENTITY_CATS = {
-                    "personal": {"salary", "freelance", "rental_income", "investment_gain"},
-                    "family": {"allowance", "medical", "education", "life_insurance", "house_rent", "family_living"},
-                }
-                if len(sub_args) < 5:
-                    await send_message(
-                        settings.telegram_bot_token, chat_id,
-                        "📒 <b>新增收支記錄</b>\n\n"
-                        "格式: /acc ledger add &lt;income|expense&gt; &lt;科目&gt; &lt;金額&gt; &lt;摘要&gt; [entity]\n"
-                        "entity: company（預設）| personal | family\n\n"
-                        "<b>🏢 公司收入:</b> engineering_payment, advance_payment, design_fee, consulting_fee, other_income\n"
-                        "<b>👤 個人收入:</b> salary, freelance, rental_income, investment_gain\n"
-                        "<b>🏠 家庭撥款:</b> allowance\n\n"
-                        "<b>🏢 公司支出:</b> material, labor, subcontract, equipment, overhead, insurance, rent, utilities, entertainment, transportation, professional_service\n"
-                        "<b>🏠 家庭扣除:</b> medical, education, life_insurance, house_rent, family_living\n\n"
-                        "<b>範例：</b>\n"
-                        "  /acc ledger add income engineering_payment 1050000 台積電工程款\n"
-                        "  /acc ledger add income salary 80000 一月薪資 personal\n"
-                        "  /acc ledger add expense medical 50000 住院費 family\n"
-                        "  /acc ledger add expense material 420000 鋼筋採購",
-                        parse_mode="HTML"
-                    )
-                    return
-
-                entry_type = sub_args[1].lower()
-                category_arg = sub_args[2].lower()
-                try:
-                    amount_val = float(sub_args[3].replace(",", ""))
-                except ValueError:
-                    await send_message(settings.telegram_bot_token, chat_id, "❌ 金額格式錯誤，請輸入正整數（例：80000）")
-                    return
-
-                # 最後一個 arg 如果是 entity，取出
-                remaining = sub_args[4:]
-                entity_arg = "company"
-                if remaining and remaining[-1].lower() in ("company", "personal", "family"):
-                    entity_arg = remaining[-1].lower()
-                    remaining = remaining[:-1]
-                description_val = " ".join(remaining).strip() if remaining else sub_args[4] if len(sub_args) > 4 else ""
-                if not description_val:
-                    await send_message(settings.telegram_bot_token, chat_id, "❌ 請加入摘要說明")
-                    return
-
-                if entry_type not in ("income", "expense"):
-                    await send_message(settings.telegram_bot_token, chat_id, "❌ 類型請輸入 income（收入）或 expense（支出）")
-                    return
-
-                valid_cats = ADD_INCOME_CATS if entry_type == "income" else ADD_EXPENSE_CATS
-                if category_arg not in valid_cats:
-                    # 建議科目
-                    cat_type_list = ", ".join(sorted(valid_cats)[:8]) + "..."
-                    await send_message(
-                        settings.telegram_bot_token, chat_id,
-                        f"❌ 科目 <code>{category_arg}</code> 不正確\n"
-                        f"常用{'收入' if entry_type == 'income' else '支出'}科目：\n{cat_type_list}\n\n"
-                        f"💡 /acc cats 查詢完整科目",
-                        parse_mode="HTML"
-                    )
-                    return
-
-                # 自動推斷實體（科目屬於個人/家庭時自動修正）
-                auto_entity = entity_arg
-                for ent, cats in ENTITY_CATS.items():
-                    if category_arg in cats and entity_arg == "company":
-                        auto_entity = ent
-                        break
-
-                try:
-                    timeout = ClientTimeout(total=15)
-                    async with ClientSession(timeout=timeout) as session:
-                        async with session.post(
-                            f"{settings.openclaw_gateway_url}/agents/accountant/ledger",
-                            json={
-                                "type": entry_type,
-                                "category": category_arg,
-                                "amount": amount_val,
-                                "amount_type": "taxed",
-                                "description": description_val,
-                                "entity_type": auto_entity,
-                            },
-                            headers={"Authorization": "Bearer dev-local-bypass"},
-                        ) as resp_l:
-                            data_l = await resp_l.json()
-
-                    s = data_l.get("summary", {})
-                    type_zh = "💰 收入" if entry_type == "income" else "💸 支出"
-                    entity_icons = {"company": "🏢", "personal": "👤", "family": "🏠"}
-                    ent_zh = {"company": "公司", "personal": "個人", "family": "家庭"}.get(auto_entity, auto_entity)
-                    ent_icon = entity_icons.get(auto_entity, "📊")
-                    auto_note = f"\n⚡ 自動歸類為{ent_zh}帳（科目屬{ent_zh}）" if auto_entity != entity_arg else ""
-                    await send_message(
-                        settings.telegram_bot_token, chat_id,
-                        f"✅ <b>帳本記錄完成 — 鳴鑫</b>\n"
-                        f"━━━━━━━━━━━━━━━\n"
-                        f"{ent_icon} {ent_zh} | {type_zh} | {s.get('category', category_arg)}\n"
-                        f"摘要: {s.get('description', description_val)}\n"
-                        f"未稅: NT$ {s.get('amount_untaxed', 0):,.0f}\n"
-                        f"稅額: NT$ {s.get('tax_amount', 0):,.0f}\n"
-                        f"含稅: NT$ {s.get('amount_taxed', 0):,.0f}\n"
-                        f"申報期間: {s.get('period', '')}\n"
-                        f"交易日期: {s.get('transaction_date', '')}"
-                        f"{auto_note}\n\n"
-                        f"🔒 <i>本地儲存 | PRIVATE</i>",
-                        parse_mode="HTML"
-                    )
-                except Exception as e:
-                    await send_message(settings.telegram_bot_token, chat_id, f"❌ 記錄失敗: {e}")
-                return
-
-            # /acc ledger [YYYYMM] — 查詢明細
-            else:
-                period_arg = action if action and action.isdigit() and len(action) == 6 else None
-                try:
-                    timeout = ClientTimeout(total=15)
-                    url = f"{settings.openclaw_gateway_url}/agents/accountant/ledger"
-                    params_q: dict = {"limit": "20"}
-                    if period_arg:
-                        params_q["period"] = period_arg
-
-                    async with ClientSession(timeout=timeout) as session:
-                        async with session.get(
-                            url,
-                            params=params_q,
-                            headers={"Authorization": "Bearer dev-local-bypass"},
-                        ) as resp_q:
-                            data_q = await resp_q.json()
-
-                    entries = data_q.get("entries", [])
-                    summary_q = data_q.get("summary", {})
-                    period_label = f"（{period_arg}期）" if period_arg else "（近期）"
-
-                    lines = [f"📒 <b>收支明細 {period_label}</b>"]
-                    lines.append(
-                        f"收入: NT$ {summary_q.get('total_income', 0):,.0f} | "
-                        f"支出: NT$ {summary_q.get('total_expense', 0):,.0f} | "
-                        f"淨額: NT$ {summary_q.get('net', 0):,.0f}"
-                    )
-                    lines.append("━━━━━━━━━━━━━━━")
-
-                    ent_icons2 = {"company": "🏢", "personal": "👤", "family": "🏠"}
-                    if not entries:
-                        lines.append("⚠️ 本期尚無記錄")
-                    else:
-                        for e in entries[:10]:
-                            icon = "💰" if e["type"] == "income" else "💸"
-                            ent_tag = ent_icons2.get(e.get("entity_type", "company"), "📊")
-                            lines.append(
-                                f"{icon}{ent_tag} {e['transaction_date']} {e['category']}\n"
-                                f"   {e['description'][:30]} NT$ {e['amount_taxed']:,.0f}"
-                            )
-                        if len(entries) > 10:
-                            lines.append(f"\n...共 {data_q['count']} 筆（顯示前10筆）")
-
-                    await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines), parse_mode="HTML")
-                except Exception as e:
-                    await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢失敗: {e}")
-                return
-
-        # /acc report <YYYYMM>          — 期間收支彙總
-        # /acc report 401 <YYYYMM>      — 401 申報表格式
-        if sub == "report":
-            if not sub_args:
-                await send_message(
-                    settings.telegram_bot_token, chat_id,
-                    "用法: /acc report &lt;YYYYMM&gt;\n"
-                    "      /acc report 401 &lt;YYYYMM&gt;\n"
-                    "範例: /acc report 202601\n"
-                    "      /acc report 401 202601",
-                    parse_mode="HTML"
-                )
-                return
-
-            is_401 = sub_args[0].lower() == "401"
-            period_arg = sub_args[1] if is_401 and len(sub_args) > 1 else sub_args[0]
-
-            if not period_arg.isdigit() or len(period_arg) != 6:
-                await send_message(settings.telegram_bot_token, chat_id, "❌ 期間格式錯誤，請使用 YYYYMM（例: 202601）")
-                return
-
-            await send_message(settings.telegram_bot_token, chat_id, f"📊 產生{'401申報' if is_401 else '彙總'}報表中...")
-
-            try:
-                timeout = ClientTimeout(total=20)
-                async with ClientSession(timeout=timeout) as session:
-                    if is_401:
-                        async with session.get(
-                            f"{settings.openclaw_gateway_url}/agents/accountant/report/401",
-                            params={"period": period_arg},
-                            headers={"Authorization": "Bearer dev-local-bypass"},
-                        ) as resp_r:
-                            data_r = await resp_r.json()
-                        report = data_r.get("report", {})
-                        h = report.get("header", {})
-                        s1 = report.get("section_1_sales", {})
-                        s2 = report.get("section_2_purchases", {})
-                        s3 = report.get("section_3_tax_calculation", {})
-                        txt = (
-                            f"📋 <b>401 營業稅申報書</b>\n"
-                            f"━━━━━━━━━━━━━━━\n"
-                            f"公司: {h.get('company_name', '')}\n"
-                            f"統編: {h.get('tax_id', '（未填）')}\n"
-                            f"申報期間: {h.get('tax_period', '')}\n"
-                            f"申報截止: {h.get('filing_deadline', '')}\n\n"
-                            f"<b>壹、銷售額（收入）</b>\n"
-                            f"  應稅銷售: NT$ {s1.get('taxable_sales_standard', 0):,.0f}\n"
-                            f"  銷項稅額: NT$ {s1.get('tax_output', 0):,.0f}\n\n"
-                            f"<b>貳、進項稅額（支出）</b>\n"
-                            f"  應稅進貨: NT$ {s2.get('taxable_purchases', 0):,.0f}\n"
-                            f"  可扣抵進項: NT$ {s2.get('deductible_tax', 0):,.0f}\n\n"
-                            f"<b>參、應納（退）稅額</b>\n"
-                            f"  銷項稅: NT$ {s3.get('output_tax', 0):,.0f}\n"
-                            f"  進項扣抵: NT$ {s3.get('deductible_input_tax', 0):,.0f}\n"
-                            f"  <b>應繳稅額: NT$ {s3.get('net_tax_payable', 0):,.0f}</b>\n"
-                            f"  退稅金額: NT$ {s3.get('refund_amount', 0):,.0f}\n\n"
-                            f"⚠️ <i>{data_r.get('disclaimer', '請核對後申報')}</i>"
-                        )
-                    else:
-                        async with session.get(
-                            f"{settings.openclaw_gateway_url}/agents/accountant/report/summary",
-                            params={"period": period_arg},
-                            headers={"Authorization": "Bearer dev-local-bypass"},
-                        ) as resp_r:
-                            data_r = await resp_r.json()
-                        txt = (
-                            f"📊 <b>{data_r.get('period_label', period_arg)} 收支彙總</b>\n"
-                            f"━━━━━━━━━━━━━━━\n"
-                            f"💰 總收入（未稅）: NT$ {data_r.get('total_income_untaxed', 0):,.0f}\n"
-                            f"💸 總支出（未稅）: NT$ {data_r.get('total_expense_untaxed', 0):,.0f}\n"
-                            f"📈 損益: NT$ {data_r.get('net_profit_loss', 0):,.0f}\n\n"
-                            f"🏦 銷項稅額: NT$ {data_r.get('total_tax_output', 0):,.0f}\n"
-                            f"🔄 進項稅額（可扣）: NT$ {data_r.get('total_tax_input', 0):,.0f}\n"
-                            f"💳 <b>應繳/退稅: NT$ {data_r.get('net_tax_payable', 0):,.0f}</b>\n\n"
-                            f"📋 記錄數: {data_r.get('entry_count', 0)} 筆\n"
-                            f"💡 輸出完整 401 表：/acc report 401 {period_arg}"
-                        )
-
-                await send_message(settings.telegram_bot_token, chat_id, txt, parse_mode="HTML")
-            except Exception as e:
-                await send_message(settings.telegram_bot_token, chat_id, f"❌ 報表產生失敗: {e}")
-            return
-
-        # /acc export <YYYYMM> — CSV 匯出（以文字訊息回傳純文字 CSV 或提示下載連結）
-        if sub == "export":
-            if not sub_args or not sub_args[0].isdigit() or len(sub_args[0]) != 6:
-                await send_message(
-                    settings.telegram_bot_token, chat_id,
-                    "用法: /acc export &lt;YYYYMM&gt;\n"
-                    "範例: /acc export 202601",
-                    parse_mode="HTML"
-                )
-                return
-
-            period_arg = sub_args[0]
-            await send_message(settings.telegram_bot_token, chat_id, f"📥 產生 {period_arg} 期收支 CSV 中...")
-
-            try:
-                timeout = ClientTimeout(total=20)
-                async with ClientSession(timeout=timeout) as session:
-                    async with session.get(
-                        f"{settings.openclaw_gateway_url}/agents/accountant/export/csv",
-                        params={"period": period_arg},
-                        headers={"Authorization": "Bearer dev-local-bypass"},
-                    ) as resp_csv:
-                        if resp_csv.status != 200:
-                            raise RuntimeError(f"HTTP {resp_csv.status}")
-                        csv_content = await resp_csv.text()
-
-                # 預覽前5行（含標頭）
-                csv_lines = csv_content.strip().split("\n")
-                preview = "\n".join(csv_lines[:6])
-                total = len(csv_lines) - 1  # 減去標頭
-
-                await send_message(
-                    settings.telegram_bot_token, chat_id,
-                    f"📥 <b>收支明細 CSV（{period_arg}期）</b>\n"
-                    f"共 {total} 筆記錄\n\n"
-                    f"<code>{preview[:800]}</code>\n\n"
-                    f"💡 完整下載：\n"
-                    f"<code>GET {settings.openclaw_gateway_url}/agents/accountant/export/csv?period={period_arg}</code>\n"
-                    f"（需附 Authorization header）",
-                    parse_mode="HTML"
-                )
-            except Exception as e:
-                await send_message(settings.telegram_bot_token, chat_id, f"❌ CSV 匯出失敗: {e}")
-            return
-
-
-        # ── Phase 2: /acc bank ─────────────────────────────────────────
-        if sub == "bank":
-            bank_action = sub_args[0].lower() if sub_args else ""
-
-            if bank_action == "add":
-                if len(sub_args) < 4:
-                    await send_message(
-                        settings.telegram_bot_token, chat_id,
-                        "🏦 <b>新增銀行帳戶</b>\n\n"
-                        "格式: /acc bank add &lt;銀行名稱&gt; &lt;後4碼&gt; &lt;戶名&gt; [company|personal|family]\n\n"
-                        "<b>範例：</b>\n"
-                        "  /acc bank add 台灣銀行 1234 SENTENG建工 company\n"
-                        "  /acc bank add 合作金庫 5678 王小明 personal\n"
-                        "  /acc bank add 第一銀行 9012 家用帳戶 family",
-                        parse_mode="HTML"
-                    )
-                    return
-                bank_name = sub_args[1]
-                acct_last4 = sub_args[2]
-                holder = sub_args[3]
-                entity = sub_args[4].lower() if len(sub_args) > 4 else "company"
-                if entity not in ("company", "personal", "family"):
-                    entity = "company"
-                try:
-                    timeout = ClientTimeout(total=10)
-                    async with ClientSession(timeout=timeout) as session:
-                        async with session.post(
-                            f"{settings.openclaw_gateway_url}/agents/accountant/bank/account",
-                            json={"bank_name": bank_name, "account_no": acct_last4,
-                                  "account_holder": holder, "entity_type": entity,
-                                  "currency": "TWD", "current_balance": 0},
-                            headers={"Authorization": "Bearer dev-local-bypass"},
-                        ) as resp_b:
-                            data_b = await resp_b.json()
-                    entity_zh = {"company": "🏢 公司", "personal": "👤 個人", "family": "🏠 家庭"}.get(entity, entity)
-                    await send_message(
-                        settings.telegram_bot_token, chat_id,
-                        f"✅ <b>銀行帳戶已新增</b>\n━━━━━━━━━━━━━━━\n"
-                        f"銀行: {bank_name}\n帳號: ****{acct_last4}\n戶名: {holder}\n實體: {entity_zh}\n\n"
-                        f"💡 記錄往來: /acc bank txn {acct_last4} credit 100000 工程款\n"
-                        f"🔒 <i>PRIVATE | 資料不出境</i>",
-                        parse_mode="HTML"
-                    )
-                except Exception as e:
-                    await send_message(settings.telegram_bot_token, chat_id, f"❌ 新增失敗: {e}")
-                return
-
-            elif bank_action == "txn":
-                if len(sub_args) < 5:
-                    await send_message(
-                        settings.telegram_bot_token, chat_id,
-                        "💳 <b>記錄銀行往來</b>\n\n"
-                        "格式: /acc bank txn &lt;後4碼&gt; &lt;credit|debit&gt; &lt;金額&gt; &lt;摘要&gt; [科目]\n\n"
-                        "常用科目：engineering_payment | material | salary | medical | family_living\n\n"
-                        "<b>範例：</b>\n"
-                        "  /acc bank txn 1234 credit 1050000 台積電工程款 engineering_payment\n"
-                        "  /acc bank txn 5678 credit 80000 1月薪資 salary",
-                        parse_mode="HTML"
-                    )
-                    return
-                acct4 = sub_args[1]
-                txn_type = sub_args[2].lower()
-                try:
-                    txn_amount = float(sub_args[3].replace(",", ""))
-                except ValueError:
-                    await send_message(settings.telegram_bot_token, chat_id, "❌ 金額格式錯誤")
-                    return
-                txn_desc = sub_args[4]
-                txn_cat = sub_args[5].lower() if len(sub_args) > 5 else None
-                if txn_type not in ("credit", "debit"):
-                    await send_message(settings.telegram_bot_token, chat_id, "❌ 類型請輸入 credit（存入）或 debit（提出）")
-                    return
-                payload = {"account_no_masked": acct4, "type": txn_type,
-                           "amount": txn_amount, "description": txn_desc}
-                if txn_cat:
-                    payload["ledger_category"] = txn_cat
-                try:
-                    timeout = ClientTimeout(total=12)
-                    async with ClientSession(timeout=timeout) as session:
-                        async with session.post(
-                            f"{settings.openclaw_gateway_url}/agents/accountant/bank/txn",
-                            json=payload,
-                            headers={"Authorization": "Bearer dev-local-bypass"},
-                        ) as resp_t:
-                            data_t = await resp_t.json()
-                    s = data_t.get("summary", {})
-                    type_zh = "💰 存入" if txn_type == "credit" else "💸 提出"
-                    synced_txt = f"\n📒 已同步帳本（{txn_cat}）" if data_t.get("dual_write") else ""
-                    await send_message(
-                        settings.telegram_bot_token, chat_id,
-                        f"✅ <b>銀行往來記錄完成</b>\n━━━━━━━━━━━━━━━\n"
-                        f"帳戶: {s.get('bank', acct4)}\n實體: {s.get('entity', '')}\n"
-                        f"{type_zh}: NT$ {txn_amount:,.0f}\n摘要: {txn_desc}\n日期: {s.get('txn_date', '')}"
-                        f"{synced_txt}\n\n🔒 <i>PRIVATE</i>",
-                        parse_mode="HTML"
-                    )
-                except Exception as e:
-                    await send_message(settings.telegram_bot_token, chat_id, f"❌ 記錄失敗: {e}")
-                return
-
-            elif bank_action == "history":
-                acct4 = sub_args[1] if len(sub_args) > 1 else ""
-                period_h = sub_args[2] if len(sub_args) > 2 and sub_args[2].isdigit() and len(sub_args[2]) == 6 else None
-                params_h = {"account_no_masked": acct4, "limit": "20"}
-                if period_h:
-                    params_h["period"] = period_h
-                try:
-                    timeout = ClientTimeout(total=12)
-                    async with ClientSession(timeout=timeout) as session:
-                        async with session.get(
-                            f"{settings.openclaw_gateway_url}/agents/accountant/bank/txn",
-                            params=params_h,
-                            headers={"Authorization": "Bearer dev-local-bypass"},
-                        ) as resp_h:
-                            data_h = await resp_h.json()
-                    txns = data_h.get("transactions", [])
-                    period_label = f"（{period_h}期）" if period_h else "（近期）"
-                    lines = [f"🏦 <b>銀行往來 ****{acct4} {period_label}</b>",
-                             f"存入 NT${data_h.get('total_credit',0):,.0f} | 提出 NT${data_h.get('total_debit',0):,.0f} | 淨額 NT${data_h.get('net',0):,.0f}",
-                             "━━━━━━━━━━━━━━━"]
-                    if not txns:
-                        lines.append("⚠️ 尚無往來記錄")
-                    else:
-                        for t in txns[:10]:
-                            icon = "💰" if t["type"] == "credit" else "💸"
-                            synced = " ✓" if t.get("linked_entry_id") else ""
-                            lines.append(f"{icon} {t['txn_date']} NT${t['amount']:,.0f} {t['description'][:20]}{synced}")
-                    await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines), parse_mode="HTML")
-                except Exception as e:
-                    await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢失敗: {e}")
-                return
-
-            else:
-                # /acc bank → 餘額總覽
-                try:
-                    timeout = ClientTimeout(total=10)
-                    async with ClientSession(timeout=timeout) as session:
-                        async with session.get(
-                            f"{settings.openclaw_gateway_url}/agents/accountant/bank/balance",
-                            headers={"Authorization": "Bearer dev-local-bypass"},
-                        ) as resp_bal:
-                            data_bal = await resp_bal.json()
-                    grand = data_bal.get("grand_total_twd", 0)
-                    lines = ["🏦 <b>銀行帳戶餘額總覽</b>", "━━━━━━━━━━━━━━━"]
-                    has_accounts = False
-                    for ent_data in data_bal.get("by_entity", []):
-                        if not ent_data.get("accounts"):
-                            continue
-                        has_accounts = True
-                        lines.append(f"\n<b>{ent_data['entity_label']} NT${ent_data['total_balance']:,.0f}</b>")
-                        for a in ent_data["accounts"]:
-                            lines.append(f"  🏦 {a['bank_name']} ****{a['account_no_masked']} | {a['account_holder']} | NT${a['current_balance']:,.0f}")
-                    if not has_accounts:
-                        lines.append("⚠️ 尚無帳戶\n💡 /acc bank add 台灣銀行 1234 SENTENG company")
-                    else:
-                        lines.append(f"\n━━━━━━━━━━━━━━━\n💰 <b>合計: NT$ {grand:,.0f}</b>")
-                    lines.append("\n🔒 <i>PRIVATE | 帳號後四碼顯示</i>")
-                    await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines), parse_mode="HTML")
-                except Exception as e:
-                    await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢失敗: {e}")
-                return
-
-        # ── /acc entity <company|personal|family|all> [YYYYMM] ─────────
-        if sub == "entity":
-            entity_arg = sub_args[0].lower() if sub_args else "all"
-            if entity_arg not in ("company", "personal", "family", "all"):
-                entity_arg = "all"
-            period_e = sub_args[1] if len(sub_args) > 1 and len(sub_args[1]) == 6 and sub_args[1].isdigit() else None
-            year_e = sub_args[1] if len(sub_args) > 1 and len(sub_args[1]) == 4 and sub_args[1].isdigit() else None
-            params_e = {}
-            if entity_arg != "all":
-                params_e["entity"] = entity_arg
-            if period_e:
-                params_e["period"] = period_e
-            elif year_e:
-                params_e["year"] = year_e
-            await send_message(settings.telegram_bot_token, chat_id, "📊 分析各實體收支中...")
-            try:
-                timeout = ClientTimeout(total=15)
-                async with ClientSession(timeout=timeout) as session:
-                    async with session.get(
-                        f"{settings.openclaw_gateway_url}/agents/accountant/report/entity",
-                        params=params_e,
-                        headers={"Authorization": "Bearer dev-local-bypass"},
-                    ) as resp_e:
-                        data_e = await resp_e.json()
-                icons = {"company": "🏢", "personal": "👤", "family": "🏠"}
-                lines_e = ["📈 <b>多實體收支報表</b>", "━━━━━━━━━━━━━━━"]
-                for ent in data_e.get("entities", []):
-                    ico = icons.get(ent["entity_type"], "📊")
-                    lines_e.append(
-                        f"\n{ico} <b>{ent['entity_label']} {ent.get('period','')} "
-                        f"({ent['entry_count']}筆)</b>\n"
-                        f"  💰 收入 NT${ent['total_income']:,.0f} | 💸 支出 NT${ent['total_expense']:,.0f}\n"
-                        f"  📈 損益 NT${ent['net_profit_loss']:,.0f} | 稅差 NT${ent['net_tax']:,.0f}"
-                    )
-                    if ent["entity_type"] == "family" and ent.get("deductible_items"):
-                        lines_e.append("  📋 可申報：" + " | ".join(f"{d['category']} NT${d['amount']:,.0f}" for d in ent["deductible_items"]))
-                    if ent.get("top_categories"):
-                        lines_e.append("  Top: " + " | ".join(f"{k}: NT${v:,.0f}" for k, v in ent["top_categories"][:3]))
-                await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines_e), parse_mode="HTML")
-            except Exception as e:
-                await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢失敗: {e}")
-            return
-
-        # ── /acc taxplan [year|deduct] ─────────────────────────────────
-        if sub == "taxplan":
-            taxplan_arg = sub_args[0].lower() if sub_args else ""
-            if taxplan_arg == "deduct":
-                await send_message(settings.telegram_bot_token, chat_id, "📋 查詢可申報扣除額中...")
-                try:
-                    timeout = ClientTimeout(total=15)
-                    async with ClientSession(timeout=timeout) as session:
-                        async with session.post(
-                            f"{settings.openclaw_gateway_url}/agents/accountant/taxplan",
-                            json={"mode": "deduct"},
-                            headers={"Authorization": "Bearer dev-local-bypass"},
-                        ) as resp_d:
-                            data_d = await resp_d.json()
-                    cat_labels = {"medical": "醫療費", "education": "子女教育費",
-                                  "life_insurance": "壽險費", "house_rent": "租屋費"}
-                    lines_d = [f"📋 <b>可申報扣除額（{data_d.get('year')}年）</b>", "━━━━━━━━━━━━━━━"]
-                    for d in data_d.get("deductions", []):
-                        st = "✅" if d["actual"] >= d["limit"] else "⚠️" if d["actual"] > 0 else "❌"
-                        lines_d.append(
-                            f"{st} {cat_labels.get(d['category'], d['category'])}\n"
-                            f"   已記NT${d['actual']:,.0f} → 可申NT${d['claimable']:,.0f}（上限{d['limit']:,.0f}）"
-                        )
-                    total_ded = data_d.get("total_deductible", 0)
-                    lines_d.extend([f"\n━━━━━━━━━━━━━━━", f"💳 <b>合計可申報: NT$ {total_ded:,.0f}</b>",
-                                    f"\n<i>{data_d.get('note','')}</i>"])
-                    await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines_d), parse_mode="HTML")
-                except Exception as e:
-                    await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢失敗: {e}")
-                return
-
-            year_tp = int(taxplan_arg) if taxplan_arg.isdigit() and len(taxplan_arg) == 4 else None
-            await send_message(
-                settings.telegram_bot_token, chat_id,
-                f"🧠 鳴鑫節稅規劃{'（' + str(year_tp) + '年）'if year_tp else '（當年度）'}分析中...\n"
-                "⏳ AI 掃描三實體帳本 + 法規 RAG，約需 20-40 秒 🔒"
-            )
-            try:
-                import re as _re
-                timeout = ClientTimeout(total=90)
-                payload_tp = {}
-                if year_tp:
-                    payload_tp["year"] = year_tp
-                async with ClientSession(timeout=timeout) as session:
-                    async with session.post(
-                        f"{settings.openclaw_gateway_url}/agents/accountant/taxplan",
-                        json=payload_tp,
-                        headers={"Authorization": "Bearer dev-local-bypass"},
-                    ) as resp_tp:
-                        data_tp = await resp_tp.json()
-
-                plan = _re.sub(r"<think>.*?</think>", "", data_tp.get("plan", ""), flags=0x10).strip()
-                latency_tp = data_tp.get("latency_ms", 0)
-                ds = data_tp.get("data_summary", {})
-                co = ds.get("company", {}); pe = ds.get("personal", {}); fa = ds.get("family", {})
-                header = (
-                    f"🦉 <b>鳴鑫節稅規劃 {data_tp.get('year')}年度</b>\n━━━━━━━━━━━━━━━\n"
-                    f"🏢 公司損益 NT${co.get('net',0):,.0f} | 👤 個人所得 NT${pe.get('income',0):,.0f}\n"
-                    f"🏠 家庭可申報扣除 NT${fa.get('deductible_total',0):,.0f}\n━━━━━━━━━━━━━━━\n\n"
-                )
-                full_text = header + plan[:3200]
-                full_text += (f"\n\n⚠️ <i>{data_tp.get('disclaimer','')}</i>\n"
-                              f"<i>⏱ {latency_tp:.0f}ms | 🔒 本地推理 | PRIVATE</i>")
-                await send_message(settings.telegram_bot_token, chat_id, full_text, parse_mode="HTML")
-            except Exception as e:
-                await send_message(settings.telegram_bot_token, chat_id, f"❌ 節稅規劃失敗: {e}")
-            return
-
-
-        # ── /acc summary — 全局一覽儀表板 ────────────────────────────
-        if sub == "summary":
-            await send_message(settings.telegram_bot_token, chat_id, "📊 載入財務儀表板中...")
-            from datetime import datetime as _dt
-            now = _dt.now()
-            current_period = now.strftime("%Y%m")
-            current_year = now.year
-            try:
-                import asyncio as _asyncio
-                timeout = ClientTimeout(total=20)
-                async with ClientSession(timeout=timeout) as session:
-                    # 並行查詢：餘額 + 當期收支 + 實體比較
-                    tasks = [
-                        session.get(f"{settings.openclaw_gateway_url}/agents/accountant/bank/balance",
-                                    headers={"Authorization": "Bearer dev-local-bypass"}),
-                        session.get(f"{settings.openclaw_gateway_url}/agents/accountant/report/entity",
-                                    params={"year": str(current_year)},
-                                    headers={"Authorization": "Bearer dev-local-bypass"}),
-                        session.get(f"{settings.openclaw_gateway_url}/agents/accountant/ledger",
-                                    params={"period": current_period, "limit": "5"},
-                                    headers={"Authorization": "Bearer dev-local-bypass"}),
-                    ]
-                    resp_bal, resp_ent, resp_led = await _asyncio.gather(*tasks)
-                    bal_data = await resp_bal.json()
-                    ent_data = await resp_ent.json()
-                    led_data = await resp_led.json()
-
-                # === 銀行餘額 ===
-                grand_total = bal_data.get("grand_total_twd", 0)
-                bank_lines = [f"💰 銀行合計: NT$ {grand_total:,.0f}"]
-                for ent_b in bal_data.get("by_entity", []):
-                    if ent_b.get("accounts"):
-                        icons2 = {"company": "🏢", "personal": "👤", "family": "🏠"}
-                        bank_lines.append(
-                            f"{icons2.get(ent_b['entity_type'],'📊')} {ent_b['entity_label']}: "
-                            f"NT$ {ent_b['total_balance']:,.0f}"
-                        )
-
-                # === 各實體收支 ===
-                ent_lines = []
-                total_income_all = 0
-                total_expense_all = 0
-                for ent_e in ent_data.get("entities", []):
-                    icons2 = {"company": "🏢", "personal": "👤", "family": "🏠"}
-                    ico = icons2.get(ent_e["entity_type"], "📊")
-                    net = ent_e["net_profit_loss"]
-                    net_str = f"+NT${net:,.0f}" if net >= 0 else f"-NT${abs(net):,.0f}"
-                    ent_lines.append(f"{ico} {ent_e['entity_label']}: 收NT${ent_e['total_income']:,.0f} 支NT${ent_e['total_expense']:,.0f} 淨{net_str}")
-                    total_income_all += ent_e["total_income"]
-                    total_expense_all += ent_e["total_expense"]
-
-                # === 最近記錄 ===
-                recent_entries = led_data.get("entries", [])[:3]
-                recent_lines = []
-                ent_icons3 = {"company": "🏢", "personal": "👤", "family": "🏠"}
-                for e in recent_entries:
-                    ico2 = "💰" if e["type"] == "income" else "💸"
-                    ent_tag = ent_icons3.get(e.get("entity_type", "company"), "📊")
-                    recent_lines.append(f"{ico2}{ent_tag} {e['transaction_date'][:10]} {e['description'][:20]} NT${e['amount_taxed']:,.0f}")
-
-                msg = (
-                    f"📊 <b>財務一覽 {current_year}年 {current_period}期</b>\n"
-                    f"━━━━━━━━━━━━━━━\n"
-                    f"🏦 <b>銀行帳戶</b>\n" +
-                    "\n".join(bank_lines) +
-                    f"\n\n📈 <b>年度收支（三實體合計）</b>\n"
-                    f"  收入: NT$ {total_income_all:,.0f}\n"
-                    f"  支出: NT$ {total_expense_all:,.0f}\n"
-                    f"  淨額: NT$ {(total_income_all-total_expense_all):,.0f}\n" +
-                    "\n".join(ent_lines) +
-                    (f"\n\n📋 <b>最近交易（{current_period}期）</b>\n" + "\n".join(recent_lines) if recent_lines else "") +
-                    f"\n\n━━━━━━━━━━━━━━━\n"
-                    f"💡 /acc entity all | /acc bank | /acc taxplan\n"
-                    f"🔒 <i>PRIVATE</i>"
-                )
-                await send_message(settings.telegram_bot_token, chat_id, msg, parse_mode="HTML")
-            except Exception as e:
-                await send_message(settings.telegram_bot_token, chat_id, f"❌ 儀表板載入失敗: {e}")
-            return
-
-        # ── /acc cats — 完整科目速查 ──────────────────────────────────
-        if sub == "cats":
-            cat_type = sub_args[0].lower() if sub_args else "all"
-            msg_cats = (
-                "📋 <b>鳴鑫帳本科目速查</b>\n"
-                "━━━━━━━━━━━━━━━\n\n"
-                "🏢 <b>公司收入 (income + company)</b>\n"
-                "  engineering_payment — 工程款（請款）\n"
-                "  advance_payment     — 工程預付款\n"
-                "  design_fee          — 設計費\n"
-                "  consulting_fee      — 顧問費\n"
-                "  material_rebate     — 材料退佣\n"
-                "  other_income        — 其他收入\n\n"
-                "👤 <b>個人收入 (income + personal)</b>\n"
-                "  salary              — 薪資所得\n"
-                "  freelance           — 自由業所得\n"
-                "  rental_income       — 租金收入\n"
-                "  investment_gain     — 投資收益\n\n"
-                "🏠 <b>家庭撥款 (income + family)</b>\n"
-                "  allowance           — 家用撥款\n\n"
-                "━━━━━━━━━━━━━━━\n\n"
-                "🏢 <b>公司支出 (expense + company)</b>\n"
-                "  material            — 材料費\n"
-                "  labor               — 人工費\n"
-                "  subcontract         — 外包/分包款\n"
-                "  equipment           — 機具設備\n"
-                "  overhead            — 管銷費用\n"
-                "  insurance           — 保險費\n"
-                "  tax_payment         — 稅款繳納\n"
-                "  utilities           — 水電費\n"
-                "  rent                — 公司租金\n"
-                "  office_supply       — 辦公用品\n"
-                "  entertainment       — 交際費\n"
-                "  transportation      — 交通費\n"
-                "  professional_service — 會計/法務費\n"
-                "  other_expense       — 其他支出\n\n"
-                "🏠 <b>家庭扣除額 (expense + family)</b>\n"
-                "  medical             — 醫療費（上限 NT$200,000）\n"
-                "  education           — 子女教育費（上限 NT$25,000/人）\n"
-                "  life_insurance      — 壽險費（上限 NT$24,000/人）\n"
-                "  house_rent          — 租屋費（上限 NT$120,000）\n"
-                "  family_living       — 家庭生活費\n\n"
-                "━━━━━━━━━━━━━━━\n"
-                "💡 /acc ledger add income salary 80000 一月薪資 personal"
-            )
-            await send_message(settings.telegram_bot_token, chat_id, msg_cats, parse_mode="HTML")
-            return
-
-        # ── /acc accounts — 列出所有銀行帳戶（別名 /acc bank 的帳戶列表）──
-        if sub == "accounts":
-            try:
-                timeout = ClientTimeout(total=10)
-                async with ClientSession(timeout=timeout) as session:
-                    async with session.get(
-                        f"{settings.openclaw_gateway_url}/agents/accountant/bank/accounts",
-                        headers={"Authorization": "Bearer dev-local-bypass"},
-                    ) as resp_a:
-                        data_a = await resp_a.json()
-                accounts_list = data_a.get("accounts", [])
-                if not accounts_list:
-                    await send_message(
-                        settings.telegram_bot_token, chat_id,
-                        "🏦 <b>銀行帳戶列表</b>\n\n⚠️ 尚未登錄任何帳戶\n\n"
-                        "💡 新增: /acc bank add 台灣銀行 1234 SENTENG company",
-                        parse_mode="HTML"
-                    )
-                    return
-                ent_icons4 = {"company": "🏢", "personal": "👤", "family": "🏠"}
-                lines_a = [f"🏦 <b>銀行帳戶列表（{data_a.get('count', 0)}個）</b>", "━━━━━━━━━━━━━━━"]
-                for a in accounts_list:
-                    ico = ent_icons4.get(a.get("entity_type", "company"), "📊")
-                    active = "✅" if a.get("is_active") else "❌"
-                    lines_a.append(
-                        f"{active} {ico} {a['bank_name']} ****{a['account_no_masked']}\n"
-                        f"   {a['account_holder']} | NT$ {a['current_balance']:,.0f} | {a['entity_label']}"
-                    )
-                lines_a.append("\n💡 往來記錄: /acc bank txn <後4碼> credit <金額> <摘要>")
-                await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines_a), parse_mode="HTML")
-            except Exception as e:
-                await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢帳戶失敗: {e}")
-            return
-
-        # /acc <自由問題> — 呼叫 qwen3:14b 會計師問答
-        question = " ".join(args).strip()
-        if not question:
-            question = "你好，請問你能幫我處理哪些會計問題？"
-
-        await send_message(settings.telegram_bot_token, chat_id, "🦉 鳴鑫會計師思考中...")
-        try:
-            import re as _re
-            timeout = ClientTimeout(total=90)
-            async with ClientSession(timeout=timeout) as session:
-                async with session.post(
-                    f"{settings.openclaw_gateway_url}/agents/accountant/chat",
-                    json={"message": question},
-                    headers={"Authorization": "Bearer dev-local-bypass"},
-                ) as resp_chat:
-                    chat_data = await resp_chat.json()
-
-            reply = chat_data.get("reply", "無法取得回答")
-            reply = _re.sub(r"<think>.*?</think>", "", reply, flags=0x10).strip()
-            reply = format_for_telegram(reply)
-            latency = chat_data.get("latency_ms", 0)
-
-            await send_message(
-                settings.telegram_bot_token, chat_id,
-                f"🦉 <b>鳴鑫會計師</b>\n\n{reply[:3500]}\n\n"
-                f"<i>⏱ {latency:.0f}ms | 🔒 本地推理 | PRIVATE</i>",
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            await send_message(settings.telegram_bot_token, chat_id, f"❌ 連線異常: {e}")
+        await handle_accounting(args, chat_id, settings, handle_acc)
         return
 
-    # /reg — 法規語義搜尋（NemoClaw Layer 4）
     if cmd == "/reg":
         VALID_CATS = {"building", "fire", "tax", "cns", "labor"}
         category: str | None = None
@@ -1571,47 +774,105 @@ async def process_update(update: dict, settings: Settings, store: WatchStore) ->
 
     # The /ai block was moved to line 462
 
-    # /system — GPU / Ollama 狀態
-    if cmd == "/system":
-        try:
-            timeout = ClientTimeout(total=8)
-            async with ClientSession(timeout=timeout) as session:
-                async with session.get(
-                    f"{settings.openclaw_gateway_url}/system/health"
-                ) as resp_sys:
-                    sys_data = await resp_sys.json()
+    # /cmd — Secure shell command execution
+    if cmd == "/cmd":
+        await handle_cmd(args, chat_id, settings)
+        return
 
+    # /system — 系統全局健康狀態（GPU + Gateway + ChromaDB + Ollama）
+    if cmd == "/system":
+        status_lines = ["🖥️ <b>XXT-AGENT 系統狀態</b>", "━━━━━━━━━━━━━━━"]
+        timeout = ClientTimeout(total=8)
+        
+        # 1. OpenClaw Gateway Health
+        try:
+            async with ClientSession(timeout=timeout) as session:
+                async with session.get(f"{settings.openclaw_gateway_url}/health") as resp_gw:
+                    gw = await resp_gw.json()
+            gw_status = gw.get('status', 'unknown')
+            gw_ver = gw.get('version', '?')
+            gw_mode = gw.get('deploy_mode', '?')
+            rl = gw.get('rate_limit_stats', {})
+            status_lines.append(f"\n🌐 <b>OpenClaw Gateway</b>: ✅ {gw_status} v{gw_ver} ({gw_mode})")
+            status_lines.append(f"   WS: {gw.get('ws_connections', 0)} | AOP: {'✅' if gw.get('aop_enabled') else '❌'}")
+            if rl:
+                status_lines.append(f"   Rate Limit: {rl.get('total_requests', 0)} reqs")
+        except Exception as e:
+            status_lines.append(f"\n🌐 <b>OpenClaw Gateway</b>: ❌ {e}")
+        
+        # 2. GPU / Ollama Status (via /system/health)
+        try:
+            async with ClientSession(timeout=timeout) as session:
+                async with session.get(f"{settings.openclaw_gateway_url}/system/health") as resp_sys:
+                    sys_data = await resp_sys.json()
             local_d = sys_data.get("local", {})
             hw = sys_data.get("hardware", {})
-            cloud = sys_data.get("cloud", {})
-
             models_loaded = local_d.get("models_loaded", [])
-            model_lines = "\n".join(
-                f"  • {m['name']} ({m.get('vram_mb', '?')} MB)" for m in models_loaded
-            ) or "  • 無載入中"
-
+            model_lines = ", ".join(m['name'] for m in models_loaded) or "無"
             vram_used = local_d.get("total_vram_used_mb", 0)
             vram_total = hw.get("vram_total_mb", 16376)
             vram_pct = round(vram_used / vram_total * 100) if vram_total else 0
             vram_bar = "█" * (vram_pct // 10) + "░" * (10 - vram_pct // 10)
-
-            text = (
-                f"🖥️ <b>GPU 狀態監控</b>\n"
-                f"━━━━━━━━━━━━━━━\n"
-                f"🎮 <b>{hw.get('gpu', 'N/A')}</b>\n"
-                f"💾 VRAM: {vram_used}/{vram_total} MB\n"
-                f"     [{vram_bar}] {vram_pct}%\n\n"
-                f"🧠 <b>載入中的模型:</b>\n{model_lines}\n\n"
-                f"☁️ 雲端網關: {cloud.get('status', 'unknown')}\n"
-                f"📍 Ollama: {local_d.get('state', 'unknown')}\n"
-                f"🕒 {sys_data.get('timestamp', '')[:19]}"
-            )
-            await send_message(settings.telegram_bot_token, chat_id, text, parse_mode="HTML")
-
+            status_lines.append(f"\n🎮 <b>{hw.get('gpu', 'GPU')}</b>")
+            status_lines.append(f"   VRAM: [{vram_bar}] {vram_pct}% ({vram_used}/{vram_total}MB)")
+            status_lines.append(f"   模型: {model_lines}")
+            status_lines.append(f"   Ollama: {local_d.get('state', 'unknown')}")
         except Exception as e:
-            await send_message(settings.telegram_bot_token, chat_id,
-                f"❌ 無法取得系統狀態: {e}")
-
+            status_lines.append(f"\n🎮 <b>GPU/Ollama</b>: ❌ {e}")
+        
+        # 3. ChromaDB NAS
+        try:
+            chroma_health = gw.get('rag_memory', {}) if 'gw' in dir() else {}
+            if chroma_health.get('enabled'):
+                chroma_icon = '✅' if chroma_health.get('reachable') else '❌'
+                status_lines.append(f"\n🧠 <b>ChromaDB NAS</b>: {chroma_icon} {'連線正常' if chroma_health.get('reachable') else '無法連線'}")
+            else:
+                status_lines.append(f"\n🧠 <b>ChromaDB NAS</b>: ⏸️ 未配置")
+        except Exception:
+            status_lines.append(f"\n🧠 <b>ChromaDB NAS</b>: ⏸️ 未配置")
+        
+        # 4. Ollama Direct Check
+        try:
+            async with ClientSession(timeout=ClientTimeout(total=3)) as session:
+                async with session.get(f"{settings.ollama_base_url}/api/tags") as resp_ol:
+                    ol_data = await resp_ol.json()
+            ol_models = [m.get('name', '?') for m in ol_data.get('models', [])]
+            status_lines.append(f"\n🧠 <b>Ollama 可用模型</b>: {len(ol_models)}個")
+            for m in ol_models[:5]:
+                status_lines.append(f"   • {m}")
+        except Exception as e:
+            status_lines.append(f"\n🧠 <b>Ollama</b>: ❌ 離線 ({e})")
+        
+        # 5. PM2 Process List
+        try:
+            import subprocess, json as _json
+            pm2_result = subprocess.run(
+                ["powershell", "-Command", "pm2 jlist"],
+                capture_output=True, text=True, timeout=5
+            )
+            if pm2_result.returncode == 0 and pm2_result.stdout.strip():
+                pm2_procs = _json.loads(pm2_result.stdout.strip())
+                if pm2_procs:
+                    status_lines.append(f"\n⚙️ <b>PM2 進程 ({len(pm2_procs)})</b>:")
+                    for p in pm2_procs[:8]:
+                        pname = p.get('name', '?')
+                        pstatus = p.get('pm2_env', {}).get('status', '?')
+                        pid = p.get('pid', '?')
+                        mem_mb = round(p.get('monit', {}).get('memory', 0) / 1024 / 1024, 1)
+                        cpu = p.get('monit', {}).get('cpu', 0)
+                        icon = '🟢' if pstatus == 'online' else '🔴' if pstatus == 'errored' else '🟡'
+                        status_lines.append(f"   {icon} {pname} [{pstatus}] PID:{pid} MEM:{mem_mb}MB CPU:{cpu}%")
+                else:
+                    status_lines.append(f"\n⚙️ <b>PM2</b>: ⏸️ 無運行中的進程")
+            else:
+                status_lines.append(f"\n⚙️ <b>PM2</b>: ⏸️ 未安裝或無進程")
+        except FileNotFoundError:
+            status_lines.append(f"\n⚙️ <b>PM2</b>: ❌ 未安裝")
+        except Exception as e:
+            status_lines.append(f"\n⚙️ <b>PM2</b>: ❌ {e}")
+        
+        status_lines.append(f"\n🕒 {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        await send_message(settings.telegram_bot_token, chat_id, "\n".join(status_lines), parse_mode="HTML")
         return
 
     return
@@ -1631,8 +892,9 @@ async def handle_telegram(request: web.Request) -> web.Response:
 
     try:
         update = await request.json()
-    except Exception:
-        return web.Response(status=400)
+    except Exception as e:
+        logger.error(f"Invalid JSON payload: {e}")
+        return web.Response(status=400, text="Invalid JSON")
 
     import asyncio
     asyncio.create_task(process_update(update, settings, store))
@@ -1761,12 +1023,12 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
             async with ClientSession(timeout=timeout) as session:
                 async with session.get(
                     f"{FINANCE_URL}/agents/finance/report/cashflow",
-                    headers={"Authorization": "Bearer dev-local-bypass"},
+                    headers={"X-Internal-Secret": settings.internal_secret},
                 ) as resp_cf:
                     cf = await resp_cf.json()
                 async with session.get(
                     f"{FINANCE_URL}/agents/finance/calc/summary",
-                    headers={"Authorization": "Bearer dev-local-bypass"},
+                    headers={"X-Internal-Secret": settings.internal_secret},
                 ) as resp_s:
                     s = await resp_s.json()
 
@@ -1852,7 +1114,7 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
                 async with session.post(
                     f"{FINANCE_URL}/agents/finance/analyze",
                     json={},
-                    headers={"Authorization": "Bearer dev-local-bypass"},
+                    headers={"X-Internal-Secret": settings.internal_secret},
                 ) as resp_a:
                     data_a = await resp_a.json()
             analysis = format_for_telegram(data_a.get("analysis", ""))
@@ -1912,7 +1174,7 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
                         f"{FINANCE_URL}/agents/finance/calc/mortgage",
                         json={"property_value": pv, "loan_amount": la, "annual_rate": ar,
                               "loan_months": lm, "monthly_income": mi, "grace_period_months": gp},
-                        headers={"Authorization": "Bearer dev-local-bypass"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
                     ) as resp_m:
                         d = await resp_m.json()
 
@@ -1972,7 +1234,7 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
                     async with session.post(
                         f"{FINANCE_URL}/agents/finance/calc/car",
                         json={"vehicle_price": vp, "down_payment": dp, "annual_rate": ar, "loan_months": lm},
-                        headers={"Authorization": "Bearer dev-local-bypass"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
                     ) as resp_c:
                         d = await resp_c.json()
                 await send_message(settings.telegram_bot_token, chat_id,
@@ -2015,7 +1277,7 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
                     async with session.post(
                         f"{FINANCE_URL}/agents/finance/calc/loan",
                         json={"principal": pr, "annual_rate": ar, "loan_months": lm, "repayment_method": rm},
-                        headers={"Authorization": "Bearer dev-local-bypass"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
                     ) as resp_l:
                         d = await resp_l.json()
 
@@ -2044,7 +1306,7 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
                 async with ClientSession(timeout=timeout) as session:
                     async with session.get(
                         f"{FINANCE_URL}/agents/finance/calc/summary",
-                        headers={"Authorization": "Bearer dev-local-bypass"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
                     ) as resp_s:
                         d = await resp_s.json()
                 grand_out = d.get("grand_total_outstanding", 0)
@@ -2089,7 +1351,7 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
                 async with session.post(
                     f"{FINANCE_URL}/agents/finance/plan/{entity}",
                     json={},
-                    headers={"Authorization": "Bearer dev-local-bypass"},
+                    headers={"X-Internal-Secret": settings.internal_secret},
                 ) as resp_pl:
                     d = await resp_pl.json()
 
@@ -2124,7 +1386,7 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
             async with ClientSession(timeout=timeout) as session:
                 async with session.get(
                     f"{FINANCE_URL}/agents/finance/loan",
-                    headers={"Authorization": "Bearer dev-local-bypass"},
+                    headers={"X-Internal-Secret": settings.internal_secret},
                 ) as resp_lo:
                     d = await resp_lo.json()
             loans = d.get("loans", [])
@@ -2188,7 +1450,7 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
                         "principal": principal, "annual_rate": rate,
                         "loan_months": months, "start_date": start_date,
                     },
-                    headers={"Authorization": "Bearer dev-local-bypass"},
+                    headers={"X-Internal-Secret": settings.internal_secret},
                 ) as resp_la:
                     d = await resp_la.json()
             s = d.get("summary", {})
@@ -2216,7 +1478,7 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
             async with ClientSession(timeout=timeout) as session:
                 async with session.delete(
                     f"{FINANCE_URL}/agents/finance/loan/{lid}",
-                    headers={"Authorization": "Bearer dev-local-bypass"},
+                    headers={"X-Internal-Secret": settings.internal_secret},
                 ) as resp_ld:
                     if resp_ld.status == 404:
                         await send_message(settings.telegram_bot_token, chat_id, f"❌ 找不到貸款: {lid}")
@@ -2238,7 +1500,7 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
                 async with ClientSession(timeout=timeout) as session:
                     async with session.get(
                         f"{FINANCE_URL}/agents/finance/report/cashflow",
-                        headers={"Authorization": "Bearer dev-local-bypass"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
                     ) as resp_r:
                         d = await resp_r.json()
                 alert = d.get("overall_alert", "OK")
@@ -2266,7 +1528,7 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
                 async with ClientSession(timeout=timeout) as session:
                     async with session.get(
                         f"{FINANCE_URL}/agents/finance/report/debt",
-                        headers={"Authorization": "Bearer dev-local-bypass"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
                     ) as resp_rd:
                         d = await resp_rd.json()
                 lines_d = [
@@ -2299,7 +1561,7 @@ async def handle_loan(args: list, chat_id: int, settings) -> None:
             async with session.post(
                 f"{FINANCE_URL}/agents/finance/chat",
                 json={"message": question},
-                headers={"Authorization": "Bearer dev-local-bypass"},
+                headers={"X-Internal-Secret": settings.internal_secret},
             ) as resp_fc:
                 d = await resp_fc.json()
         reply = d.get("reply") or d.get("answer") or "無回應"
@@ -2332,12 +1594,12 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
             async with ClientSession(timeout=timeout) as session:
                 async with session.get(
                     f"{GUARDIAN_URL}/agents/guardian/report/gap",
-                    headers={"Authorization": "Bearer dev-local-bypass"},
+                    headers={"X-Internal-Secret": settings.internal_secret},
                 ) as resp_gap:
                     gap_data = await resp_gap.json()
                 async with session.get(
                     f"{GUARDIAN_URL}/agents/guardian/calc/premium",
-                    headers={"Authorization": "Bearer dev-local-bypass"},
+                    headers={"X-Internal-Secret": settings.internal_secret},
                 ) as resp_prem:
                     prem_data = await resp_prem.json()
 
@@ -2428,7 +1690,7 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
                 async with session.post(
                     f"{GUARDIAN_URL}/agents/guardian/analyze",
                     json={},
-                    headers={"Authorization": "Bearer dev-local-bypass"},
+                    headers={"X-Internal-Secret": settings.internal_secret},
                 ) as resp_a:
                     data_a = await resp_a.json()
             analysis = format_for_telegram(data_a.get("analysis", ""))
@@ -2477,7 +1739,7 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
                     async with session.post(
                         f"{GUARDIAN_URL}/agents/guardian/calc/car",
                         json={"contract_value": cv, "duration_months": dm, "workers": wk, "project_name": pn},
-                        headers={"Authorization": "Bearer dev-local-bypass"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
                     ) as resp_c:
                         d = await resp_c.json()
                 await send_message(
@@ -2521,7 +1783,7 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
                     async with session.post(
                         f"{GUARDIAN_URL}/agents/guardian/calc/life",
                         json={"annual_salary": sal, "debts": dbt, "mortgage": mtg, "children": cld},
-                        headers={"Authorization": "Bearer dev-local-bypass"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
                     ) as resp_l:
                         d = await resp_l.json()
                 db = d.get("dime_breakdown", {})
@@ -2565,7 +1827,7 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
                     async with session.post(
                         f"{GUARDIAN_URL}/agents/guardian/calc/workers",
                         json={"monthly_salary": ms, "workers": wk},
-                        headers={"Authorization": "Bearer dev-local-bypass"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
                     ) as resp_w:
                         d = await resp_w.json()
                 await send_message(
@@ -2591,7 +1853,7 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
                 async with ClientSession(timeout=timeout) as session:
                     async with session.get(
                         f"{GUARDIAN_URL}/agents/guardian/calc/premium",
-                        headers={"Authorization": "Bearer dev-local-bypass"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
                     ) as resp_p:
                         d = await resp_p.json()
                 grand = d.get("grand_total", 0)
@@ -2627,7 +1889,7 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
                 async with session.post(
                     f"{GUARDIAN_URL}/agents/guardian/plan/{api_entity}",
                     json={},
-                    headers={"Authorization": "Bearer dev-local-bypass"},
+                    headers={"X-Internal-Secret": settings.internal_secret},
                 ) as resp_pl:
                     d = await resp_pl.json()
             plan = format_for_telegram(d.get("plan", ""))
@@ -2650,7 +1912,7 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
                 async with ClientSession(timeout=timeout) as session:
                     async with session.get(
                         f"{GUARDIAN_URL}/agents/guardian/policy",
-                        headers={"Authorization": "Bearer dev-local-bypass"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
                     ) as resp_po:
                         d = await resp_po.json()
                 policies = d.get("policies", [])
@@ -2709,7 +1971,7 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
                             "insured_name": "主被保人",
                             "sum_insured": si, "annual_premium": ap, "start_date": sd,
                         },
-                        headers={"Authorization": "Bearer dev-local-bypass"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
                     ) as resp_pa:
                         d = await resp_pa.json()
                 s = d.get("summary", {})
@@ -2734,7 +1996,7 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
                 async with ClientSession(timeout=timeout) as session:
                     async with session.delete(
                         f"{GUARDIAN_URL}/agents/guardian/policy/{pid}",
-                        headers={"Authorization": "Bearer dev-local-bypass"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
                     ) as resp_del:
                         if resp_del.status == 404:
                             await send_message(settings.telegram_bot_token, chat_id, f"❌ 找不到保單: {pid}")
@@ -2755,7 +2017,7 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
                 async with ClientSession(timeout=timeout) as session:
                     async with session.get(
                         f"{GUARDIAN_URL}/agents/guardian/report/gap",
-                        headers={"Authorization": "Bearer dev-local-bypass"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
                     ) as resp_g:
                         d = await resp_g.json()
                 alert = d.get("alert_level", "OK")
@@ -2783,7 +2045,7 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
                 async with ClientSession(timeout=timeout) as session:
                     async with session.get(
                         f"{GUARDIAN_URL}/agents/guardian/report/premium",
-                        headers={"Authorization": "Bearer dev-local-bypass"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
                     ) as resp_pr:
                         d = await resp_pr.json()
                 reg = d.get("registered_in_guardian", {})
@@ -2812,7 +2074,7 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
             async with session.post(
                 f"{GUARDIAN_URL}/agents/guardian/chat",
                 json={"message": question},
-                headers={"Authorization": "Bearer dev-local-bypass"},
+                headers={"X-Internal-Secret": settings.internal_secret},
             ) as resp_chat:
                 d = await resp_chat.json()
         reply = d.get("reply") or d.get("answer") or "無回應"
@@ -2829,3 +2091,945 @@ async def handle_ins(args: list, chat_id: int, settings) -> None:
 if __name__ == "__main__":
     logger.info("Starting telegram-command-bot service")
     web.run_app(create_app(), host="0.0.0.0", port=8080)
+
+
+async def handle_acc(
+    args: list[str], chat_id: int | str, settings
+) -> None:
+    """Handle /acc command — Kay 會計幕僚 (full implementation)."""
+    sub = args[0].lower() if args else ""
+    sub_args = args[1:]
+    ACC_SUBCOMMANDS = {
+        "invoice", "payment", "tax", "ledger", "report", "export", "help",
+        "bank", "entity", "taxplan",  # Phase 2
+        "summary", "cats", "accounts",  # Phase 3
+    }
+
+    if sub == "help" or not sub:
+        await send_message(
+            settings.telegram_bot_token, chat_id,
+            "🦦 <b>Kay 🦦 稅務暨財務合規顧問（本地 AI，資料不出境）</b>\n\n"
+            "<b>💬 問答：</b>\n"
+            "• /acc &lt;問題&gt; — 稅務/帳務自由問答\n\n"
+            "<b>🧮 快捷計算：</b>\n"
+            "• /acc invoice &lt;含稅金額&gt; — 發票拆算\n"
+            "• /acc tax personal &lt;年收入&gt; [扶養] — 個人所得稅\n"
+            "• /acc tax corporate &lt;年所得&gt; — 公司所得稅\n"
+            "• /acc tax labor &lt;月薪&gt; — 勞健保費用\n\n"
+            "<b>📒 帳本操作：</b>\n"
+            "• /acc ledger add &lt;income|expense&gt; &lt;科目&gt; &lt;金額&gt; &lt;摘要&gt; — 新增記錄\n"
+            "• /acc ledger [YYYYMM] — 查詢本期/指定期間收支明細\n"
+            "• /acc report &lt;YYYYMM&gt; — 期間收支彙總\n"
+            "• /acc report 401 &lt;YYYYMM&gt; — 輸出 401 营業稅申報表\n"
+            "• /acc export &lt;YYYYMM&gt; — 匯出 CSV 收支明細\n\n"
+            "<b>範例：</b>\n"
+            "  /acc 如何申報統一發票？\n"
+            "  /acc invoice 105000\n"
+            "  /acc ledger add income engineering_payment 210000 台積電備料款\n"
+            "  /acc ledger 202601\n"
+            "  /acc report 202601\n"
+            "  /acc export 202601",
+            parse_mode="HTML"
+        )
+        return
+
+    # /acc invoice <amount>
+    if sub == "invoice":
+        if not sub_args:
+            await send_message(settings.telegram_bot_token, chat_id, "用法: /acc invoice <金額>")
+            return
+        try:
+            amount = float(sub_args[0].replace(",", ""))
+        except ValueError:
+            await send_message(settings.telegram_bot_token, chat_id, "❌ 金額格式錯誤，請輸入數字")
+            return
+
+        tax_type = "taxed" if len(sub_args) < 2 or sub_args[1].lower() != "untaxed" else "untaxed"
+        try:
+            timeout = ClientTimeout(total=10)
+            async with ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    f"{settings.openclaw_gateway_url}/agents/accountant/invoice",
+                    json={"amount": amount, "type": tax_type},
+                    headers={"X-Internal-Secret": settings.internal_secret},
+                ) as resp_acc:
+                    data = await resp_acc.json()
+
+            c = data["calculation"]
+            text = (
+                f"🦉 <b>發票計算 — Kay 🦦</b>\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"輸入金額: NT$ {c['input_amount']:,.0f}（{'含稅' if tax_type == 'taxed' else '未稅'}）\n\n"
+                f"📊 <b>拆解結果（稅率 {c['tax_rate_pct']}%）：</b>\n"
+                f"  未稅金額 = NT$ {c['untaxed_amount']:,.0f}\n"
+                f"  營業稅   = NT$ {c['tax_amount']:,.0f}\n"
+                f"  含稅合計 = NT$ {c['taxed_amount']:,.0f}\n\n"
+                f"📋 <b>建議開立：</b>\n  {data['invoice_suggestion']}\n\n"
+                f"⚖️ {data['legal_basis']}"
+            )
+            await send_message(settings.telegram_bot_token, chat_id, text, parse_mode="HTML")
+
+        except Exception as e:
+            await send_message(settings.telegram_bot_token, chat_id, f"❌ 計算失敗: {e}")
+        return
+
+    # /acc tax <type> <amount> [param]
+    if sub == "tax":
+        if len(sub_args) < 2:
+            await send_message(settings.telegram_bot_token, chat_id,
+                "用法: /acc tax personal <年收入> [扶養人數]\n"
+                "      /acc tax corporate <年所得>\n"
+                "      /acc tax labor <月薪>")
+            return
+        tax_type_arg = sub_args[0].lower()
+        try:
+            amount_arg = float(sub_args[1].replace(",", ""))
+            dep_arg = int(sub_args[2]) if len(sub_args) > 2 else 0
+        except (ValueError, IndexError):
+            await send_message(settings.telegram_bot_token, chat_id, "❌ 金額格式錯誤")
+            return
+
+        tax_map = {"personal": "personal", "corporate": "corporate", "labor": "labor"}
+        if tax_type_arg not in tax_map:
+            await send_message(settings.telegram_bot_token, chat_id, "類型請輸入: personal / corporate / labor")
+            return
+
+        await send_message(settings.telegram_bot_token, chat_id, "🦉 計算稅額中...")
+        try:
+            timeout = ClientTimeout(total=15)
+            async with ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    f"{settings.openclaw_gateway_url}/agents/accountant/tax",
+                    json={"type": tax_map[tax_type_arg], "annual_income": amount_arg, "dependents": dep_arg},
+                    headers={"X-Internal-Secret": settings.internal_secret},
+                ) as resp_tax:
+                    data = await resp_tax.json()
+
+            if tax_type_arg == "personal":
+                txt = (
+                    f"🦉 <b>個人所得稅試算 — Kay 🦦</b>\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"年收入: NT$ {data['annual_income']:,.0f}\n"
+                    f"扣除額合計: NT$ {data['deductions']['total']:,.0f}\n"
+                    f"應納稅所得額: NT$ {data['taxable_income']:,.0f}\n\n"
+                    f"💰 <b>預估應納稅額: NT$ {data['estimated_tax']:,.0f}</b>\n"
+                    f"📊 有效稅率: {data['effective_rate']}\n\n"
+                    f"⚖️ {data['legal_basis']}\n"
+                    f"⚠️ {data['note']}"
+                )
+            elif tax_type_arg == "corporate":
+                txt = (
+                    f"🦉 <b>公司所得稅試算 — Kay 🦦</b>\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"年所得: NT$ {data['annual_income']:,.0f}\n"
+                    f"起徵點: NT$ {data['basic_threshold']:,.0f}\n"
+                    f"應稅所得: NT$ {data['taxable_income']:,.0f}\n"
+                    f"稅率: {data['tax_rate']}\n\n"
+                    f"💰 <b>預估稅額: NT$ {data['estimated_tax']:,.0f}</b>\n\n"
+                    f"⚖️ {data['legal_basis']}"
+                )
+            else:  # labor
+                emp = data["costs"]["employer"]
+                ee = data["costs"]["employee"]
+                txt = (
+                    f"🦉 <b>勞健保費用試算 — 鳴鑫</b>\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"月薪: NT$ {data['monthly_salary']:,.0f}\n\n"
+                    f"🏢 <b>雇主負擔：</b>\n"
+                    f"  勞保: NT$ {emp['labor_insurance']:,.0f}\n"
+                    f"  健保: NT$ {emp['health_insurance']:,.0f}\n"
+                    f"  勞退: NT$ {emp['labor_pension']:,.0f}\n"
+                    f"  小計: NT$ {emp['total']:,.0f}\n\n"
+                    f"👤 <b>員工負擔：</b>\n"
+                    f"  勞保: NT$ {ee['labor_insurance']:,.0f}\n"
+                    f"  健保: NT$ {ee['health_insurance']:,.0f}\n"
+                    f"  小計: NT$ {ee['total']:,.0f}\n\n"
+                    f"💰 <b>每月總人力成本: NT$ {data['total_labor_cost']:,.0f}</b>"
+                )
+            await send_message(settings.telegram_bot_token, chat_id, txt, parse_mode="HTML")
+
+        except Exception as e:
+            await send_message(settings.telegram_bot_token, chat_id, f"❌ 稅務計算失敗: {e}")
+        return
+
+    # /acc ledger add <income|expense> <category> <amount> <description>
+    # /acc ledger [YYYYMM]  — 查詢收支明細
+    if sub == "ledger":
+        action = sub_args[0].lower() if sub_args else ""
+
+        if action == "add":
+            # 格式: /acc ledger add <income|expense> <科目> <金額> <摘要> [entity]
+            # entity: company(預設) | personal | family
+            ADD_INCOME_CATS = {
+                # 公司
+                "engineering_payment", "advance_payment", "design_fee",
+                "consulting_fee", "material_rebate", "other_income",
+                # 個人
+                "salary", "freelance", "rental_income", "investment_gain",
+                # 家庭
+                "allowance",
+            }
+            ADD_EXPENSE_CATS = {
+                # 公司
+                "material", "labor", "subcontract", "equipment", "overhead",
+                "insurance", "tax_payment", "utilities", "rent", "office_supply",
+                "entertainment", "transportation", "professional_service", "other_expense",
+                # 家庭（綜所稅扣除額）
+                "medical", "education", "life_insurance", "house_rent", "family_living",
+            }
+            ENTITY_CATS = {
+                "personal": {"salary", "freelance", "rental_income", "investment_gain"},
+                "family": {"allowance", "medical", "education", "life_insurance", "house_rent", "family_living"},
+            }
+            if len(sub_args) < 5:
+                await send_message(
+                    settings.telegram_bot_token, chat_id,
+                    "📒 <b>新增收支記錄</b>\n\n"
+                    "格式: /acc ledger add &lt;income|expense&gt; &lt;科目&gt; &lt;金額&gt; &lt;摘要&gt; [entity]\n"
+                    "entity: company（預設）| personal | family\n\n"
+                    "<b>🏢 公司收入:</b> engineering_payment, advance_payment, design_fee, consulting_fee, other_income\n"
+                    "<b>👤 個人收入:</b> salary, freelance, rental_income, investment_gain\n"
+                    "<b>🏠 家庭撥款:</b> allowance\n\n"
+                    "<b>🏢 公司支出:</b> material, labor, subcontract, equipment, overhead, insurance, rent, utilities, entertainment, transportation, professional_service\n"
+                    "<b>🏠 家庭扣除:</b> medical, education, life_insurance, house_rent, family_living\n\n"
+                    "<b>範例：</b>\n"
+                    "  /acc ledger add income engineering_payment 1050000 台積電工程款\n"
+                    "  /acc ledger add income salary 80000 一月薪資 personal\n"
+                    "  /acc ledger add expense medical 50000 住院費 family\n"
+                    "  /acc ledger add expense material 420000 鋼筋採購",
+                    parse_mode="HTML"
+                )
+                return
+
+            entry_type = sub_args[1].lower()
+            category_arg = sub_args[2].lower()
+            try:
+                amount_val = float(sub_args[3].replace(",", ""))
+            except ValueError:
+                await send_message(settings.telegram_bot_token, chat_id, "❌ 金額格式錯誤，請輸入正整數（例：80000）")
+                return
+
+            # 最後一個 arg 如果是 entity，取出
+            remaining = sub_args[4:]
+            entity_arg = "company"
+            if remaining and remaining[-1].lower() in ("company", "personal", "family"):
+                entity_arg = remaining[-1].lower()
+                remaining = remaining[:-1]
+            description_val = " ".join(remaining).strip() if remaining else sub_args[4] if len(sub_args) > 4 else ""
+            if not description_val:
+                await send_message(settings.telegram_bot_token, chat_id, "❌ 請加入摘要說明")
+                return
+
+            if entry_type not in ("income", "expense"):
+                await send_message(settings.telegram_bot_token, chat_id, "❌ 類型請輸入 income（收入）或 expense（支出）")
+                return
+
+            valid_cats = ADD_INCOME_CATS if entry_type == "income" else ADD_EXPENSE_CATS
+            if category_arg not in valid_cats:
+                # 建議科目
+                cat_type_list = ", ".join(sorted(valid_cats)[:8]) + "..."
+                await send_message(
+                    settings.telegram_bot_token, chat_id,
+                    f"❌ 科目 <code>{category_arg}</code> 不正確\n"
+                    f"常用{'收入' if entry_type == 'income' else '支出'}科目：\n{cat_type_list}\n\n"
+                    f"💡 /acc cats 查詢完整科目",
+                    parse_mode="HTML"
+                )
+                return
+
+            # 自動推斷實體（科目屬於個人/家庭時自動修正）
+            auto_entity = entity_arg
+            for ent, cats in ENTITY_CATS.items():
+                if category_arg in cats and entity_arg == "company":
+                    auto_entity = ent
+                    break
+
+            try:
+                timeout = ClientTimeout(total=15)
+                async with ClientSession(timeout=timeout) as session:
+                    async with session.post(
+                        f"{settings.openclaw_gateway_url}/agents/accountant/ledger",
+                        json={
+                            "type": entry_type,
+                            "category": category_arg,
+                            "amount": amount_val,
+                            "amount_type": "taxed",
+                            "description": description_val,
+                            "entity_type": auto_entity,
+                        },
+                        headers={"X-Internal-Secret": settings.internal_secret},
+                    ) as resp_l:
+                        data_l = await resp_l.json()
+
+                s = data_l.get("summary", {})
+                type_zh = "💰 收入" if entry_type == "income" else "💸 支出"
+                entity_icons = {"company": "🏢", "personal": "👤", "family": "🏠"}
+                ent_zh = {"company": "公司", "personal": "個人", "family": "家庭"}.get(auto_entity, auto_entity)
+                ent_icon = entity_icons.get(auto_entity, "📊")
+                auto_note = f"\n⚡ 自動歸類為{ent_zh}帳（科目屬{ent_zh}）" if auto_entity != entity_arg else ""
+                await send_message(
+                    settings.telegram_bot_token, chat_id,
+                    f"✅ <b>帳本記錄完成 — 鳴鑫</b>\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"{ent_icon} {ent_zh} | {type_zh} | {s.get('category', category_arg)}\n"
+                    f"摘要: {s.get('description', description_val)}\n"
+                    f"未稅: NT$ {s.get('amount_untaxed', 0):,.0f}\n"
+                    f"稅額: NT$ {s.get('tax_amount', 0):,.0f}\n"
+                    f"含稅: NT$ {s.get('amount_taxed', 0):,.0f}\n"
+                    f"申報期間: {s.get('period', '')}\n"
+                    f"交易日期: {s.get('transaction_date', '')}"
+                    f"{auto_note}\n\n"
+                    f"🔒 <i>本地儲存 | PRIVATE</i>",
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                await send_message(settings.telegram_bot_token, chat_id, f"❌ 記錄失敗: {e}")
+            return
+
+        # /acc ledger [YYYYMM] — 查詢明細
+        else:
+            period_arg = action if action and action.isdigit() and len(action) == 6 else None
+            try:
+                timeout = ClientTimeout(total=15)
+                url = f"{settings.openclaw_gateway_url}/agents/accountant/ledger"
+                params_q: dict = {"limit": "20"}
+                if period_arg:
+                    params_q["period"] = period_arg
+
+                async with ClientSession(timeout=timeout) as session:
+                    async with session.get(
+                        url,
+                        params=params_q,
+                        headers={"X-Internal-Secret": settings.internal_secret},
+                    ) as resp_q:
+                        data_q = await resp_q.json()
+
+                entries = data_q.get("entries", [])
+                summary_q = data_q.get("summary", {})
+                period_label = f"（{period_arg}期）" if period_arg else "（近期）"
+
+                lines = [f"📒 <b>收支明細 {period_label}</b>"]
+                lines.append(
+                    f"收入: NT$ {summary_q.get('total_income', 0):,.0f} | "
+                    f"支出: NT$ {summary_q.get('total_expense', 0):,.0f} | "
+                    f"淨額: NT$ {summary_q.get('net', 0):,.0f}"
+                )
+                lines.append("━━━━━━━━━━━━━━━")
+
+                ent_icons2 = {"company": "🏢", "personal": "👤", "family": "🏠"}
+                if not entries:
+                    lines.append("⚠️ 本期尚無記錄")
+                else:
+                    for e in entries[:10]:
+                        icon = "💰" if e["type"] == "income" else "💸"
+                        ent_tag = ent_icons2.get(e.get("entity_type", "company"), "📊")
+                        lines.append(
+                            f"{icon}{ent_tag} {e['transaction_date']} {e['category']}\n"
+                            f"   {e['description'][:30]} NT$ {e['amount_taxed']:,.0f}"
+                        )
+                    if len(entries) > 10:
+                        lines.append(f"\n...共 {data_q['count']} 筆（顯示前10筆）")
+
+                await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines), parse_mode="HTML")
+            except Exception as e:
+                await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢失敗: {e}")
+            return
+
+    # /acc report <YYYYMM>          — 期間收支彙總
+    # /acc report 401 <YYYYMM>      — 401 申報表格式
+    if sub == "report":
+        if not sub_args:
+            await send_message(
+                settings.telegram_bot_token, chat_id,
+                "用法: /acc report &lt;YYYYMM&gt;\n"
+                "      /acc report 401 &lt;YYYYMM&gt;\n"
+                "範例: /acc report 202601\n"
+                "      /acc report 401 202601",
+                parse_mode="HTML"
+            )
+            return
+
+        is_401 = sub_args[0].lower() == "401"
+        period_arg = sub_args[1] if is_401 and len(sub_args) > 1 else sub_args[0]
+
+        if not period_arg.isdigit() or len(period_arg) != 6:
+            await send_message(settings.telegram_bot_token, chat_id, "❌ 期間格式錯誤，請使用 YYYYMM（例: 202601）")
+            return
+
+        await send_message(settings.telegram_bot_token, chat_id, f"📊 產生{'401申報' if is_401 else '彙總'}報表中...")
+
+        try:
+            timeout = ClientTimeout(total=20)
+            async with ClientSession(timeout=timeout) as session:
+                if is_401:
+                    async with session.get(
+                        f"{settings.openclaw_gateway_url}/agents/accountant/report/401",
+                        params={"period": period_arg},
+                        headers={"X-Internal-Secret": settings.internal_secret},
+                    ) as resp_r:
+                        data_r = await resp_r.json()
+                    report = data_r.get("report", {})
+                    h = report.get("header", {})
+                    s1 = report.get("section_1_sales", {})
+                    s2 = report.get("section_2_purchases", {})
+                    s3 = report.get("section_3_tax_calculation", {})
+                    txt = (
+                        f"📋 <b>401 營業稅申報書</b>\n"
+                        f"━━━━━━━━━━━━━━━\n"
+                        f"公司: {h.get('company_name', '')}\n"
+                        f"統編: {h.get('tax_id', '（未填）')}\n"
+                        f"申報期間: {h.get('tax_period', '')}\n"
+                        f"申報截止: {h.get('filing_deadline', '')}\n\n"
+                        f"<b>壹、銷售額（收入）</b>\n"
+                        f"  應稅銷售: NT$ {s1.get('taxable_sales_standard', 0):,.0f}\n"
+                        f"  銷項稅額: NT$ {s1.get('tax_output', 0):,.0f}\n\n"
+                        f"<b>貳、進項稅額（支出）</b>\n"
+                        f"  應稅進貨: NT$ {s2.get('taxable_purchases', 0):,.0f}\n"
+                        f"  可扣抵進項: NT$ {s2.get('deductible_tax', 0):,.0f}\n\n"
+                        f"<b>參、應納（退）稅額</b>\n"
+                        f"  銷項稅: NT$ {s3.get('output_tax', 0):,.0f}\n"
+                        f"  進項扣抵: NT$ {s3.get('deductible_input_tax', 0):,.0f}\n"
+                        f"  <b>應繳稅額: NT$ {s3.get('net_tax_payable', 0):,.0f}</b>\n"
+                        f"  退稅金額: NT$ {s3.get('refund_amount', 0):,.0f}\n\n"
+                        f"⚠️ <i>{data_r.get('disclaimer', '請核對後申報')}</i>"
+                    )
+                else:
+                    async with session.get(
+                        f"{settings.openclaw_gateway_url}/agents/accountant/report/summary",
+                        params={"period": period_arg},
+                        headers={"X-Internal-Secret": settings.internal_secret},
+                    ) as resp_r:
+                        data_r = await resp_r.json()
+                    txt = (
+                        f"📊 <b>{data_r.get('period_label', period_arg)} 收支彙總</b>\n"
+                        f"━━━━━━━━━━━━━━━\n"
+                        f"💰 總收入（未稅）: NT$ {data_r.get('total_income_untaxed', 0):,.0f}\n"
+                        f"💸 總支出（未稅）: NT$ {data_r.get('total_expense_untaxed', 0):,.0f}\n"
+                        f"📈 損益: NT$ {data_r.get('net_profit_loss', 0):,.0f}\n\n"
+                        f"🏦 銷項稅額: NT$ {data_r.get('total_tax_output', 0):,.0f}\n"
+                        f"🔄 進項稅額（可扣）: NT$ {data_r.get('total_tax_input', 0):,.0f}\n"
+                        f"💳 <b>應繳/退稅: NT$ {data_r.get('net_tax_payable', 0):,.0f}</b>\n\n"
+                        f"📋 記錄數: {data_r.get('entry_count', 0)} 筆\n"
+                        f"💡 輸出完整 401 表：/acc report 401 {period_arg}"
+                    )
+
+            await send_message(settings.telegram_bot_token, chat_id, txt, parse_mode="HTML")
+        except Exception as e:
+            await send_message(settings.telegram_bot_token, chat_id, f"❌ 報表產生失敗: {e}")
+        return
+
+    # /acc export <YYYYMM> — CSV 匯出（以文字訊息回傳純文字 CSV 或提示下載連結）
+    if sub == "export":
+        if not sub_args or not sub_args[0].isdigit() or len(sub_args[0]) != 6:
+            await send_message(
+                settings.telegram_bot_token, chat_id,
+                "用法: /acc export &lt;YYYYMM&gt;\n"
+                "範例: /acc export 202601",
+                parse_mode="HTML"
+            )
+            return
+
+        period_arg = sub_args[0]
+        await send_message(settings.telegram_bot_token, chat_id, f"📥 產生 {period_arg} 期收支 CSV 中...")
+
+        try:
+            timeout = ClientTimeout(total=20)
+            async with ClientSession(timeout=timeout) as session:
+                async with session.get(
+                    f"{settings.openclaw_gateway_url}/agents/accountant/export/csv",
+                    params={"period": period_arg},
+                    headers={"X-Internal-Secret": settings.internal_secret},
+                ) as resp_csv:
+                    if resp_csv.status != 200:
+                        raise RuntimeError(f"HTTP {resp_csv.status}")
+                    csv_content = await resp_csv.text()
+
+            # 預覽前5行（含標頭）
+            csv_lines = csv_content.strip().split("\n")
+            preview = "\n".join(csv_lines[:6])
+            total = len(csv_lines) - 1  # 減去標頭
+
+            await send_message(
+                settings.telegram_bot_token, chat_id,
+                f"📥 <b>收支明細 CSV（{period_arg}期）</b>\n"
+                f"共 {total} 筆記錄\n\n"
+                f"<code>{preview[:800]}</code>\n\n"
+                f"💡 完整下載：\n"
+                f"<code>GET {settings.openclaw_gateway_url}/agents/accountant/export/csv?period={period_arg}</code>\n"
+                f"（需附 Authorization header）",
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            await send_message(settings.telegram_bot_token, chat_id, f"❌ CSV 匯出失敗: {e}")
+        return
+
+
+    # ── Phase 2: /acc bank ─────────────────────────────────────────
+    if sub == "bank":
+        bank_action = sub_args[0].lower() if sub_args else ""
+
+        if bank_action == "add":
+            if len(sub_args) < 4:
+                await send_message(
+                    settings.telegram_bot_token, chat_id,
+                    "🏦 <b>新增銀行帳戶</b>\n\n"
+                    "格式: /acc bank add &lt;銀行名稱&gt; &lt;後4碼&gt; &lt;戶名&gt; [company|personal|family]\n\n"
+                    "<b>範例：</b>\n"
+                    "  /acc bank add 台灣銀行 1234 SENTENG建工 company\n"
+                    "  /acc bank add 合作金庫 5678 王小明 personal\n"
+                    "  /acc bank add 第一銀行 9012 家用帳戶 family",
+                    parse_mode="HTML"
+                )
+                return
+            bank_name = sub_args[1]
+            acct_last4 = sub_args[2]
+            holder = sub_args[3]
+            entity = sub_args[4].lower() if len(sub_args) > 4 else "company"
+            if entity not in ("company", "personal", "family"):
+                entity = "company"
+            try:
+                timeout = ClientTimeout(total=10)
+                async with ClientSession(timeout=timeout) as session:
+                    async with session.post(
+                        f"{settings.openclaw_gateway_url}/agents/accountant/bank/account",
+                        json={"bank_name": bank_name, "account_no": acct_last4,
+                              "account_holder": holder, "entity_type": entity,
+                              "currency": "TWD", "current_balance": 0},
+                        headers={"X-Internal-Secret": settings.internal_secret},
+                    ) as resp_b:
+                        data_b = await resp_b.json()
+                entity_zh = {"company": "🏢 公司", "personal": "👤 個人", "family": "🏠 家庭"}.get(entity, entity)
+                await send_message(
+                    settings.telegram_bot_token, chat_id,
+                    f"✅ <b>銀行帳戶已新增</b>\n━━━━━━━━━━━━━━━\n"
+                    f"銀行: {bank_name}\n帳號: ****{acct_last4}\n戶名: {holder}\n實體: {entity_zh}\n\n"
+                    f"💡 記錄往來: /acc bank txn {acct_last4} credit 100000 工程款\n"
+                    f"🔒 <i>PRIVATE | 資料不出境</i>",
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                await send_message(settings.telegram_bot_token, chat_id, f"❌ 新增失敗: {e}")
+            return
+
+        elif bank_action == "txn":
+            if len(sub_args) < 5:
+                await send_message(
+                    settings.telegram_bot_token, chat_id,
+                    "💳 <b>記錄銀行往來</b>\n\n"
+                    "格式: /acc bank txn &lt;後4碼&gt; &lt;credit|debit&gt; &lt;金額&gt; &lt;摘要&gt; [科目]\n\n"
+                    "常用科目：engineering_payment | material | salary | medical | family_living\n\n"
+                    "<b>範例：</b>\n"
+                    "  /acc bank txn 1234 credit 1050000 台積電工程款 engineering_payment\n"
+                    "  /acc bank txn 5678 credit 80000 1月薪資 salary",
+                    parse_mode="HTML"
+                )
+                return
+            acct4 = sub_args[1]
+            txn_type = sub_args[2].lower()
+            try:
+                txn_amount = float(sub_args[3].replace(",", ""))
+            except ValueError:
+                await send_message(settings.telegram_bot_token, chat_id, "❌ 金額格式錯誤")
+                return
+            txn_desc = sub_args[4]
+            txn_cat = sub_args[5].lower() if len(sub_args) > 5 else None
+            if txn_type not in ("credit", "debit"):
+                await send_message(settings.telegram_bot_token, chat_id, "❌ 類型請輸入 credit（存入）或 debit（提出）")
+                return
+            payload = {"account_no_masked": acct4, "type": txn_type,
+                       "amount": txn_amount, "description": txn_desc}
+            if txn_cat:
+                payload["ledger_category"] = txn_cat
+            try:
+                timeout = ClientTimeout(total=12)
+                async with ClientSession(timeout=timeout) as session:
+                    async with session.post(
+                        f"{settings.openclaw_gateway_url}/agents/accountant/bank/txn",
+                        json=payload,
+                        headers={"X-Internal-Secret": settings.internal_secret},
+                    ) as resp_t:
+                        data_t = await resp_t.json()
+                s = data_t.get("summary", {})
+                type_zh = "💰 存入" if txn_type == "credit" else "💸 提出"
+                synced_txt = f"\n📒 已同步帳本（{txn_cat}）" if data_t.get("dual_write") else ""
+                await send_message(
+                    settings.telegram_bot_token, chat_id,
+                    f"✅ <b>銀行往來記錄完成</b>\n━━━━━━━━━━━━━━━\n"
+                    f"帳戶: {s.get('bank', acct4)}\n實體: {s.get('entity', '')}\n"
+                    f"{type_zh}: NT$ {txn_amount:,.0f}\n摘要: {txn_desc}\n日期: {s.get('txn_date', '')}"
+                    f"{synced_txt}\n\n🔒 <i>PRIVATE</i>",
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                await send_message(settings.telegram_bot_token, chat_id, f"❌ 記錄失敗: {e}")
+            return
+
+        elif bank_action == "history":
+            acct4 = sub_args[1] if len(sub_args) > 1 else ""
+            period_h = sub_args[2] if len(sub_args) > 2 and sub_args[2].isdigit() and len(sub_args[2]) == 6 else None
+            params_h = {"account_no_masked": acct4, "limit": "20"}
+            if period_h:
+                params_h["period"] = period_h
+            try:
+                timeout = ClientTimeout(total=12)
+                async with ClientSession(timeout=timeout) as session:
+                    async with session.get(
+                        f"{settings.openclaw_gateway_url}/agents/accountant/bank/txn",
+                        params=params_h,
+                        headers={"X-Internal-Secret": settings.internal_secret},
+                    ) as resp_h:
+                        data_h = await resp_h.json()
+                txns = data_h.get("transactions", [])
+                period_label = f"（{period_h}期）" if period_h else "（近期）"
+                lines = [f"🏦 <b>銀行往來 ****{acct4} {period_label}</b>",
+                         f"存入 NT${data_h.get('total_credit',0):,.0f} | 提出 NT${data_h.get('total_debit',0):,.0f} | 淨額 NT${data_h.get('net',0):,.0f}",
+                         "━━━━━━━━━━━━━━━"]
+                if not txns:
+                    lines.append("⚠️ 尚無往來記錄")
+                else:
+                    for t in txns[:10]:
+                        icon = "💰" if t["type"] == "credit" else "💸"
+                        synced = " ✓" if t.get("linked_entry_id") else ""
+                        lines.append(f"{icon} {t['txn_date']} NT${t['amount']:,.0f} {t['description'][:20]}{synced}")
+                await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines), parse_mode="HTML")
+            except Exception as e:
+                await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢失敗: {e}")
+            return
+
+        else:
+            # /acc bank → 餘額總覽
+            try:
+                timeout = ClientTimeout(total=10)
+                async with ClientSession(timeout=timeout) as session:
+                    async with session.get(
+                        f"{settings.openclaw_gateway_url}/agents/accountant/bank/balance",
+                        headers={"X-Internal-Secret": settings.internal_secret},
+                    ) as resp_bal:
+                        data_bal = await resp_bal.json()
+                grand = data_bal.get("grand_total_twd", 0)
+                lines = ["🏦 <b>銀行帳戶餘額總覽</b>", "━━━━━━━━━━━━━━━"]
+                has_accounts = False
+                for ent_data in data_bal.get("by_entity", []):
+                    if not ent_data.get("accounts"):
+                        continue
+                    has_accounts = True
+                    lines.append(f"\n<b>{ent_data['entity_label']} NT${ent_data['total_balance']:,.0f}</b>")
+                    for a in ent_data["accounts"]:
+                        lines.append(f"  🏦 {a['bank_name']} ****{a['account_no_masked']} | {a['account_holder']} | NT${a['current_balance']:,.0f}")
+                if not has_accounts:
+                    lines.append("⚠️ 尚無帳戶\n💡 /acc bank add 台灣銀行 1234 SENTENG company")
+                else:
+                    lines.append(f"\n━━━━━━━━━━━━━━━\n💰 <b>合計: NT$ {grand:,.0f}</b>")
+                lines.append("\n🔒 <i>PRIVATE | 帳號後四碼顯示</i>")
+                await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines), parse_mode="HTML")
+            except Exception as e:
+                await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢失敗: {e}")
+            return
+
+    # ── /acc entity <company|personal|family|all> [YYYYMM] ─────────
+    if sub == "entity":
+        entity_arg = sub_args[0].lower() if sub_args else "all"
+        if entity_arg not in ("company", "personal", "family", "all"):
+            entity_arg = "all"
+        period_e = sub_args[1] if len(sub_args) > 1 and len(sub_args[1]) == 6 and sub_args[1].isdigit() else None
+        year_e = sub_args[1] if len(sub_args) > 1 and len(sub_args[1]) == 4 and sub_args[1].isdigit() else None
+        params_e = {}
+        if entity_arg != "all":
+            params_e["entity"] = entity_arg
+        if period_e:
+            params_e["period"] = period_e
+        elif year_e:
+            params_e["year"] = year_e
+        await send_message(settings.telegram_bot_token, chat_id, "📊 分析各實體收支中...")
+        try:
+            timeout = ClientTimeout(total=15)
+            async with ClientSession(timeout=timeout) as session:
+                async with session.get(
+                    f"{settings.openclaw_gateway_url}/agents/accountant/report/entity",
+                    params=params_e,
+                    headers={"X-Internal-Secret": settings.internal_secret},
+                ) as resp_e:
+                    data_e = await resp_e.json()
+            icons = {"company": "🏢", "personal": "👤", "family": "🏠"}
+            lines_e = ["📈 <b>多實體收支報表</b>", "━━━━━━━━━━━━━━━"]
+            for ent in data_e.get("entities", []):
+                ico = icons.get(ent["entity_type"], "📊")
+                lines_e.append(
+                    f"\n{ico} <b>{ent['entity_label']} {ent.get('period','')} "
+                    f"({ent['entry_count']}筆)</b>\n"
+                    f"  💰 收入 NT${ent['total_income']:,.0f} | 💸 支出 NT${ent['total_expense']:,.0f}\n"
+                    f"  📈 損益 NT${ent['net_profit_loss']:,.0f} | 稅差 NT${ent['net_tax']:,.0f}"
+                )
+                if ent["entity_type"] == "family" and ent.get("deductible_items"):
+                    lines_e.append("  📋 可申報：" + " | ".join(f"{d['category']} NT${d['amount']:,.0f}" for d in ent["deductible_items"]))
+                if ent.get("top_categories"):
+                    lines_e.append("  Top: " + " | ".join(f"{k}: NT${v:,.0f}" for k, v in ent["top_categories"][:3]))
+            await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines_e), parse_mode="HTML")
+        except Exception as e:
+            await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢失敗: {e}")
+        return
+
+    # ── /acc taxplan [year|deduct] ─────────────────────────────────
+    if sub == "taxplan":
+        taxplan_arg = sub_args[0].lower() if sub_args else ""
+        if taxplan_arg == "deduct":
+            await send_message(settings.telegram_bot_token, chat_id, "📋 查詢可申報扣除額中...")
+            try:
+                timeout = ClientTimeout(total=15)
+                async with ClientSession(timeout=timeout) as session:
+                    async with session.post(
+                        f"{settings.openclaw_gateway_url}/agents/accountant/taxplan",
+                        json={"mode": "deduct"},
+                        headers={"X-Internal-Secret": settings.internal_secret},
+                    ) as resp_d:
+                        data_d = await resp_d.json()
+                cat_labels = {"medical": "醫療費", "education": "子女教育費",
+                              "life_insurance": "壽險費", "house_rent": "租屋費"}
+                lines_d = [f"📋 <b>可申報扣除額（{data_d.get('year')}年）</b>", "━━━━━━━━━━━━━━━"]
+                for d in data_d.get("deductions", []):
+                    st = "✅" if d["actual"] >= d["limit"] else "⚠️" if d["actual"] > 0 else "❌"
+                    lines_d.append(
+                        f"{st} {cat_labels.get(d['category'], d['category'])}\n"
+                        f"   已記NT${d['actual']:,.0f} → 可申NT${d['claimable']:,.0f}（上限{d['limit']:,.0f}）"
+                    )
+                total_ded = data_d.get("total_deductible", 0)
+                lines_d.extend([f"\n━━━━━━━━━━━━━━━", f"💳 <b>合計可申報: NT$ {total_ded:,.0f}</b>",
+                                f"\n<i>{data_d.get('note','')}</i>"])
+                await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines_d), parse_mode="HTML")
+            except Exception as e:
+                await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢失敗: {e}")
+            return
+
+        year_tp = int(taxplan_arg) if taxplan_arg.isdigit() and len(taxplan_arg) == 4 else None
+        await send_message(
+            settings.telegram_bot_token, chat_id,
+            f"🧠 鳴鑫節稅規劃{'（' + str(year_tp) + '年）'if year_tp else '（當年度）'}分析中...\n"
+            "⏳ AI 掃描三實體帳本 + 法規 RAG，約需 20-40 秒 🔒"
+        )
+        try:
+            import re as _re
+            timeout = ClientTimeout(total=90)
+            payload_tp = {}
+            if year_tp:
+                payload_tp["year"] = year_tp
+            async with ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    f"{settings.openclaw_gateway_url}/agents/accountant/taxplan",
+                    json=payload_tp,
+                    headers={"X-Internal-Secret": settings.internal_secret},
+                ) as resp_tp:
+                    data_tp = await resp_tp.json()
+
+            plan = _re.sub(r"<think>.*?</think>", "", data_tp.get("plan", ""), flags=0x10).strip()
+            latency_tp = data_tp.get("latency_ms", 0)
+            ds = data_tp.get("data_summary", {})
+            co = ds.get("company", {}); pe = ds.get("personal", {}); fa = ds.get("family", {})
+            header = (
+                f"🦉 <b>鳴鑫節稅規劃 {data_tp.get('year')}年度</b>\n━━━━━━━━━━━━━━━\n"
+                f"🏢 公司損益 NT${co.get('net',0):,.0f} | 👤 個人所得 NT${pe.get('income',0):,.0f}\n"
+                f"🏠 家庭可申報扣除 NT${fa.get('deductible_total',0):,.0f}\n━━━━━━━━━━━━━━━\n\n"
+            )
+            full_text = header + plan[:3200]
+            full_text += (f"\n\n⚠️ <i>{data_tp.get('disclaimer','')}</i>\n"
+                          f"<i>⏱ {latency_tp:.0f}ms | 🔒 本地推理 | PRIVATE</i>")
+            await send_message(settings.telegram_bot_token, chat_id, full_text, parse_mode="HTML")
+        except Exception as e:
+            await send_message(settings.telegram_bot_token, chat_id, f"❌ 節稅規劃失敗: {e}")
+        return
+
+
+    # ── /acc summary — 全局一覽儀表板 ────────────────────────────
+    if sub == "summary":
+        await send_message(settings.telegram_bot_token, chat_id, "📊 載入財務儀表板中...")
+        from datetime import datetime as _dt
+        now = _dt.now()
+        current_period = now.strftime("%Y%m")
+        current_year = now.year
+        try:
+            import asyncio as _asyncio
+            timeout = ClientTimeout(total=20)
+            async with ClientSession(timeout=timeout) as session:
+                # 並行查詢：餘額 + 當期收支 + 實體比較
+                tasks = [
+                    session.get(f"{settings.openclaw_gateway_url}/agents/accountant/bank/balance",
+                                headers={"X-Internal-Secret": settings.internal_secret}),
+                    session.get(f"{settings.openclaw_gateway_url}/agents/accountant/report/entity",
+                                params={"year": str(current_year)},
+                                headers={"X-Internal-Secret": settings.internal_secret}),
+                    session.get(f"{settings.openclaw_gateway_url}/agents/accountant/ledger",
+                                params={"period": current_period, "limit": "5"},
+                                headers={"X-Internal-Secret": settings.internal_secret}),
+                ]
+                resp_bal, resp_ent, resp_led = await _asyncio.gather(*tasks)
+                bal_data = await resp_bal.json()
+                ent_data = await resp_ent.json()
+                led_data = await resp_led.json()
+
+            # === 銀行餘額 ===
+            grand_total = bal_data.get("grand_total_twd", 0)
+            bank_lines = [f"💰 銀行合計: NT$ {grand_total:,.0f}"]
+            for ent_b in bal_data.get("by_entity", []):
+                if ent_b.get("accounts"):
+                    icons2 = {"company": "🏢", "personal": "👤", "family": "🏠"}
+                    bank_lines.append(
+                        f"{icons2.get(ent_b['entity_type'],'📊')} {ent_b['entity_label']}: "
+                        f"NT$ {ent_b['total_balance']:,.0f}"
+                    )
+
+            # === 各實體收支 ===
+            ent_lines = []
+            total_income_all = 0
+            total_expense_all = 0
+            for ent_e in ent_data.get("entities", []):
+                icons2 = {"company": "🏢", "personal": "👤", "family": "🏠"}
+                ico = icons2.get(ent_e["entity_type"], "📊")
+                net = ent_e["net_profit_loss"]
+                net_str = f"+NT${net:,.0f}" if net >= 0 else f"-NT${abs(net):,.0f}"
+                ent_lines.append(f"{ico} {ent_e['entity_label']}: 收NT${ent_e['total_income']:,.0f} 支NT${ent_e['total_expense']:,.0f} 淨{net_str}")
+                total_income_all += ent_e["total_income"]
+                total_expense_all += ent_e["total_expense"]
+
+            # === 最近記錄 ===
+            recent_entries = led_data.get("entries", [])[:3]
+            recent_lines = []
+            ent_icons3 = {"company": "🏢", "personal": "👤", "family": "🏠"}
+            for e in recent_entries:
+                ico2 = "💰" if e["type"] == "income" else "💸"
+                ent_tag = ent_icons3.get(e.get("entity_type", "company"), "📊")
+                recent_lines.append(f"{ico2}{ent_tag} {e['transaction_date'][:10]} {e['description'][:20]} NT${e['amount_taxed']:,.0f}")
+
+            msg = (
+                f"📊 <b>財務一覽 {current_year}年 {current_period}期</b>\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"🏦 <b>銀行帳戶</b>\n" +
+                "\n".join(bank_lines) +
+                f"\n\n📈 <b>年度收支（三實體合計）</b>\n"
+                f"  收入: NT$ {total_income_all:,.0f}\n"
+                f"  支出: NT$ {total_expense_all:,.0f}\n"
+                f"  淨額: NT$ {(total_income_all-total_expense_all):,.0f}\n" +
+                "\n".join(ent_lines) +
+                (f"\n\n📋 <b>最近交易（{current_period}期）</b>\n" + "\n".join(recent_lines) if recent_lines else "") +
+                f"\n\n━━━━━━━━━━━━━━━\n"
+                f"💡 /acc entity all | /acc bank | /acc taxplan\n"
+                f"🔒 <i>PRIVATE</i>"
+            )
+            await send_message(settings.telegram_bot_token, chat_id, msg, parse_mode="HTML")
+        except Exception as e:
+            await send_message(settings.telegram_bot_token, chat_id, f"❌ 儀表板載入失敗: {e}")
+        return
+
+    # ── /acc cats — 完整科目速查 ──────────────────────────────────
+    if sub == "cats":
+        cat_type = sub_args[0].lower() if sub_args else "all"
+        msg_cats = (
+            "📋 <b>鳴鑫帳本科目速查</b>\n"
+            "━━━━━━━━━━━━━━━\n\n"
+            "🏢 <b>公司收入 (income + company)</b>\n"
+            "  engineering_payment — 工程款（請款）\n"
+            "  advance_payment     — 工程預付款\n"
+            "  design_fee          — 設計費\n"
+            "  consulting_fee      — 顧問費\n"
+            "  material_rebate     — 材料退佣\n"
+            "  other_income        — 其他收入\n\n"
+            "👤 <b>個人收入 (income + personal)</b>\n"
+            "  salary              — 薪資所得\n"
+            "  freelance           — 自由業所得\n"
+            "  rental_income       — 租金收入\n"
+            "  investment_gain     — 投資收益\n\n"
+            "🏠 <b>家庭撥款 (income + family)</b>\n"
+            "  allowance           — 家用撥款\n\n"
+            "━━━━━━━━━━━━━━━\n\n"
+            "🏢 <b>公司支出 (expense + company)</b>\n"
+            "  material            — 材料費\n"
+            "  labor               — 人工費\n"
+            "  subcontract         — 外包/分包款\n"
+            "  equipment           — 機具設備\n"
+            "  overhead            — 管銷費用\n"
+            "  insurance           — 保險費\n"
+            "  tax_payment         — 稅款繳納\n"
+            "  utilities           — 水電費\n"
+            "  rent                — 公司租金\n"
+            "  office_supply       — 辦公用品\n"
+            "  entertainment       — 交際費\n"
+            "  transportation      — 交通費\n"
+            "  professional_service — 會計/法務費\n"
+            "  other_expense       — 其他支出\n\n"
+            "🏠 <b>家庭扣除額 (expense + family)</b>\n"
+            "  medical             — 醫療費（上限 NT$200,000）\n"
+            "  education           — 子女教育費（上限 NT$25,000/人）\n"
+            "  life_insurance      — 壽險費（上限 NT$24,000/人）\n"
+            "  house_rent          — 租屋費（上限 NT$120,000）\n"
+            "  family_living       — 家庭生活費\n\n"
+            "━━━━━━━━━━━━━━━\n"
+            "💡 /acc ledger add income salary 80000 一月薪資 personal"
+        )
+        await send_message(settings.telegram_bot_token, chat_id, msg_cats, parse_mode="HTML")
+        return
+
+    # ── /acc accounts — 列出所有銀行帳戶（別名 /acc bank 的帳戶列表）──
+    if sub == "accounts":
+        try:
+            timeout = ClientTimeout(total=10)
+            async with ClientSession(timeout=timeout) as session:
+                async with session.get(
+                    f"{settings.openclaw_gateway_url}/agents/accountant/bank/accounts",
+                    headers={"X-Internal-Secret": settings.internal_secret},
+                ) as resp_a:
+                    data_a = await resp_a.json()
+            accounts_list = data_a.get("accounts", [])
+            if not accounts_list:
+                await send_message(
+                    settings.telegram_bot_token, chat_id,
+                    "🏦 <b>銀行帳戶列表</b>\n\n⚠️ 尚未登錄任何帳戶\n\n"
+                    "💡 新增: /acc bank add 台灣銀行 1234 SENTENG company",
+                    parse_mode="HTML"
+                )
+                return
+            ent_icons4 = {"company": "🏢", "personal": "👤", "family": "🏠"}
+            lines_a = [f"🏦 <b>銀行帳戶列表（{data_a.get('count', 0)}個）</b>", "━━━━━━━━━━━━━━━"]
+            for a in accounts_list:
+                ico = ent_icons4.get(a.get("entity_type", "company"), "📊")
+                active = "✅" if a.get("is_active") else "❌"
+                lines_a.append(
+                    f"{active} {ico} {a['bank_name']} ****{a['account_no_masked']}\n"
+                    f"   {a['account_holder']} | NT$ {a['current_balance']:,.0f} | {a['entity_label']}"
+                )
+            lines_a.append("\n💡 往來記錄: /acc bank txn <後4碼> credit <金額> <摘要>")
+            await send_message(settings.telegram_bot_token, chat_id, "\n".join(lines_a), parse_mode="HTML")
+        except Exception as e:
+            await send_message(settings.telegram_bot_token, chat_id, f"❌ 查詢帳戶失敗: {e}")
+        return
+
+    # /acc <自由問題> — 呼叫 qwen3:14b 會計師問答
+    question = " ".join(args).strip()
+    if not question:
+        question = "你好，請問你能幫我處理哪些會計問題？"
+
+    await send_message(settings.telegram_bot_token, chat_id, "🦉 鳴鑫會計師思考中...")
+    try:
+        import re as _re
+        timeout = ClientTimeout(total=90)
+        async with ClientSession(timeout=timeout) as session:
+            async with session.post(
+                f"{settings.openclaw_gateway_url}/agents/accountant/chat",
+                json={"message": question},
+                headers={"X-Internal-Secret": settings.internal_secret},
+            ) as resp_chat:
+                chat_data = await resp_chat.json()
+
+        reply = chat_data.get("reply", "無法取得回答")
+        reply = _re.sub(r"<think>.*?</think>", "", reply, flags=0x10).strip()
+        reply = format_for_telegram(reply)
+        latency = chat_data.get("latency_ms", 0)
+
+        await send_message(
+            settings.telegram_bot_token, chat_id,
+            f"🦉 <b>鳴鑫會計師</b>\n\n{reply[:3500]}\n\n"
+            f"<i>⏱ {latency:.0f}ms | 🔒 本地推理 | PRIVATE</i>",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        await send_message(settings.telegram_bot_token, chat_id, f"❌ 連線異常: {e}")
+    return
+
+    # /reg — 法規語義搜尋（NemoClaw Layer 4）

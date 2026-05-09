@@ -1,0 +1,350 @@
+﻿[
+  {
+    "insertId": "69fc3f4b0004092c2b5b860b",
+    "labels": {
+      "execution_id": "v5z6fuwg5e5c",
+      "firebase-functions-hash": "31dff9950c39f0c9cc7b106c1e75db3b25adf55f",
+      "goog-drz-cloudfunctions-id": "telegramwebhook",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0007b734d943f7440a9950bbd2615dc932d06545bb9d767fcf7635f6c348ab088ace7da15481ba9b48827051f3f2b5481a678031fa1c9bf2e5ca47265e776092557640983c98ca1a6c4365fe",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260412_22_22_0_RC00"
+    },
+    "logName": "projects/xxt-agent/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-05-07T07:29:15.467680569Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "telegramwebhook",
+        "location": "asia-east1",
+        "project_id": "xxt-agent",
+        "revision_name": "telegramwebhook-00065-yif",
+        "service_name": "telegramwebhook"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "INFO",
+    "spanId": "13658553683489210230",
+    "textPayload": "[Butler AI] Gemini client initialized",
+    "timestamp": "2026-05-07T07:29:15.264492Z",
+    "trace": "projects/xxt-agent/traces/4a79e05102bdff6008fd4350b972903e"
+  },
+  {
+    "insertId": "69fc3f4a00089e191481b576",
+    "labels": {
+      "execution_id": "v5z6fuwg5e5c",
+      "firebase-functions-hash": "31dff9950c39f0c9cc7b106c1e75db3b25adf55f",
+      "goog-drz-cloudfunctions-id": "telegramwebhook",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0007b734d943f7440a9950bbd2615dc932d06545bb9d767fcf7635f6c348ab088ace7da15481ba9b48827051f3f2b5481a678031fa1c9bf2e5ca47265e776092557640983c98ca1a6c4365fe",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260412_22_22_0_RC00"
+    },
+    "logName": "projects/xxt-agent/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-05-07T07:29:14.800093129Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "telegramwebhook",
+        "location": "asia-east1",
+        "project_id": "xxt-agent",
+        "revision_name": "telegramwebhook-00065-yif",
+        "service_name": "telegramwebhook"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "WARNING",
+    "spanId": "13658553683489210230",
+    "textPayload": "[Router] Ollama unavailable (Ollama unavailable: health check failed), falling back to cloud",
+    "timestamp": "2026-05-07T07:29:14.564761Z",
+    "trace": "projects/xxt-agent/traces/4a79e05102bdff6008fd4350b972903e"
+  },
+  {
+    "insertId": "69fc3f4a000716a72a2cecdb",
+    "labels": {
+      "execution_id": "v5z6fuwg5e5c",
+      "firebase-functions-hash": "31dff9950c39f0c9cc7b106c1e75db3b25adf55f",
+      "goog-drz-cloudfunctions-id": "telegramwebhook",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0007b734d943f7440a9950bbd2615dc932d06545bb9d767fcf7635f6c348ab088ace7da15481ba9b48827051f3f2b5481a678031fa1c9bf2e5ca47265e776092557640983c98ca1a6c4365fe",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260412_22_22_0_RC00"
+    },
+    "logName": "projects/xxt-agent/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-05-07T07:29:14.467870221Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "telegramwebhook",
+        "location": "asia-east1",
+        "project_id": "xxt-agent",
+        "revision_name": "telegramwebhook-00065-yif",
+        "service_name": "telegramwebhook"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "INFO",
+    "spanId": "13658553683489210230",
+    "textPayload": "[Router] agent=butler backend=local reason=\"matches local-safe pattern: ??|???|??.*?|??|??|???|??|??|?\"",
+    "timestamp": "2026-05-07T07:29:14.464551Z",
+    "trace": "projects/xxt-agent/traces/4a79e05102bdff6008fd4350b972903e"
+  },
+  {
+    "insertId": "69fc3f49000a242890dc45f7",
+    "labels": {
+      "execution_id": "v5z6fuwg5e5c",
+      "firebase-functions-hash": "31dff9950c39f0c9cc7b106c1e75db3b25adf55f",
+      "goog-drz-cloudfunctions-id": "telegramwebhook",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0007b734d943f7440a9950bbd2615dc932d06545bb9d767fcf7635f6c348ab088ace7da15481ba9b48827051f3f2b5481a678031fa1c9bf2e5ca47265e776092557640983c98ca1a6c4365fe",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260412_22_22_0_RC00"
+    },
+    "logName": "projects/xxt-agent/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-05-07T07:29:13.800359649Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "telegramwebhook",
+        "location": "asia-east1",
+        "project_id": "xxt-agent",
+        "revision_name": "telegramwebhook-00065-yif",
+        "service_name": "telegramwebhook"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "WARNING",
+    "spanId": "13658553683489210230",
+    "textPayload": "[Butler AI] Ollama offline ? falling through to Gemini for tool parsing (same GCP project).",
+    "timestamp": "2026-05-07T07:29:13.664616Z",
+    "trace": "projects/xxt-agent/traces/4a79e05102bdff6008fd4350b972903e"
+  },
+  {
+    "insertId": "69fc3f4900089ebb9ddf104a",
+    "labels": {
+      "execution_id": "v5z6fuwg5e5c",
+      "firebase-functions-hash": "31dff9950c39f0c9cc7b106c1e75db3b25adf55f",
+      "goog-drz-cloudfunctions-id": "telegramwebhook",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0007b734d943f7440a9950bbd2615dc932d06545bb9d767fcf7635f6c348ab088ace7da15481ba9b48827051f3f2b5481a678031fa1c9bf2e5ca47265e776092557640983c98ca1a6c4365fe",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260412_22_22_0_RC00"
+    },
+    "logName": "projects/xxt-agent/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-05-07T07:29:13.800359649Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "telegramwebhook",
+        "location": "asia-east1",
+        "project_id": "xxt-agent",
+        "revision_name": "telegramwebhook-00065-yif",
+        "service_name": "telegramwebhook"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "WARNING",
+    "spanId": "13658553683489210230",
+    "textPayload": "[LocalToolParser] Ollama offline ? sensitive tool ops blocked. Reason: Ollama unavailable: health check failed",
+    "timestamp": "2026-05-07T07:29:13.564923Z",
+    "trace": "projects/xxt-agent/traces/4a79e05102bdff6008fd4350b972903e"
+  },
+  {
+    "insertId": "69fc3f490007166d8932fa77",
+    "labels": {
+      "execution_id": "v5z6fuwg5e5c",
+      "firebase-functions-hash": "31dff9950c39f0c9cc7b106c1e75db3b25adf55f",
+      "goog-drz-cloudfunctions-id": "telegramwebhook",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0007b734d943f7440a9950bbd2615dc932d06545bb9d767fcf7635f6c348ab088ace7da15481ba9b48827051f3f2b5481a678031fa1c9bf2e5ca47265e776092557640983c98ca1a6c4365fe",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260412_22_22_0_RC00"
+    },
+    "logName": "projects/xxt-agent/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-05-07T07:29:13.467602874Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "telegramwebhook",
+        "location": "asia-east1",
+        "project_id": "xxt-agent",
+        "revision_name": "telegramwebhook-00065-yif",
+        "service_name": "telegramwebhook"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "WARNING",
+    "spanId": "13658553683489210230",
+    "textPayload": "[Ollama] Health check FAILED: url=https://senteng.tail94ed8e.ts.net\r\n/api/tags reason=TIMEOUT elapsed=16900ms",
+    "timestamp": "2026-05-07T07:29:13.464493Z",
+    "trace": "projects/xxt-agent/traces/4a79e05102bdff6008fd4350b972903e"
+  },
+  {
+    "insertId": "69fc3f1b0000f529c7b5b2b0",
+    "labels": {
+      "execution_id": "v5z6fuwg5e5c",
+      "firebase-functions-hash": "31dff9950c39f0c9cc7b106c1e75db3b25adf55f",
+      "goog-drz-cloudfunctions-id": "telegramwebhook",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0007b734d943f7440a9950bbd2615dc932d06545bb9d767fcf7635f6c348ab088ace7da15481ba9b48827051f3f2b5481a678031fa1c9bf2e5ca47265e776092557640983c98ca1a6c4365fe",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260412_22_22_0_RC00"
+    },
+    "logName": "projects/xxt-agent/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-05-07T07:28:27.066991418Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "telegramwebhook",
+        "location": "asia-east1",
+        "project_id": "xxt-agent",
+        "revision_name": "telegramwebhook-00065-yif",
+        "service_name": "telegramwebhook"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "INFO",
+    "spanId": "13658553683489210230",
+    "textPayload": "[RAG] No relevant memories for agent=butler user=xiang-main",
+    "timestamp": "2026-05-07T07:28:27.062761Z",
+    "trace": "projects/xxt-agent/traces/4a79e05102bdff6008fd4350b972903e"
+  },
+  {
+    "insertId": "69fc3efd0004995455f265c8",
+    "labels": {
+      "execution_id": "v5z6fuwg5e5c",
+      "firebase-functions-hash": "31dff9950c39f0c9cc7b106c1e75db3b25adf55f",
+      "goog-drz-cloudfunctions-id": "telegramwebhook",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0007b734d943f7440a9950bbd2615dc932d06545bb9d767fcf7635f6c348ab088ace7da15481ba9b48827051f3f2b5481a678031fa1c9bf2e5ca47265e776092557640983c98ca1a6c4365fe",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260412_22_22_0_RC00"
+    },
+    "logName": "projects/xxt-agent/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-05-07T07:27:57.304731454Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "telegramwebhook",
+        "location": "asia-east1",
+        "project_id": "xxt-agent",
+        "revision_name": "telegramwebhook-00065-yif",
+        "service_name": "telegramwebhook"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "INFO",
+    "spanId": "13658553683489210230",
+    "textPayload": "[Telegram] Incoming from 7327344106: \"?????200???\"",
+    "timestamp": "2026-05-07T07:27:57.301396Z",
+    "trace": "projects/xxt-agent/traces/4a79e05102bdff6008fd4350b972903e"
+  },
+  {
+    "insertId": "69fc3efc000e4adc37be44ff",
+    "labels": {
+      "firebase-functions-hash": "31dff9950c39f0c9cc7b106c1e75db3b25adf55f",
+      "goog-drz-cloudfunctions-id": "telegramwebhook",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0007b734d943f7440a9950bbd2615dc932d06545bb9d767fcf7635f6c348ab088ace7da15481ba9b48827051f3f2b5481a678031fa1c9bf2e5ca47265e776092557640983c98ca1a6c4365fe",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260412_22_22_0_RC00"
+    },
+    "logName": "projects/xxt-agent/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-05-07T07:27:57.136439919Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "telegramwebhook",
+        "location": "asia-east1",
+        "project_id": "xxt-agent",
+        "revision_name": "telegramwebhook-00065-yif",
+        "service_name": "telegramwebhook"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "INFO",
+    "textPayload": "Default STARTUP TCP probe succeeded after 1 attempt for container \"worker\" on port 8080.",
+    "timestamp": "2026-05-07T07:27:56.936668Z"
+  },
+  {
+    "insertId": "69fc3efc000af0ad2dd6087d",
+    "labels": {
+      "firebase-functions-hash": "31dff9950c39f0c9cc7b106c1e75db3b25adf55f",
+      "goog-drz-cloudfunctions-id": "telegramwebhook",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0007b734d943f7440a9950bbd2615dc932d06545bb9d767fcf7635f6c348ab088ace7da15481ba9b48827051f3f2b5481a678031fa1c9bf2e5ca47265e776092557640983c98ca1a6c4365fe",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20260412_22_22_0_RC00"
+    },
+    "logName": "projects/xxt-agent/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-05-07T07:27:56.721005579Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "telegramwebhook",
+        "location": "asia-east1",
+        "project_id": "xxt-agent",
+        "revision_name": "telegramwebhook-00065-yif",
+        "service_name": "telegramwebhook"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "WARNING",
+    "textPayload": "WARNING: LINE_CHANNEL_SECRET and/or LINE_CHANNEL_ACCESS_TOKEN not set - LINE Bot features disabled",
+    "timestamp": "2026-05-07T07:27:56.716973Z"
+  },
+  {
+    "insertId": "69fc3efa000708123465268c",
+    "labels": {
+      "firebase-functions-hash": "31dff9950c39f0c9cc7b106c1e75db3b25adf55f",
+      "goog-drz-cloudfunctions-id": "telegramwebhook",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0007b734d943f7440a9950bbd2615dc932d06545bb9d767fcf7635f6c348ab088ace7da15481ba9b48827051f3f2b5481a678031fa1c9bf2e5ca47265e776092557640983c98ca1a6c4365fe",
+      "scaling_reason": "AUTOSCALING"
+    },
+    "logName": "projects/xxt-agent/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-05-07T07:27:54.464639634Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "telegramwebhook",
+        "location": "asia-east1",
+        "project_id": "xxt-agent",
+        "revision_name": "telegramwebhook-00065-yif",
+        "service_name": "telegramwebhook"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "INFO",
+    "textPayload": "Starting new instance. Reason: AUTOSCALING - Instance started due to configured scaling factors (e.g. CPU utilization, request throughput, etc.) or no existing capacity for current traffic.",
+    "timestamp": "2026-05-07T07:27:54.460818Z"
+  },
+  {
+    "httpRequest": {
+      "latency": "2.184113119s",
+      "protocol": "HTTP/1.1",
+      "remoteIp": "91.108.5.112",
+      "requestMethod": "POST",
+      "requestSize": "664",
+      "requestUrl": "https://telegramwebhook-hwx3zjt7lq-de.a.run.app/telegramWebhook",
+      "responseSize": "135",
+      "serverIp": "34.143.75.2",
+      "status": 200
+    },
+    "insertId": "69fc3efd000079c4d4931672",
+    "labels": {
+      "firebase-functions-hash": "31dff9950c39f0c9cc7b106c1e75db3b25adf55f",
+      "goog-drz-cloudfunctions-id": "telegramwebhook",
+      "goog-drz-cloudfunctions-location": "asia-east1",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0007b734d943f7440a9950bbd2615dc932d06545bb9d767fcf7635f6c348ab088ace7da15481ba9b48827051f3f2b5481a678031fa1c9bf2e5ca47265e776092557640983c98ca1a6c4365fe"
+    },
+    "logName": "projects/xxt-agent/logs/run.googleapis.com%2Frequests",
+    "receiveTimestamp": "2026-05-07T07:27:57.035324354Z",
+    "resource": {
+      "labels": {
+        "configuration_name": "telegramwebhook",
+        "location": "asia-east1",
+        "project_id": "xxt-agent",
+        "revision_name": "telegramwebhook-00065-yif",
+        "service_name": "telegramwebhook"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "INFO",
+    "spanId": "bd8cee3581fa3f76",
+    "timestamp": "2026-05-07T07:27:54.439834Z",
+    "trace": "projects/xxt-agent/traces/4a79e05102bdff6008fd4350b972903e",
+    "traceSampled": true
+  }
+]

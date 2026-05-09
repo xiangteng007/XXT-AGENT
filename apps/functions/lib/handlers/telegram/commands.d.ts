@@ -21,5 +21,9 @@ export declare function sendInvestmentSummary(chatId: number, telegramUserId: nu
 export declare function sendLoanSummary(chatId: number, telegramUserId: number): Promise<void>;
 export declare function sendTaxEstimation(chatId: number, telegramUserId: number): Promise<void>;
 export declare function sendFinancialAdvice(chatId: number, telegramUserId: number): Promise<void>;
-export declare function sendAgentsDirectory(chatId: number): Promise<void>;
+export declare function sendAgentsDirectory(chatId: number, telegramUserId: number): Promise<void>;
+export declare function sendDiscussMenu(chatId: number, telegramUserId: number, text: string): Promise<void>;
+export declare function runMultiAgentDiscussion(chatId: number, telegramUserId: number, topic: string): Promise<void>;
+export declare function sendReflectTrigger(chatId: number, telegramUserId: number): Promise<void>;
+export declare function sendMemoryStatus(chatId: number, telegramUserId: number): Promise<void>;
 //# sourceMappingURL=commands.d.ts.map

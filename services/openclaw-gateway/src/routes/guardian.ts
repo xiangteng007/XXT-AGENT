@@ -77,7 +77,7 @@ async function fetchAccountantData(entity_type?: EntityType, year?: number): Pro
     const resp = await fetch(
       `${ACCOUNTANT_URL}/agents/accountant/ledger?${params}`,
       {
-        headers: { 'Authorization': 'Bearer dev-local-bypass' },
+        headers: { 'X-Internal-Secret': process.env['INTERNAL_SECRET'] ?? '' },
         signal: AbortSignal.timeout(8000),
       },
     );
@@ -200,7 +200,9 @@ guardianRouter.get('/health', async (_req: Request, res: Response) => {
  */
 guardianRouter.post('/chat', async (req: Request, res: Response) => {
   const { message, context } = req.body as { message?: string; context?: string };
-  if (!message?.trim()) { res.status(400).json({ error: 'message required' }); return; }
+  if (typeof message !== 'string' || !message.trim()) { res.status(400).json({ error: 'message must be a non-empty string' }); return; }
+  if (message.length > 5000) { res.status(400).json({ error: 'message too long' }); return; }
+  if (context !== undefined && (typeof context !== 'string' || context.length > 10000)) { res.status(400).json({ error: 'context must be a string and <= 10000 characters' }); return; }
 
   const traceId = crypto.randomUUID();
 
@@ -274,18 +276,20 @@ guardianRouter.post('/calc/car', async (req: Request, res: Response) => {
     project_name?: string; complexity?: 'low' | 'medium' | 'high';
   };
 
-  if (!contract_value || contract_value <= 0 || !duration_months || !workers) {
+  if (typeof contract_value !== 'number' || contract_value <= 0 ||
+      typeof duration_months !== 'number' || duration_months <= 0 ||
+      typeof workers !== 'number' || workers <= 0) {
     res.status(400).json({
-      error: 'contract_value, duration_months, workers are required',
-      example: {
-        contract_value: 8500000,
-        duration_months: 18,
-        workers: 12,
-        project_name: '台積電廠房整修工程',
-        complexity: 'medium',
-      },
+      error: 'contract_value, duration_months, workers must be positive numbers',
+      example: { contract_value: 8500000, duration_months: 18, workers: 12 }
     });
     return;
+  }
+  if (project_name !== undefined && (typeof project_name !== 'string' || project_name.length > 200)) {
+    res.status(400).json({ error: 'project_name must be a string <= 200 chars' }); return;
+  }
+  if (complexity !== undefined && !['low', 'medium', 'high'].includes(complexity)) {
+    res.status(400).json({ error: 'complexity must be low, medium, or high' }); return;
   }
 
   const result = calcCarPremium({ contract_value, duration_months, workers, project_name, complexity });
@@ -334,13 +338,14 @@ guardianRouter.post('/calc/life', async (req: Request, res: Response) => {
     mortgage?: number; children?: number; education_per_child?: number;
   };
 
-  if (!annual_salary || annual_salary <= 0) {
-    res.status(400).json({
-      error: 'annual_salary required',
-      example: { annual_salary: 1440000, debts: 500000, mortgage: 8000000, children: 2 },
-    });
-    return;
+  if (typeof annual_salary !== 'number' || annual_salary <= 0) {
+    res.status(400).json({ error: 'annual_salary must be a positive number', example: { annual_salary: 1440000 } }); return;
   }
+  if (debts !== undefined && (typeof debts !== 'number' || debts < 0)) { res.status(400).json({ error: 'debts must be a non-negative number' }); return; }
+  if (income_years !== undefined && (typeof income_years !== 'number' || income_years <= 0)) { res.status(400).json({ error: 'income_years must be a positive number' }); return; }
+  if (mortgage !== undefined && (typeof mortgage !== 'number' || mortgage < 0)) { res.status(400).json({ error: 'mortgage must be a non-negative number' }); return; }
+  if (children !== undefined && (typeof children !== 'number' || children < 0)) { res.status(400).json({ error: 'children must be a non-negative number' }); return; }
+  if (education_per_child !== undefined && (typeof education_per_child !== 'number' || education_per_child < 0)) { res.status(400).json({ error: 'education_per_child must be a non-negative number' }); return; }
 
   const result = calcLifeInsurance({ annual_salary, debts, income_years, mortgage, children, education_per_child });
   logger.info(`[Guardian/calc/life] salary=${annual_salary} coverage=${result.recommended_coverage}`);
@@ -378,13 +383,10 @@ guardianRouter.post('/calc/life', async (req: Request, res: Response) => {
 guardianRouter.post('/calc/workers', async (req: Request, res: Response) => {
   const { monthly_salary, workers } = req.body as { monthly_salary?: number; workers?: number };
 
-  if (!monthly_salary || monthly_salary <= 0) {
-    res.status(400).json({
-      error: 'monthly_salary required',
-      example: { monthly_salary: 45000, workers: 12 },
-    });
-    return;
+  if (typeof monthly_salary !== 'number' || monthly_salary <= 0) {
+    res.status(400).json({ error: 'monthly_salary must be a positive number', example: { monthly_salary: 45000 } }); return;
   }
+  if (workers !== undefined && (typeof workers !== 'number' || workers <= 0)) { res.status(400).json({ error: 'workers must be a positive number' }); return; }
 
   const result = calcWorkersComp({ monthly_salary, workers });
   logger.info(`[Guardian/calc/workers] salary=${monthly_salary} workers=${workers} worst=${result.worst_case_total}`);
@@ -437,6 +439,7 @@ guardianRouter.get('/calc/premium', async (_req: Request, res: Response) => {
  */
 guardianRouter.post('/analyze', async (req: Request, res: Response) => {
   const { year } = req.body as { year?: number };
+  if (year !== undefined && (typeof year !== 'number' || year < 2000 || year > 2100)) { res.status(400).json({ error: 'year must be a valid number' }); return; }
   const targetYear = year ?? new Date().getFullYear();
   const traceId = crypto.randomUUID();
 
@@ -605,6 +608,9 @@ guardianRouter.post('/plan/company', async (req: Request, res: Response) => {
   const { annual_revenue, workers, projects } = req.body as {
     annual_revenue?: number; workers?: number; projects?: Array<{name: string; value: number}>;
   };
+  if (annual_revenue !== undefined && (typeof annual_revenue !== 'number' || annual_revenue < 0)) { res.status(400).json({ error: 'annual_revenue must be a non-negative number' }); return; }
+  if (workers !== undefined && (typeof workers !== 'number' || workers < 0)) { res.status(400).json({ error: 'workers must be a non-negative number' }); return; }
+  if (projects !== undefined && (!Array.isArray(projects) || projects.length > 100)) { res.status(400).json({ error: 'projects must be an array of max 100 items' }); return; }
   const traceId = crypto.randomUUID();
   const [coData, activePolicies] = await Promise.all([
     fetchAccountantData('co_construction'),
@@ -655,6 +661,11 @@ guardianRouter.post('/plan/personal', async (req: Request, res: Response) => {
   const { annual_salary, debts, mortgage, children, age } = req.body as {
     annual_salary?: number; debts?: number; mortgage?: number; children?: number; age?: number;
   };
+  if (annual_salary !== undefined && (typeof annual_salary !== 'number' || annual_salary < 0)) { res.status(400).json({ error: 'annual_salary must be a non-negative number' }); return; }
+  if (debts !== undefined && (typeof debts !== 'number' || debts < 0)) { res.status(400).json({ error: 'debts must be a non-negative number' }); return; }
+  if (mortgage !== undefined && (typeof mortgage !== 'number' || mortgage < 0)) { res.status(400).json({ error: 'mortgage must be a non-negative number' }); return; }
+  if (children !== undefined && (typeof children !== 'number' || children < 0)) { res.status(400).json({ error: 'children must be a non-negative number' }); return; }
+  if (age !== undefined && (typeof age !== 'number' || age < 0 || age > 150)) { res.status(400).json({ error: 'age must be a valid number' }); return; }
   const traceId = crypto.randomUUID();
   const [peData, activePolicies] = await Promise.all([
     fetchAccountantData('personal'),
@@ -706,6 +717,10 @@ guardianRouter.post('/plan/family', async (req: Request, res: Response) => {
   const { members, house_value, mortgage, vehicle_count } = req.body as {
     members?: number; house_value?: number; mortgage?: number; vehicle_count?: number;
   };
+  if (members !== undefined && (typeof members !== 'number' || members < 0)) { res.status(400).json({ error: 'members must be a non-negative number' }); return; }
+  if (house_value !== undefined && (typeof house_value !== 'number' || house_value < 0)) { res.status(400).json({ error: 'house_value must be a non-negative number' }); return; }
+  if (mortgage !== undefined && (typeof mortgage !== 'number' || mortgage < 0)) { res.status(400).json({ error: 'mortgage must be a non-negative number' }); return; }
+  if (vehicle_count !== undefined && (typeof vehicle_count !== 'number' || vehicle_count < 0)) { res.status(400).json({ error: 'vehicle_count must be a non-negative number' }); return; }
   const traceId = crypto.randomUUID();
   const [faData, activePolicies] = await Promise.all([
     fetchAccountantData('family'),
@@ -748,6 +763,7 @@ guardianRouter.post('/plan/family', async (req: Request, res: Response) => {
  */
 guardianRouter.post('/plan/full', async (req: Request, res: Response) => {
   const { year } = req.body as { year?: number };
+  if (year !== undefined && (typeof year !== 'number' || year < 2000 || year > 2100)) { res.status(400).json({ error: 'year must be a valid number' }); return; }
   const targetYear = year ?? new Date().getFullYear();
   const traceId = crypto.randomUUID();
 
@@ -1112,7 +1128,7 @@ guardianRouter.get('/report/premium', async (_req: Request, res: Response) => {
   try {
     const resp = await fetch(
       `${ACCOUNTANT_URL}/agents/accountant/ledger?limit=500`,
-      { headers: { 'Authorization': 'Bearer dev-local-bypass' }, signal: AbortSignal.timeout(5000) },
+      { headers: { 'X-Internal-Secret': process.env['INTERNAL_SECRET'] ?? '' }, signal: AbortSignal.timeout(5000) },
     );
     if (resp.ok) {
       const data = await resp.json() as { entries: Array<{category: string; type: string; entity_type: string; amount_taxed: number}> };

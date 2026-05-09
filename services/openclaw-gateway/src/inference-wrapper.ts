@@ -6,6 +6,7 @@ import { ollamaChat, OllamaMessage } from './ollama-inference.service';
 import { costTracker } from './cost-tracker';
 import { getDirectives } from './stores/kaizen-store';
 import { searchWeb } from './search-engine';
+import { chromaMemory } from './chroma-memory.service'; // v9.0: RAG 語義記憶
 
 export interface InferenceOptions {
   agentId: string;
@@ -294,7 +295,7 @@ export async function agentChat(
 ): Promise<AgentChatResponse> {
   // CLONE messages to avoid mutating the caller's array
   const messages = [...inputMessages];
-  
+
   // KAIZEN: Inject self-improvement directives if available
   const directives = await getDirectives(options.agentId).catch(() => null);
   if (directives) {
@@ -304,6 +305,37 @@ export async function agentChat(
       messages[sysMsgIdx] = { ...messages[sysMsgIdx], content: messages[sysMsgIdx].content + kaizenBlock };
     } else {
       messages.unshift({ role: 'system', content: kaizenBlock });
+    }
+  }
+
+  // ── v9.0: RAG 語義記憶注入 ────────────────────────────────────
+  // 若有 userId，查詢 ChromaDB 近期相關記憶，注入至 system prompt
+  if (options.userId) {
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content ?? '';
+    if (lastUserMsg) {
+      try {
+        const memories = await chromaMemory.query(
+          options.agentId,
+          options.userId,
+          lastUserMsg,
+          3, // 最多取 3 條記憶
+        );
+        if (memories.length > 0) {
+          const memBlock = memories
+            .map((m, i) => `[記憶${i + 1}] (相關度: ${(m.similarity * 100).toFixed(0)}%) ${m.content}`)
+            .join('\n');
+          const ragBlock = `\n\n<RelevantMemories>\n以下是與此對話相關的過往記憶，請參考但不要直接重述：\n${memBlock}\n</RelevantMemories>`;
+          const sysMsgIdx = messages.findIndex(m => m.role === 'system');
+          if (sysMsgIdx >= 0) {
+            messages[sysMsgIdx] = { ...messages[sysMsgIdx], content: messages[sysMsgIdx].content + ragBlock };
+          } else {
+            messages.unshift({ role: 'system', content: ragBlock });
+          }
+          logger.info(`[RAG] Injected ${memories.length} memories for agent=${options.agentId} user=${options.userId}`);
+        }
+      } catch (ragErr) {
+        logger.warn(`[RAG] Memory query failed (non-blocking): ${ragErr}`);
+      }
     }
   }
 
@@ -341,6 +373,16 @@ export async function agentChat(
     ...response.usage,
     latency_ms: response.latency_ms,
   });
+
+  // v9.0: 非同步儲存 assistant 回覆到 ChromaDB（非阻塞）
+  if (options.userId && response.content) {
+    void chromaMemory.store(
+      options.agentId,
+      options.userId,
+      response.content,
+      { source: 'api', importance: 0.4 },
+    ).catch((err: unknown) => logger.warn(`[RAG] Memory store failed: ${err}`));
+  }
 
   return response;
 }

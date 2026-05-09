@@ -20,17 +20,23 @@ interface ServiceStatus {
 // Service Registry
 // ================================
 
+/** Cloud Run base URL pattern. Set NEXT_PUBLIC_CLOUD_RUN_PROJECT_HASH in .env to override. */
+const CR_HASH = process.env.NEXT_PUBLIC_CLOUD_RUN_PROJECT_HASH || '257379536720';
+const CR_REGION = process.env.NEXT_PUBLIC_CLOUD_RUN_REGION || 'asia-east1';
+const crUrl = (service: string, path = '/healthz') =>
+    `https://${service}-${CR_HASH}.${CR_REGION}.run.app${path}`;
+
 const SERVICES: Array<{ name: string; url: string; emoji: string }> = [
-    { name: 'AI Gateway', url: 'https://ai-gateway-257379536720.asia-east1.run.app/health', emoji: '🤖' },
-    { name: 'Market Streamer', url: 'https://market-streamer-257379536720.asia-east1.run.app/healthz', emoji: '📈' },
-    { name: 'Quote Normalizer', url: 'https://quote-normalizer-257379536720.asia-east1.run.app/healthz', emoji: '📊' },
-    { name: 'Alert Engine', url: 'https://alert-engine-257379536720.asia-east1.run.app/healthz', emoji: '🔔' },
-    { name: 'News Collector', url: 'https://news-collector-257379536720.asia-east1.run.app/healthz', emoji: '📰' },
-    { name: 'Trade Planner', url: 'https://trade-planner-worker-257379536720.asia-east1.run.app/healthz', emoji: '📋' },
-    { name: 'Event Fusion', url: 'https://event-fusion-engine-257379536720.asia-east1.run.app/healthz', emoji: '⚡' },
-    { name: 'Social Worker', url: 'https://social-worker-257379536720.asia-east1.run.app/healthz', emoji: '👥' },
-    { name: 'Social Dispatcher', url: 'https://social-dispatcher-257379536720.asia-east1.run.app/healthz', emoji: '📤' },
-    { name: 'Telegram Bot', url: 'https://telegram-command-bot-257379536720.asia-east1.run.app/healthz', emoji: '🤖' },
+    { name: 'AI Gateway', url: crUrl('ai-gateway', '/health'), emoji: '🤖' },
+    { name: 'Market Streamer', url: crUrl('market-streamer'), emoji: '📈' },
+    { name: 'Quote Normalizer', url: crUrl('quote-normalizer'), emoji: '📊' },
+    { name: 'Alert Engine', url: crUrl('alert-engine'), emoji: '🔔' },
+    { name: 'News Collector', url: crUrl('news-collector'), emoji: '📰' },
+    { name: 'Trade Planner', url: crUrl('trade-planner-worker'), emoji: '📋' },
+    { name: 'Event Fusion', url: crUrl('event-fusion-engine'), emoji: '⚡' },
+    { name: 'Social Worker', url: crUrl('social-worker'), emoji: '👥' },
+    { name: 'Social Dispatcher', url: crUrl('social-dispatcher'), emoji: '📤' },
+    { name: 'Telegram Bot', url: crUrl('telegram-command-bot'), emoji: '🤖' },
 ];
 
 // ================================

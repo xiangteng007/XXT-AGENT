@@ -23,6 +23,7 @@ volumes:
   redis_data:
   postgres_data:
   minio_data:
+  chroma_data:
 
 services:
   # ── Qdrant 向量資料庫 ──────────────────────────────────────
@@ -73,7 +74,7 @@ services:
 
   # ── MinIO（S3-compatible 物件儲存）─────────────────────────
   minio:
-    image: minio/minio:RELEASE.2024-05-10T01-41-38Z
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     container_name: openclaw-minio
     restart: unless-stopped
     ports:
@@ -91,6 +92,28 @@ services:
       test: ["CMD", "mc", "ready", "local"]
       interval: 30s
       timeout: 10s
+      retries: 3
+
+  # ── ChromaDB 向量記憶庫（xxt_agent_memories collection）────
+  chromadb:
+    image: chromadb/chroma:0.5.20
+    container_name: openclaw-chromadb
+    restart: unless-stopped
+    ports:
+      - "${CHROMADB_PORT:-8001}:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      CHROMA_SERVER_AUTHN_CREDENTIALS: "${CHROMADB_TOKEN:-}"
+      CHROMA_SERVER_AUTHN_PROVIDER: "chromadb.auth.token_authn.TokenAuthenticationServerProvider"
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+    networks:
+      - openclaw-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/api/v2/heartbeat"]
+      interval: 30s
+      timeout: 5s
       retries: 3
 
   # ── PostgreSQL（可選：結構化資料 + 長期分析）──────────────

@@ -81,7 +81,9 @@ novaRouter.post('/chat', async (req: Request, res: Response) => {
   const { message, context, session_id } = req.body as {
     message?: string; context?: string; session_id?: string;
   };
-  if (!message?.trim()) { res.status(400).json({ error: 'message is required' }); return; }
+  if (typeof message !== 'string' || !message.trim()) { res.status(400).json({ error: 'message must be a non-empty string' }); return; }
+  if (context !== undefined && typeof context !== 'string') { res.status(400).json({ error: 'context must be a string' }); return; }
+  if (session_id !== undefined && typeof session_id !== 'string') { res.status(400).json({ error: 'session_id must be a string' }); return; }
 
   const traceId = crypto.randomUUID();
 
@@ -149,8 +151,16 @@ novaRouter.post('/employee', async (req: Request, res: Response) => {
     company_id?: string; created_by?: string;
   };
 
-  if (!b.name || !b.id_no || !b.hire_date || !b.base_salary || !b.position || !b.entity_type) {
+  if (!b.name || !b.id_no || !b.hire_date || b.base_salary === undefined || !b.position || !b.entity_type) {
     res.status(400).json({ error: 'name, id_no, hire_date, base_salary, position, entity_type required' });
+    return;
+  }
+  if (typeof b.name !== 'string' || typeof b.id_no !== 'string' || typeof b.hire_date !== 'string' || typeof b.position !== 'string' || typeof b.entity_type !== 'string') {
+    res.status(400).json({ error: 'name, id_no, hire_date, position, and entity_type must be strings' });
+    return;
+  }
+  if (typeof b.base_salary !== 'number' || b.base_salary < 0) {
+    res.status(400).json({ error: 'base_salary must be a non-negative number' });
     return;
   }
 
@@ -217,6 +227,11 @@ novaRouter.post('/employee', async (req: Request, res: Response) => {
  */
 novaRouter.get('/employees', async (req: Request, res: Response) => {
   const { entity_type, status, limit } = req.query as Record<string, string | undefined>;
+  
+  if (entity_type !== undefined && typeof entity_type !== 'string') { res.status(400).json({ error: 'entity_type must be a string' }); return; }
+  if (status !== undefined && typeof status !== 'string') { res.status(400).json({ error: 'status must be a string' }); return; }
+  if (limit !== undefined && typeof limit !== 'string') { res.status(400).json({ error: 'limit must be a string' }); return; }
+  
   const validEntities: EntityType[] = ['co_construction', 'co_renovation', 'co_design', 'co_drone'];
   const employees = await queryEmployees({
     entity_type: validEntities.includes(entity_type as EntityType) ? entity_type as EntityType : undefined,
@@ -389,6 +404,15 @@ novaRouter.post('/payroll', async (req: Request, res: Response) => {
   if (!employee_id || !period || !pay_date) {
     res.status(400).json({ error: 'employee_id, period, pay_date required' }); return;
   }
+  if (typeof employee_id !== 'string' || typeof period !== 'string' || typeof pay_date !== 'string') {
+    res.status(400).json({ error: 'employee_id, period, and pay_date must be strings' }); return;
+  }
+  if (typeof full_attendance_bonus !== 'number' || typeof other_additions !== 'number' || typeof other_deductions !== 'number') {
+    res.status(400).json({ error: 'bonuses and deductions must be numbers' }); return;
+  }
+  if (typeof dispatch_to_accountant !== 'boolean') {
+    res.status(400).json({ error: 'dispatch_to_accountant must be a boolean' }); return;
+  }
 
   const emp = await getEmployee(employee_id);
   if (!emp) { res.status(404).json({ error: 'Employee not found' }); return; }
@@ -494,6 +518,13 @@ novaRouter.post('/payroll', async (req: Request, res: Response) => {
  */
 novaRouter.get('/payroll', async (req: Request, res: Response) => {
   const { employee_id, period, year, entity_type, limit } = req.query as Record<string, string | undefined>;
+  
+  if (employee_id !== undefined && typeof employee_id !== 'string') { res.status(400).json({ error: 'employee_id must be a string' }); return; }
+  if (period !== undefined && typeof period !== 'string') { res.status(400).json({ error: 'period must be a string' }); return; }
+  if (year !== undefined && typeof year !== 'string') { res.status(400).json({ error: 'year must be a string' }); return; }
+  if (entity_type !== undefined && typeof entity_type !== 'string') { res.status(400).json({ error: 'entity_type must be a string' }); return; }
+  if (limit !== undefined && typeof limit !== 'string') { res.status(400).json({ error: 'limit must be a string' }); return; }
+
   const validEntities: EntityType[] = ['co_construction', 'co_renovation', 'co_design', 'co_drone'];
   const records = await queryPayrolls({
     employee_id, period,

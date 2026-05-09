@@ -13,11 +13,14 @@ import { logger } from 'firebase-functions/v2';
 import {
     ollamaChat,
     ollamaGenerate,
+    ollamaChatStream,
     selectLocalModel,
     OllamaUnavailableError,
     OllamaMessage,
 } from './local-inference.service';
+import type { StreamChunk } from './local-inference.service';
 import { getAgentPrompt } from './butler-ai.service';
+import { SENSITIVE_TOOL_PATTERNS } from './local-tool-parser.service';
 
 // ================================
 // Types
@@ -60,30 +63,17 @@ const CLOUD_REQUIRED_PATTERNS: RegExp[] = [
 const CLOUD_REQUIRED_AGENTS = new Set(['investment']);
 
 /**
- * Patterns that MUST stay local due to sensitive personal data.
- * These are intercepted by local-tool-parser.service BEFORE any cloud call.
- * Listing them here as LOCAL_SAFE ensures classifyTask() never
- * accidentally sends them to Gemini/OpenAI even if the tool parser
- * hasn't fired yet.
+ * SENSITIVE_TOOL_PATTERNS: imported from local-tool-parser.service.ts (single source of truth).
+ * These patterns MUST stay local due to sensitive personal data.
+ * Listed in LOCAL_SAFE_PATTERNS to ensure classifyTask() never
+ * accidentally sends them to Gemini/OpenAI.
  */
-const SENSITIVE_TOOL_PATTERNS: RegExp[] = [
-    // Financial recording
-    /花了|消費了|買了.*元|付了|結帳|刷卡了|記帳|支出|扣款/,
-    // Health recording
-    /體重.*公斤|公斤.*體重|今天.*kg|昨晚睡|睡了.*小時|跑了|騎了.*公里|健身.*分鐘/,
-    // Vehicle
-    /加油|公升.*元|每公升|油費/,
-    // Investment recording (buying/selling)
-    /買了.*股|賣了.*股|買進.*張|賣出.*張|進場.*元|出場.*元/,
-    // Tax / loan pure-math
-    /貸款試算|所得稅估算|稅務試算/,
-];
 
 /**
  * Patterns that are safe for local inference (conversational)
  */
 const LOCAL_SAFE_PATTERNS: RegExp[] = [
-    ...SENSITIVE_TOOL_PATTERNS, // sensitive ops always route local
+    ...SENSITIVE_TOOL_PATTERNS, // sensitive ops always route local (imported)
     /你好|哈囉|早安|晚安|謝謝|再見/,
     /行程|待辦|提醒|安排/,
     /健康|睡眠|運動|體重|卡路里/,
@@ -206,6 +196,59 @@ export async function routedChat(
             logger.warn(`[Router] Ollama unavailable (${err.message}), falling back to cloud`);
             const text = await cloudFallback();
             return { text, backend: 'cloud', model: 'gemini-fallback' };
+        }
+        throw err;
+    }
+}
+
+/**
+ * Streaming version of routedChat — yields progressive StreamChunks.
+ *
+ * If local Ollama is available, streams tokens in real-time.
+ * If cloud fallback is needed, yields a single final chunk (no streaming).
+ */
+export async function* routedChatStream(
+    message: string,
+    agentId: string,
+    history: string[],
+    cloudFallback: () => Promise<string>
+): AsyncGenerator<StreamChunk & { backend: string; model: string }> {
+    const decision = classifyTask(message, agentId);
+    logger.info(`[Router] stream agent=${agentId} backend=${decision.backend} reason="${decision.reason}"`);
+
+    // Force cloud if task requires live data
+    if (decision.backend === 'cloud' || decision.requiresLiveData) {
+        const text = await cloudFallback();
+        yield { text, delta: text, done: true, backend: 'cloud', model: 'gemini/openai' };
+        return;
+    }
+
+    // Try local Ollama streaming
+    try {
+        const model = selectLocalModel(agentId);
+        const systemPrompt = getAgentPrompt(agentId);
+
+        const messages: OllamaMessage[] = [
+            { role: 'system', content: systemPrompt },
+        ];
+
+        const recentHistory = history.slice(-6);
+        for (let i = 0; i < recentHistory.length - 1; i += 2) {
+            if (recentHistory[i]) messages.push({ role: 'user', content: recentHistory[i] });
+            if (recentHistory[i + 1]) messages.push({ role: 'assistant', content: recentHistory[i + 1] });
+        }
+
+        messages.push({ role: 'user', content: message });
+
+        for await (const chunk of ollamaChatStream(messages, model)) {
+            yield { ...chunk, backend: 'local', model };
+        }
+    } catch (err) {
+        if (err instanceof OllamaUnavailableError) {
+            logger.warn(`[Router] Ollama stream unavailable (${err.message}), falling back to cloud`);
+            const text = await cloudFallback();
+            yield { text, delta: text, done: true, backend: 'cloud', model: 'gemini-fallback' };
+            return;
         }
         throw err;
     }

@@ -1,6 +1,6 @@
 # XXT-AGENT Platform - Project Configuration
 
-> **最後更新**: 2026-03-27
+> **最後更新**: 2026-05-05
 
 ---
 
@@ -51,8 +51,19 @@
 | **Cloud Functions** | Firebase Functions (Node.js 22) | `apps/functions` | ✅ Active |
 | **Firestore** | Firebase | — | ✅ Active |
 | **AI Gateway** | Cloud Run | `services/ai-gateway` | ✅ Active |
-| **OpenClaw Gateway** | Cloud Run | `services/openclaw-gateway` | ✅ Active |
+| **OpenClaw Gateway** | Cloud Run (v7.5) | `services/openclaw-gateway` | ✅ Active |
+| **Telegram Command Bot** | Cloud Run | `services/telegram-command-bot` | ✅ Active |
+| **Regulation RAG** | Cloud Run (Internal) | `services/regulation-rag` | ✅ Active |
+| **Event Fusion Engine** | Cloud Run | `services/event-fusion-engine` | ✅ Active |
+| **News Collector** | Cloud Run (v9.2) | `services/news-collector` | ✅ Active |
 | **Secret Manager** | GCP | — | ✅ Active |
+
+### Standalone Apps
+
+| App | 平台 | Source | 狀態 |
+|-----|------|--------|------|
+| **World Monitor** | Standalone | `apps/worldmonitor/` | ⚠️ Excluded from workspace |
+| ~~Aurelian Logic~~ | — | ~~`aurelian-logic/`~~ | ❌ 已移除 (2026-05) |
 
 ---
 
@@ -72,10 +83,13 @@
 | **Dashboard (Frontend)** | `apps/dashboard/` |
 | **Backend (Functions)** | `apps/functions/` |
 | **AI Gateway** | `services/ai-gateway/` |
-| **OpenClaw Gateway** | `services/openclaw-gateway/` |
-| **Microservices** | `services/` |
+| **OpenClaw Gateway (v7.5)** | `services/openclaw-gateway/` |
+| **Telegram Command Bot** | `services/telegram-command-bot/` |
+| **Regulation RAG** | `services/regulation-rag/` |
+| **NAS Data Plane** | `infra/nas/` |
+| **Other Microservices** | `services/` |
 | **Shared Types** | `packages/types/` |
-| **Infrastructure** | `infra/` |
+| **Infrastructure (Terraform)** | `infra/terraform/` |
 
 ---
 
@@ -120,17 +134,83 @@
 
 ---
 
-## AI Model Support (2026 Q1)
+## AI Model Support (2026 Q2)
 
-| Provider | 模型 |
-|----------|------|
-| **Google Gemini** | Gemini 3.1 Pro, 2.5 Pro/Flash, 2.0 Flash/Lite |
-| **OpenAI** | GPT-5.4, o4-mini, GPT-4o, GPT-4o-mini |
-| **Anthropic** | Claude Opus 4.6, Sonnet 4.6, Haiku 3.5 |
+| Provider | 模型 | 用途 |
+|----------|------|------|
+| **Google Gemini** | Gemini 3.1 Pro, 2.5 Pro/Flash, 2.0 Flash | AI Gateway enrichment, OpenClaw fallback |
+| **OpenAI** | GPT-5.4, o4-mini, GPT-4o, GPT-4o-mini | Butler AI multi-model selector |
+| **Anthropic** | Claude Opus 4.6, Sonnet 4.6, Haiku 3.5 | 重量級推理 |
+| **Local (Ollama)** | qwen2.5:7b, qwen3:14b, deepseek-r1:14b | 本地優先推理（RTX 4080 SUPER） |
 
 ---
 
 ## Architecture Version
 
-- **Current**: v2.1.0 (2026 Q1 Model Upgrade + MCP-ready)
-- **Last Updated**: 2026-03-27
+- **Current**: v2.5.1 (2026 Q2 — OpenClaw v7.5 + Telegram V9.2 + Carbon Copper V5 Dashboard + Full Audit + Model Strategy)
+- **Last Updated**: 2026-05-05
+
+---
+
+## Documentation Index (`docs/`)
+
+> **維護規則**: 任何規格書進度變更必須同步更新此表。  
+> **狀態定義**: ✅ 完成 | 🔧 實作中 | 📄 規格已定 | 📋 計畫中
+
+### 核心文件
+
+| 文件 | 說明 | 狀態 |
+|:---|:---|:---:|
+| `SYSTEM_ARCHITECTURE.md` | 系統架構總覽 | ✅ |
+| `SYSTEM_CONSTITUTION.md` | 系統治理憲章 | ✅ |
+| `TECH_STACK.md` | 技術棧說明 | ✅ |
+| `API.md` | API 文件 | ✅ |
+| `DEPLOYMENT.md` | 部署指南 | ✅ |
+| `FEATURES.md` | 功能清單 | ✅ |
+| `XXT-AGENT_COMPLETE_DOCUMENTATION.md` | 完整文件彙整 | ✅ |
+| `event-schema.md` | Pub/Sub 事件 Schema (v9.0) | ✅ |
+| `model_execution_manifest.md` | 模型執行清單 | ✅ |
+
+### 運維 SOP
+
+| 文件 | 說明 | 狀態 |
+|:---|:---|:---:|
+| `OPS_RUNBOOK_CLOUD.md` | 雲端運維手冊 (6 章節完整 SOP) | ✅ |
+| `SOP_OLLAMA_BASE_URL.md` | 本地推理端點設定 SOP | ✅ |
+| `SOP_CHROMADB_NAS.md` | NAS ChromaDB 長期記憶部署 | 📄 待部署 |
+| `NPM_AUDIT_SOP.md` | NPM 漏洞審計指引 + CI workflow | ✅ |
+| `LOGIN_SYSTEM_AUDIT.md` | 登入系統安全審計報告 | ✅ |
+| `OLLAMA_MODEL_STRATEGY.md` | 本地 GPU 模型管理策略 (4 模型 + VRAM 分配) | ✅ |
+
+### 功能規格書
+
+| 文件 | 說明 | 狀態 | 下一步 |
+|:---|:---|:---:|:---|
+| `DASHBOARD_API_CONTRACT.md` | 5 個 Mock 頁面 → 真實 API 對照 | ✅ 5/5 | 全部頁面已接入 API |
+| `COINGECKO_INTEGRATION_SPEC.md` | CoinGecko 加密貨幣新聞來源 | ✅ 已實作 | `news-collector v9.2` 已整合 |
+| `BIGQUERY_PIPELINE_SPEC.md` | Pub/Sub → BigQuery 分析管線 | ✅ 腳本就緒 | `infra/scripts/setup_bigquery_pipeline.sh` |
+| `LANGGRAPH_INTEGRATION_SPEC.md` | LangGraph State Graph 多 Agent 討論 | ✅ 已實作 | `state-graph.engine.ts` + `/agents/discuss` |
+
+### Telegram Bot
+
+| 文件 | 說明 | 狀態 |
+|:---|:---|:---:|
+| `services/telegram-command-bot/README.md` | Bot 架構 + 開發指南 | ✅ |
+| `services/telegram-command-bot/BOTFATHER_COMMANDS.md` | 27 個指令 BotFather 設定 | ✅ |
+
+### 子目錄
+
+| 路徑 | 內容 |
+|:---|:---|
+| `docs/governance/` | 治理文件 |
+| `docs/proof/` | 驗證記錄 |
+| `docs/releases/` | 版本發布紀錄 |
+
+### 新增 API Routes (2026-05-05)
+
+| Route | 用途 | 來源 |
+|:---|:---|:---|
+| `GET /api/system/gpu` | GPU VRAM 監控 (Ollama `/api/ps`) | 本地 Ollama |
+| `GET /api/system/bots/audit` | Bot 指令使用率 audit | OpenClaw Gateway |
+| `GET /api/system/nas` | ChromaDB 健康檢查 | NAS ChromaDB |
+| `GET /api/system/bots` | Bot 平台連線偵測 | OpenClaw Gateway |

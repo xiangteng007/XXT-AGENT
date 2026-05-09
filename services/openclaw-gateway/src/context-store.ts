@@ -54,7 +54,7 @@ const memoryStore = new Map<string, DelibSession>();
 let redisClient: RedisClientLike | null = null;
 
 interface RedisClientLike {
-    setEx(key: string, ttl: number, value: string): Promise<unknown>;
+    setex(key: string, ttl: number, value: string): Promise<unknown>;
     get(key: string): Promise<string | null>;
     del(key: string): Promise<unknown>;
     quit(): Promise<unknown>;
@@ -66,19 +66,24 @@ async function getRedis(): Promise<RedisClientLike | null> {
     if (!REDIS_URL) return null;
 
     try {
-        // 動態 require（避免在無 redis 環境中崩潰）
-        const { createClient } = await import('redis' as string) as {
-            createClient: (opts: { url: string }) => RedisClientLike & {
-                connect(): Promise<void>;
+        // 動態 require
+        const { default: Redis } = await import('ioredis' as string) as {
+            default: new (url: string) => RedisClientLike & {
                 on(event: string, cb: (e: unknown) => void): void;
+                once(event: string, cb: (e: unknown) => void): void;
+                status: string;
             }
         };
-        const client = createClient({ url: REDIS_URL });
+        const client = new Redis(REDIS_URL);
         client.on('error', (e) => logger.warn('[ContextStore] Redis error', String(e)));
-        await Promise.race([
-            client.connect(),
-            new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Redis connect timeout')), 2000)),
-        ]);
+        
+        await new Promise<void>((resolve, reject) => {
+            if (client.status === 'ready') return resolve();
+            client.once('ready', () => resolve());
+            client.once('error', (e) => reject(e));
+            setTimeout(() => reject(new Error('Redis connect timeout')), 2000);
+        });
+
         redisClient = client;
         logger.info('[ContextStore] Redis connected');
     } catch (err) {
@@ -185,7 +190,7 @@ async function persistToRedis(taskId: string, session: DelibSession): Promise<vo
         const redis = await getRedis();
         if (!redis) return;
         await withTimeout(
-            redis.setEx(redisKey(taskId), REDIS_TTL_S, JSON.stringify(session)),
+            redis.setex(redisKey(taskId), REDIS_TTL_S, JSON.stringify(session)),
             2000,
         );
     } catch (err) {

@@ -55,7 +55,7 @@ async function fetchAccountantData(entity_type?: EntityType): Promise<{
     if (entity_type) params.append('entity_type', entity_type);
     const resp = await fetch(
       `${ACCOUNTANT_URL}/agents/accountant/ledger?${params}`,
-      { headers: { 'Authorization': 'Bearer dev-local-bypass' }, signal: AbortSignal.timeout(8000) },
+      { headers: { 'X-Internal-Secret': process.env['INTERNAL_SECRET'] ?? '' }, signal: AbortSignal.timeout(8000) },
     );
     if (!resp.ok) return { income: 0, expense: 0, net: 0 };
     const data = await resp.json() as { summary: { total_income: number; total_expense: number; net: number } };
@@ -130,7 +130,8 @@ financeRouter.get('/health', (_req: Request, res: Response) => {
  */
 financeRouter.post('/chat', async (req: Request, res: Response) => {
   const { message, context } = req.body as { message?: string; context?: string };
-  if (!message?.trim()) { res.status(400).json({ error: 'message required' }); return; }
+  if (typeof message !== 'string' || !message.trim()) { res.status(400).json({ error: 'message must be a non-empty string' }); return; }
+  if (context !== undefined && typeof context !== 'string') { res.status(400).json({ error: 'context must be a string' }); return; }
   const traceId = crypto.randomUUID();
 
   const userContent = `${message}${context ? `\n\n【背景資訊】${context}` : ''}`;
@@ -196,9 +197,11 @@ financeRouter.post('/calc/mortgage', async (req: Request, res: Response) => {
     grace_period_months?: number; repayment_method?: RepaymentMethod;
   };
 
-  if (!property_value || !loan_amount || !annual_rate) {
+  if (typeof property_value !== 'number' || property_value <= 0 ||
+      typeof loan_amount !== 'number' || loan_amount <= 0 ||
+      typeof annual_rate !== 'number' || annual_rate <= 0) {
     res.status(400).json({
-      error: 'property_value, loan_amount, annual_rate required',
+      error: 'property_value, loan_amount, annual_rate must be positive numbers',
       example: {
         property_value: 15000000, loan_amount: 10000000,
         annual_rate: 2.17, loan_months: 360, monthly_income: 80000,
@@ -208,6 +211,7 @@ financeRouter.post('/calc/mortgage', async (req: Request, res: Response) => {
     });
     return;
   }
+  if (typeof loan_months !== 'number' || loan_months <= 0) { res.status(400).json({ error: 'loan_months must be a positive number' }); return; }
 
   const result = calcMortgage({
     property_value, loan_amount, annual_rate, loan_months,
@@ -260,13 +264,16 @@ financeRouter.post('/calc/car', async (req: Request, res: Response) => {
     vehicle_price?: number; down_payment?: number; annual_rate?: number; loan_months?: number;
   };
 
-  if (!vehicle_price || !annual_rate) {
+  if (typeof vehicle_price !== 'number' || vehicle_price <= 0 ||
+      typeof annual_rate !== 'number' || annual_rate <= 0) {
     res.status(400).json({
-      error: 'vehicle_price, annual_rate required',
+      error: 'vehicle_price, annual_rate must be positive numbers',
       example: { vehicle_price: 1200000, down_payment: 240000, annual_rate: 3.5, loan_months: 60 },
     });
     return;
   }
+  if (typeof loan_months !== 'number' || loan_months <= 0) { res.status(400).json({ error: 'loan_months must be a positive number' }); return; }
+  if (down_payment !== undefined && (typeof down_payment !== 'number' || down_payment < 0)) { res.status(400).json({ error: 'down_payment must be a non-negative number' }); return; }
 
   const dp = down_payment ?? Math.round(vehicle_price * 0.2);
   const result = calcCarLoan({ vehicle_price, down_payment: dp, annual_rate, loan_months });
@@ -314,9 +321,11 @@ financeRouter.post('/calc/loan', async (req: Request, res: Response) => {
     loan_name?: string;
   };
 
-  if (!principal || !annual_rate || !loan_months) {
+  if (typeof principal !== 'number' || principal <= 0 ||
+      typeof annual_rate !== 'number' || annual_rate <= 0 ||
+      typeof loan_months !== 'number' || loan_months <= 0) {
     res.status(400).json({
-      error: 'principal, annual_rate, loan_months required',
+      error: 'principal, annual_rate, loan_months must be positive numbers',
       example: { principal: 5000000, annual_rate: 3.5, loan_months: 36, repayment_method: 'equal_payment' },
       repayment_methods: ['equal_payment', 'equal_principal', 'interest_only', 'balloon'],
     });
@@ -377,9 +386,9 @@ financeRouter.post('/calc/compare', async (req: Request, res: Response) => {
     }>;
   };
 
-  if (!plans || plans.length < 2) {
+  if (!Array.isArray(plans) || plans.length < 2 || plans.length > 4) {
     res.status(400).json({
-      error: 'At least 2 plans required',
+      error: 'plans must be an array with 2 to 4 items',
       example: {
         plans: [
           { label: '方案A（土地銀行）', principal: 10000000, annual_rate: 2.15, loan_months: 360, repayment_method: 'equal_payment' },
@@ -389,6 +398,12 @@ financeRouter.post('/calc/compare', async (req: Request, res: Response) => {
       },
     });
     return;
+  }
+  for (const p of plans) {
+    if (typeof p.label !== 'string' || typeof p.principal !== 'number' || typeof p.annual_rate !== 'number' || typeof p.loan_months !== 'number') {
+      res.status(400).json({ error: 'Each plan must have valid label (string), principal (number), annual_rate (number), and loan_months (number)' });
+      return;
+    }
   }
 
   const result = compareLoanPlans(plans as Array<{
@@ -443,6 +458,7 @@ financeRouter.get('/calc/summary', async (_req: Request, res: Response) => {
  */
 financeRouter.post('/analyze', async (req: Request, res: Response) => {
   const { year } = req.body as { year?: number };
+  if (year !== undefined && (typeof year !== 'number' || year < 1900 || year > 2100)) { res.status(400).json({ error: 'year must be a valid number' }); return; }
   const targetYear = year ?? new Date().getFullYear();
   const traceId = crypto.randomUUID();
 
@@ -619,6 +635,7 @@ financeRouter.post('/plan/company', async (req: Request, res: Response) => {
  */
 financeRouter.post('/plan/personal', async (req: Request, res: Response) => {
   const { monthly_income } = req.body as { monthly_income?: number };
+  if (monthly_income !== undefined && (typeof monthly_income !== 'number' || monthly_income < 0)) { res.status(400).json({ error: 'monthly_income must be a non-negative number' }); return; }
   const traceId = crypto.randomUUID();
   const [peData, loans] = await Promise.all([
     fetchAccountantData('personal'),
@@ -702,6 +719,8 @@ financeRouter.post('/plan/consolidation', async (req: Request, res: Response) =>
   const { consolidation_rate = 3.0, consolidation_months = 120 } = req.body as {
     consolidation_rate?: number; consolidation_months?: number;
   };
+  if (typeof consolidation_rate !== 'number' || consolidation_rate <= 0) { res.status(400).json({ error: 'consolidation_rate must be a positive number' }); return; }
+  if (typeof consolidation_months !== 'number' || consolidation_months <= 0) { res.status(400).json({ error: 'consolidation_months must be a positive number' }); return; }
   const traceId = crypto.randomUUID();
   try {
     const debtAnalysis = await analyzeDebtConsolidation(consolidation_rate, consolidation_months);
@@ -791,9 +810,13 @@ financeRouter.post('/loan', async (req: Request, res: Response) => {
     collateral, grace_period_months, notes,
   } = req.body as Partial<LoanRecord>;
 
-  if (!entity_type || !category || !bank || !principal || !annual_rate || !loan_months || !start_date) {
+  if (typeof entity_type !== 'string' || typeof category !== 'string' || typeof bank !== 'string' ||
+      typeof principal !== 'number' || principal <= 0 ||
+      typeof annual_rate !== 'number' || annual_rate <= 0 ||
+      typeof loan_months !== 'number' || loan_months <= 0 ||
+      typeof start_date !== 'string') {
     res.status(400).json({
-      error: 'entity_type, category, bank, principal, annual_rate, loan_months, start_date required',
+      error: 'valid entity_type, category, bank, principal (positive), annual_rate (positive), loan_months (positive), and start_date are required',
       categories: Object.keys(LOAN_CATEGORY_ZH),
       entity_types: ['personal','family','co_drone','co_construction','co_renovation','co_design','assoc_rescue'],
       repayment_methods: ['equal_payment', 'equal_principal', 'interest_only', 'balloon'],
@@ -1062,6 +1085,8 @@ financeRouter.get('/report/debt', async (_req: Request, res: Response) => {
  */
 financeRouter.post('/collab/accountant', async (req: Request, res: Response) => {
   const { entity_type, purpose } = req.body as { entity_type?: EntityType; purpose?: string };
+  if (entity_type !== undefined && typeof entity_type !== 'string') { res.status(400).json({ error: 'entity_type must be a string' }); return; }
+  if (purpose !== undefined && typeof purpose !== 'string') { res.status(400).json({ error: 'purpose must be a string' }); return; }
   const data = await fetchAccountantData(entity_type);
   logger.info(`[Finance/collab] Fetched ${entity_type ?? 'all'} from Accountant for: ${purpose}`);
   res.json({ ok: true, source: 'accountant', entity_type, purpose, data });

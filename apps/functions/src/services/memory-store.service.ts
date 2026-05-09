@@ -1,15 +1,16 @@
-/**
- * Memory Store Service �?Local-First Architecture (v8.0)
+﻿/**
+ * Memory Store Service �?Local-First Architecture (v8.0)
  *
- * 雙層記憶架構�? *   - 短期 (Short-Term) : Firestore �?即時對話歷史，低延遲
- *   - 長期 (Long-Term)  : ChromaDB (NAS 192.168.31.77:8001) �?向量語義記憶
+ * 雙層記憶架構�? *   - 短期 (Short-Term) : Firestore �?即時對話歷史，低延遲
+ *   - 長期 (Long-Term)  : ChromaDB (NAS 192.168.31.77:8001) �?向量語義記憶
  *
- * ChromaDB API: v2 (�?v1 已棄�?
- * 存取優先順序：ChromaDB 可用 �?長期向量記憶；ChromaDB 離線 �?靜默降級�?Firestore
+ * ChromaDB API: v2 (�?v1 已棄�?
+ * 存取優先順序：ChromaDB 可用 �?長期向量記憶；ChromaDB 離線 �?靜默降級�?Firestore
  */
 
 import { logger } from 'firebase-functions/v2';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { embedText, isOllamaAvailable } from './local-inference.service';
 
 const db = getFirestore();
 
@@ -17,7 +18,7 @@ const db = getFirestore();
 // ChromaDB 連線設定
 // ================================
 
-/** ChromaDB 端點 (NAS 192.168.31.77:8001 �?Tailscale URL) */
+/** ChromaDB 端點 (NAS 192.168.31.77:8001 �?Tailscale URL) */
 const CHROMADB_BASE_URL = (process.env.CHROMADB_URL || 'http://192.168.31.77:8001').replace(/\/$/, '');
 const CHROMADB_AUTH_TOKEN = process.env.CHROMADB_TOKEN || '';
 const CHROMADB_COLLECTION = 'xxt_agent_memories';
@@ -109,7 +110,7 @@ export async function isChromaDbAvailable(): Promise<boolean> {
 // Collection Management
 // ================================
 
-/** 建立 collection（idempotent�?*/
+/** 建立 collection（idempotent�?*/
 async function ensureChromaCollection(): Promise<string | null> {
     try {
         // Try to get existing collection first
@@ -147,8 +148,8 @@ async function ensureChromaCollection(): Promise<string | null> {
 
 /**
  * 儲存記憶條目
- * 高重要�?(importance >= 3) �?同時寫入 ChromaDB + Firestore
- * 低重要�?�?僅寫�?Firestore
+ * 高重要�?(importance >= 3) �?同時寫入 ChromaDB + Firestore
+ * 低重要�?�?僅寫�?Firestore
  */
 export async function saveMemory(entry: Omit<MemoryEntry, 'createdAt'>): Promise<string> {
     const memoryId = `${entry.userId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -175,22 +176,32 @@ export async function saveMemory(entry: Omit<MemoryEntry, 'createdAt'>): Promise
                 const collectionId = await ensureChromaCollection();
                 if (collectionId) {
                     const document = `[${entry.agentId}] ${entry.content}${entry.summary ? ' | 摘要: ' + entry.summary : ''}`;
+                    // Generate embedding via Ollama nomic-embed-text (local-first)
+                    const ollamaUp = await isOllamaAvailable();
+                    const embedding = ollamaUp ? await embedText(document).catch(() => null) : null;
+
+                    const addPayload: Record<string, unknown> = {
+                        ids: [memoryId],
+                        documents: [document],
+                        metadatas: [{
+                            userId: entry.userId,
+                            agentId: entry.agentId,
+                            type: entry.type,
+                            importance: entry.importance,
+                            tags: (entry.tags || []).join(','),
+                            createdAt: fullEntry.createdAt,
+                        }],
+                    };
+                    if (embedding) {
+                        addPayload.embeddings = [embedding];
+                        logger.info('[MemoryStore] Using Ollama nomic-embed-text for embedding');
+                    }
+
                     const resp = await chromaFetch(
                         `/tenants/${CHROMADB_TENANT}/databases/${CHROMADB_DATABASE}/collections/${collectionId}/add`,
                         {
                             method: 'POST',
-                            body: JSON.stringify({
-                                ids: [memoryId],
-                                documents: [document],
-                                metadatas: [{
-                                    userId: entry.userId,
-                                    agentId: entry.agentId,
-                                    type: entry.type,
-                                    importance: entry.importance,
-                                    tags: (entry.tags || []).join(','),
-                                    createdAt: fullEntry.createdAt,
-                                }],
-                            }),
+                            body: JSON.stringify(addPayload),
                         }
                     );
                     if (resp.ok) {
@@ -208,7 +219,7 @@ export async function saveMemory(entry: Omit<MemoryEntry, 'createdAt'>): Promise
 
 /**
  * 語義搜尋記憶
- * ChromaDB 可用 �?向量相似度搜�? * ChromaDB 離線 �?Firestore 關鍵字搜�? */
+ * ChromaDB 可用 �?向量相似度搜�? * ChromaDB 離線 �?Firestore 關鍵字搜�? */
 export async function searchMemory(
     userId: string,
     query: string,
@@ -231,16 +242,25 @@ export async function searchMemory(
                 if (options.type) where['type'] = options.type;
                 if (options.minImportance) where['importance'] = { '$gte': options.minImportance };
 
+                // Use Ollama embedding for query if available
+                const ollamaUp = await isOllamaAvailable();
+                const queryEmbed = ollamaUp ? await embedText(query).catch(() => null) : null;
+                const queryPayload: Record<string, unknown> = {
+                    n_results: limit,
+                    where: Object.keys(where).length > 1 ? where : { userId },
+                    include: ['documents', 'metadatas', 'distances'],
+                };
+                if (queryEmbed) {
+                    queryPayload.query_embeddings = [queryEmbed];
+                } else {
+                    queryPayload.query_texts = [query];
+                }
+
                 const resp = await chromaFetch(
                     `/tenants/${CHROMADB_TENANT}/databases/${CHROMADB_DATABASE}/collections/${collectionId}/query`,
                     {
                         method: 'POST',
-                        body: JSON.stringify({
-                            query_texts: [query],
-                            n_results: limit,
-                            where: Object.keys(where).length > 1 ? where : { userId },
-                            include: ['documents', 'metadatas', 'distances'],
-                        }),
+                        body: JSON.stringify(queryPayload),
                     }
                 );
 
@@ -322,7 +342,7 @@ async function searchMemoryFirestore(
 }
 
 /**
- * 取得最近對話記憶（用於 context injection�? */
+ * 取得最近對話記憶（用於 context injection�? */
 export async function getRecentContext(
     userId: string,
     agentId: string,
@@ -369,7 +389,7 @@ export async function pruneExpiredMemories(userId: string): Promise<number> {
 }
 
 /**
- * 取得系統狀態快照（�?/memory 指令顯示�? */
+ * 取得系統狀態快照（�?/memory 指令顯示�? */
 export async function getMemorySystemStatus(): Promise<{
     chromaDbOnline: boolean;
     chromaDbUrl: string;

@@ -210,8 +210,16 @@ lexRouter.post('/chat', async (req: Request, res: Response) => {
     entity_type?: EntityType;
   };
 
-  if (!message?.trim()) {
-    res.status(400).json({ error: 'message is required' });
+  if (typeof message !== 'string' || !message.trim()) {
+    res.status(400).json({ error: 'message must be a non-empty string' });
+    return;
+  }
+  if (session_id !== undefined && typeof session_id !== 'string') {
+    res.status(400).json({ error: 'session_id must be a string' });
+    return;
+  }
+  if (entity_type !== undefined && typeof entity_type !== 'string') {
+    res.status(400).json({ error: 'entity_type must be a string' });
     return;
   }
 
@@ -295,8 +303,16 @@ lexRouter.post('/contract', async (req: Request, res: Response) => {
     milestone_percentages?: number[];
   };
 
-  if (!body.title || !body.entity_type || !body.counterparty || !body.total_amount) {
+  if (!body.title || !body.entity_type || !body.counterparty || body.total_amount === undefined) {
     res.status(400).json({ error: 'title, entity_type, counterparty, total_amount are required' });
+    return;
+  }
+  if (typeof body.title !== 'string' || typeof body.entity_type !== 'string' || typeof body.counterparty !== 'string') {
+    res.status(400).json({ error: 'title, entity_type, and counterparty must be strings' });
+    return;
+  }
+  if (typeof body.total_amount !== 'number' || body.total_amount < 0) {
+    res.status(400).json({ error: 'total_amount must be a non-negative number' });
     return;
   }
 
@@ -365,6 +381,23 @@ lexRouter.post('/contract', async (req: Request, res: Response) => {
 lexRouter.get('/contract', async (req: Request, res: Response) => {
   const { entity_type, contract_type, status, limit } = req.query as Record<string, string>;
 
+  if (entity_type !== undefined && typeof entity_type !== 'string') {
+    res.status(400).json({ error: 'entity_type must be a string' });
+    return;
+  }
+  if (contract_type !== undefined && typeof contract_type !== 'string') {
+    res.status(400).json({ error: 'contract_type must be a string' });
+    return;
+  }
+  if (status !== undefined && typeof status !== 'string') {
+    res.status(400).json({ error: 'status must be a string' });
+    return;
+  }
+  if (limit !== undefined && typeof limit !== 'string') {
+    res.status(400).json({ error: 'limit must be a string' });
+    return;
+  }
+
   let results = [...CONTRACTS];
   if (entity_type)   results = results.filter(c => c.entity_type === entity_type);
   if (contract_type) results = results.filter(c => c.contract_type === contract_type);
@@ -409,7 +442,17 @@ lexRouter.get('/contract', async (req: Request, res: Response) => {
  */
 lexRouter.get('/contract/expiring', async (req: Request, res: Response) => {
   const { within_days } = req.query as { within_days?: string };
+
+  if (within_days !== undefined && typeof within_days !== 'string') {
+    res.status(400).json({ error: 'within_days must be a string' });
+    return;
+  }
+
   const days = parseInt(within_days ?? '30');
+  if (isNaN(days) || days < 0) {
+    res.status(400).json({ error: 'within_days must be a non-negative integer' });
+    return;
+  }
 
   const expiring = CONTRACTS
     .filter(c => c.expiry_date && c.status === 'active')
@@ -514,6 +557,19 @@ lexRouter.patch('/contract/:id/status', async (req: Request, res: Response) => {
     paid_date?: string;
   };
 
+  if (status !== undefined && typeof status !== 'string') {
+    res.status(400).json({ error: 'status must be a string' });
+    return;
+  }
+  if (milestone_id !== undefined && typeof milestone_id !== 'string') {
+    res.status(400).json({ error: 'milestone_id must be a string' });
+    return;
+  }
+  if (paid_date !== undefined && typeof paid_date !== 'string') {
+    res.status(400).json({ error: 'paid_date must be a string' });
+    return;
+  }
+
   const contract = CONTRACTS.find(c => c.contract_id === id);
   if (!contract) {
     res.status(404).json({ error: 'Contract not found' });
@@ -569,6 +625,11 @@ lexRouter.patch('/contract/:id/status', async (req: Request, res: Response) => {
 lexRouter.post('/contract/:id/analyze', async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { content } = req.body as { content?: string };
+
+  if (content !== undefined && typeof content !== 'string') {
+    res.status(400).json({ error: 'content must be a string' });
+    return;
+  }
 
   const contract = CONTRACTS.find(c => c.contract_id === id);
   if (!contract && !content) {
@@ -647,6 +708,10 @@ lexRouter.post('/document', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'title, entity_type, category are required' });
     return;
   }
+  if (typeof body.title !== 'string' || typeof body.entity_type !== 'string' || typeof body.category !== 'string') {
+    res.status(400).json({ error: 'title, entity_type, and category must be strings' });
+    return;
+  }
 
   const doc: DocHubItem = {
     doc_id:      crypto.randomUUID(),
@@ -693,7 +758,17 @@ lexRouter.post('/document', async (req: Request, res: Response) => {
  */
 lexRouter.get('/document/expiring', async (req: Request, res: Response) => {
   const { within_days } = req.query as { within_days?: string };
+
+  if (within_days !== undefined && typeof within_days !== 'string') {
+    res.status(400).json({ error: 'within_days must be a string' });
+    return;
+  }
+
   const days = parseInt(within_days ?? '60');
+  if (isNaN(days) || days < 0) {
+    res.status(400).json({ error: 'within_days must be a non-negative integer' });
+    return;
+  }
 
   const expiring = DOCUMENTS
     .filter(d => d.expiry_date)

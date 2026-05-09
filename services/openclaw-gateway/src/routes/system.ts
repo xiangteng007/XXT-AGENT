@@ -205,3 +205,108 @@ systemRouter.get('/models', async (_req: Request, res: Response) => {
     },
   });
 });
+
+// ── POST /system/terminal — 遠端終端機指令執行 ────────────────
+/**
+ * @openapi
+ * /system/terminal:
+ *   post:
+ *     tags: [System]
+ *     summary: 執行系統指令（Admin only）
+ *     description: |
+ *       在 Gateway 所在機器上執行 shell 指令。
+ *       禁止危險指令、15 秒超時、輸出限制 8000 字元。
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               command:
+ *                 type: string
+ *                 example: "pm2 status"
+ *     responses:
+ *       200:
+ *         description: 指令執行結果
+ *       403:
+ *         description: 指令被封鎖
+ */
+systemRouter.post('/terminal', async (req: Request, res: Response) => {
+  const { command } = req.body as { command?: string };
+
+  if (!command || typeof command !== 'string' || command.trim().length === 0) {
+    return res.status(400).json({
+      code: 'INVALID_COMMAND',
+      message: 'command is required',
+    });
+  }
+
+  const cmd = command.trim();
+
+  // ── 危險指令黑名單 ──────────────────────────────────────────
+  const CMD_BLOCKLIST = [
+    'rm -rf /', 'format c:', 'format d:', 'mkfs', 'dd if=', ':(){:|:&};:',
+    'shutdown', 'reboot', 'halt', 'init 0', 'poweroff',
+    'del /s /q c:', 'rd /s /q c:',
+    'Remove-Item -Recurse -Force C:', 'Stop-Computer', 'Restart-Computer',
+  ];
+
+  const cmdLower = cmd.toLowerCase();
+  if (CMD_BLOCKLIST.some((b) => cmdLower.includes(b.toLowerCase()))) {
+    logger.warn(`[System/terminal] Blocked dangerous command: "${cmd}"`);
+    return res.status(403).json({ code: 'COMMAND_BLOCKED', message: 'Command blocked by security policy' });
+  }
+
+  const TIMEOUT_MS = 15_000;
+  const MAX_OUTPUT = 8000;
+
+  try {
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execAsync = promisify(exec);
+
+    const isWin = process.platform === 'win32';
+    const execCmd = isWin
+      ? `powershell.exe -NoProfile -Command "${cmd.replace(/"/g, '\\"')}"`
+      : cmd;
+
+    const { stdout, stderr } = await execAsync(execCmd, {
+      timeout: TIMEOUT_MS,
+      maxBuffer: 1024 * 1024,
+      shell: isWin ? 'powershell.exe' : '/bin/bash',
+      cwd: process.cwd(),
+      env: { ...process.env, TERM: 'dumb', NO_COLOR: '1' },
+    });
+
+    const out = (stdout || '').trim();
+    const err = (stderr || '').trim();
+
+    logger.info(`[System/terminal] Executed: "${cmd}" (${out.length} chars)`);
+
+    return res.json({
+      command: cmd,
+      stdout: out.slice(0, MAX_OUTPUT),
+      stderr: err.slice(0, 2000),
+      exit_code: 0,
+      truncated: out.length > MAX_OUTPUT,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: unknown) {
+    const e = error as { killed?: boolean; code?: number; stdout?: string; stderr?: string; message?: string };
+
+    if (e.killed) {
+      return res.json({
+        command: cmd, stdout: '', stderr: `Command timed out after ${TIMEOUT_MS / 1000}s`,
+        exit_code: 124, truncated: false, timestamp: new Date().toISOString(),
+      });
+    }
+
+    return res.json({
+      command: cmd,
+      stdout: (e.stdout || '').slice(0, MAX_OUTPUT),
+      stderr: (e.stderr || e.message || 'Unknown error').slice(0, 2000),
+      exit_code: e.code ?? 1, truncated: false, timestamp: new Date().toISOString(),
+    });
+  }
+});

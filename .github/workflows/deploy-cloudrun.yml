@@ -165,6 +165,12 @@ jobs:
           TF_VAR_gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           TF_VAR_telegram_bot_token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TF_VAR_telegram_chat_id: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # v9.0 — OTEL + ChromaDB + Audit Log
+          TF_VAR_otel_enabled: "true"
+          TF_VAR_chromadb_url: ${{ secrets.CHROMADB_URL }}
+          TF_VAR_chromadb_token: ${{ secrets.CHROMADB_TOKEN }}
+          TF_VAR_topic_audit_log: "audit.log"
+          TF_VAR_topic_news_raw: "news.raw"
         run: |
           terraform init
           terraform apply -auto-approve

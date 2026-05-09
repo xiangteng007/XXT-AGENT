@@ -20,6 +20,7 @@ const vehicle_service_1 = require("../../services/vehicle.service");
 const schedule_service_1 = require("../../services/schedule.service");
 const tax_service_1 = require("../../services/butler/tax.service");
 const financial_advisor_service_1 = require("../../services/butler/financial-advisor.service");
+const conversation_session_service_1 = require("../../services/butler/conversation-session.service");
 const db = (0, firestore_1.getFirestore)();
 // ================================
 // Callback Query Handling
@@ -33,6 +34,34 @@ async function handleCallbackQuery(query) {
     if (data.startsWith('cmd_')) {
         const command = '/' + data.replace('cmd_', '');
         await (0, commands_1.handleCommand)(chatId, query.from.id, command);
+    }
+    else if (data.startsWith('agent_switch_')) {
+        // Agent switching via /agents inline buttons
+        const agentId = data.replace('agent_switch_', '');
+        const linkedUid = await (0, api_1.getLinkedFirebaseUid)(query.from.id);
+        const userId = linkedUid || `telegram:${query.from.id}`;
+        try {
+            await (0, conversation_session_service_1.switchAgent)(userId, agentId);
+            const agentNames = {
+                butler: '👔 小秘書', titan: '🏛️ Titan (BIM)', lumi: '✨ Lumi (設計)',
+                rusty: '📐 Rusty (工務)', accountant: '💰 Accountant (財務)',
+                argus: '🛡️ Argus (情報)', nova: '👥 Nova (人資)',
+                investment: '📈 Investment (投資)', forge: '⚙️ Forge (製造)',
+                nexus: '☁️ Nexus (架構)',
+            };
+            const displayName = agentNames[agentId] || agentId;
+            await (0, api_1.sendMessage)(chatId, `✅ 已切換至 **${displayName}**\n\n直接輸入訊息開始對話，AI 將以 ${displayName} 的角色回應你。\n\n輸入 /agents 查看所有探員。`);
+        }
+        catch (err) {
+            v2_1.logger.error('[Telegram] switchAgent error:', err);
+            await (0, api_1.sendMessage)(chatId, '❌ 切換探員失敗，請稍後再試。');
+        }
+    }
+    else if (data === 'reflect_now') {
+        await (0, commands_1.sendReflectTrigger)(chatId, query.from.id);
+    }
+    else if (data === 'discuss_prompt') {
+        await (0, api_1.sendMessage)(chatId, '🧠 請直接輸入討論主題，例如：\n\n`/discuss 我應該如何優化投資組合？`');
     }
     else if (data.startsWith('expense_')) {
         const category = data.replace('expense_', '');
@@ -86,7 +115,16 @@ async function executeTelegramToolCalls(userId, toolCalls) {
                         date: new Date().toISOString().split('T')[0],
                         bankAccountId: '', source: 'manual',
                     });
-                    results.push(`✅ 已記錄支出：$${amount} (${description || category || '其他'})`);
+                    // V4: 附帶本月累計
+                    let monthCtx = '';
+                    try {
+                        const now = new Date();
+                        const ms = await finance_service_1.financeService.getMonthlySummary(userId, now.getFullYear(), now.getMonth() + 1);
+                        if (ms)
+                            monthCtx = `\n📊 本月累計支出：$${(ms.totalExpenses || 0).toLocaleString()}`;
+                    }
+                    catch { /* silent */ }
+                    results.push(`✅ 已記錄支出\n\n💰 $${amount.toLocaleString()} — ${description || category || '其他'}${monthCtx}`);
                     break;
                 }
                 case 'record_weight': {
@@ -139,7 +177,9 @@ async function executeTelegramToolCalls(userId, toolCalls) {
                         shares, price, totalAmount: shares * price, fee: 0,
                         date: new Date().toISOString().split('T')[0],
                     });
-                    results.push(`✅ 已記錄${tradeType === 'buy' ? '買入' : '賣出'}：${symbol} ${shares}股 × $${price}`);
+                    const totalAmt = (shares * price).toLocaleString();
+                    const actionLabel = tradeType === 'buy' ? '買入' : '賣出';
+                    results.push(`✅ 已記錄${actionLabel}\n\n📈 ${symbol.toUpperCase()} × ${shares}股 @ $${price}\n💰 交易金額：$${totalAmt}`);
                     break;
                 }
                 case 'get_portfolio': {
@@ -182,7 +222,14 @@ async function executeTelegramToolCalls(userId, toolCalls) {
         }
         catch (err) {
             v2_1.logger.error(`[Telegram] Tool call ${call.name} failed:`, err);
-            results.push(`❌ ${call.name} 執行失敗`);
+            const toolLabels = {
+                record_expense: '記帳', add_event: '新增行程', record_weight: '體重記錄',
+                get_schedule: '行程查詢', get_spending: '支出查詢', record_fuel: '加油記錄',
+                add_investment: '投資記錄', get_portfolio: '組合查詢',
+                calculate_loan: '貸款試算', estimate_tax: '稅務估算',
+            };
+            const label = toolLabels[call.name] || call.name;
+            results.push(`❌ ${label}失敗，請稍後再試\n\n💡 你也可以用 /help 查看手動指令`);
         }
     }
     return results;

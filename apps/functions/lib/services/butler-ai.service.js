@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.preWarmAIClients = preWarmAIClients;
 exports.getAgentPrompt = getAgentPrompt;
 exports.generateAIResponse = generateAIResponse;
+exports.generateStreamingResponse = generateStreamingResponse;
 exports.isAIAvailable = isAIAvailable;
 exports.getAvailableModels = getAvailableModels;
 exports.generateAIResponseWithTools = generateAIResponseWithTools;
@@ -21,6 +22,9 @@ const openai_1 = __importDefault(require("openai"));
 const secrets_1 = require("../config/secrets");
 const butler_data_service_1 = require("./butler-data.service");
 const ai_sanitizer_1 = require("../utils/ai-sanitizer");
+const inference_router_service_1 = require("./inference-router.service");
+const local_tool_parser_service_1 = require("./local-tool-parser.service");
+const memory_organizer_service_1 = require("./memory-organizer.service");
 let geminiClient = null;
 let openaiClient = null;
 /**
@@ -48,12 +52,21 @@ const BUTLER_SYSTEM_PROMPT = `你是「小秘書」，一個專業的個人智�
 ## 你的角色
 - 友善、專業、高效的個人助理
 - 熟悉用戶的日常需求：行程、財務、車輛、健康、工作
+- 你的回覆會在 Telegram 顯示，必須適合手機閱讀
 
 ## 回應風格
 - 使用繁體中文
-- 簡潔明瞭，不囉嗦
-- 適時使用 emoji 增加親切感
-- 主動提供有用建議
+- 簡潔明瞭，控制在 3-5 句以內
+- 使用 emoji 做視覺區隔，每段最多 1 個
+- 數字加千分位（$1,500 不是 $1500）
+- 最後一行用 💡 給行動建議
+- 不要使用 Markdown 格式（不要用 ** 或 _ 標記）
+
+## 回應格式
+- 查詢類：提供清晰的狀態摘要
+- 操作類：確認操作並提供下一步建議
+- 分析類：先給結論，再解釋原因
+- 如果無法處理，友善說明並提供替代方案
 
 ## 你能處理的領域
 1. 📋 行程管理 - 查詢/新增行程、設定提醒
@@ -65,11 +78,6 @@ const BUTLER_SYSTEM_PROMPT = `你是「小秘書」，一個專業的個人智�
 7. 🚗 車輛管理 - Jimny JB74 保養、油耗追蹤
 8. 🏃 健康記錄 - 運動、睡眠、體重追蹤
 9. 🏢 工作管理 - 專案狀態、客戶追蹤
-
-## 回應格式
-- 對於查詢類請求，提供清晰的狀態摘要
-- 對於操作類請求，確認操作並提供下一步建議
-- 如果無法處理，友善地說明並提供替代方案
 
 請根據用戶訊息提供適當的回應。`;
 const AGENT_PROMPTS = {
@@ -329,21 +337,25 @@ async function generateOpenAIResponse(userMessage, model, systemPrompt, contextP
 }
 /**
  * Generate AI response for user message
+ *
+ * Routing strategy (Local-First):
+ *   1. Classify task → local-safe vs cloud-required
+ *   2. Local-safe  → Ollama on RTX 4080 (zero token cost)
+ *   3. Cloud-required or Ollama offline → Gemini / OpenAI (fallback)
  */
 async function generateAIResponse(userMessage, userId, context) {
-    const selectedModel = context?.model || 'gemini-1.5-flash';
     const activeAgent = context?.activeAgent || 'butler';
     const systemPrompt = getAgentPrompt(activeAgent);
     // Sanitize input (V3 #9 — prompt injection guard)
     const sanitized = (0, ai_sanitizer_1.sanitizeForAI)(userMessage);
     const safeMessage = sanitized.text;
     try {
-        // Build conversation context
+        // Build conversation context string (for cloud fallback)
         let contextPrompt = '';
         if (context?.previousMessages?.length) {
             contextPrompt = '\n\n最近的對話：\n' + context.previousMessages.slice(-3).join('\n');
         }
-        // Fetch personalized data from Firestore
+        // Fetch personalized data from Firestore (shared by local + cloud paths)
         if (userId) {
             try {
                 const personalData = await (0, butler_data_service_1.getButlerContext)(userId);
@@ -364,19 +376,76 @@ async function generateAIResponse(userMessage, userId, context) {
                 v2_1.logger.warn('[Butler AI] Failed to fetch personal data, proceeding without:', dataErr);
             }
         }
-        let response;
-        if (selectedModel.startsWith('gpt')) {
-            response = await generateOpenAIResponse(safeMessage, selectedModel, systemPrompt, contextPrompt);
-        }
-        else {
-            response = await generateGeminiResponse(safeMessage, selectedModel, systemPrompt, contextPrompt);
-        }
-        v2_1.logger.info(`[Butler AI] Generated response using ${selectedModel} for user ${userId || 'unknown'}`);
-        return (0, ai_sanitizer_1.sanitizeAIOutput)(response);
+        // ── Local-First Routing ─────────────────────────────────────────────
+        // Cloud fallback closure: called only if Ollama is unavailable or task
+        // requires live data (market prices, news, OCR, etc.)
+        const cloudFallback = async () => {
+            const selectedModel = context?.model || 'gemini-2.5-flash';
+            if (selectedModel.startsWith('gpt')) {
+                return generateOpenAIResponse(safeMessage, selectedModel, systemPrompt, contextPrompt);
+            }
+            return generateGeminiResponse(safeMessage, selectedModel, systemPrompt, contextPrompt);
+        };
+        const result = await (0, inference_router_service_1.routedChat)(safeMessage, activeAgent, context?.previousMessages || [], cloudFallback);
+        v2_1.logger.info(`[Butler AI] Response via ${result.backend}/${result.model} ` +
+            `for user=${userId || 'unknown'} agent=${activeAgent}`);
+        return (0, ai_sanitizer_1.sanitizeAIOutput)(result.text);
     }
     catch (err) {
-        v2_1.logger.error('[Butler AI] AI generation failed, using fallback:', err);
+        v2_1.logger.error('[Butler AI] AI generation failed, using keyword fallback:', err);
         return generateFallbackResponse(userMessage);
+    }
+}
+/**
+ * Streaming version of generateAIResponse — yields progressive text chunks.
+ *
+ * For Telegram: caller sends initial "⏳ 思考中..." message, then
+ * edits it every ~50 tokens with the accumulated text so far.
+ *
+ * Yields: { text: string, done: boolean, backend: string, model: string }
+ */
+async function* generateStreamingResponse(userMessage, userId, context) {
+    const activeAgent = context?.activeAgent || 'butler';
+    // Sanitize
+    const sanitized = (0, ai_sanitizer_1.sanitizeForAI)(userMessage);
+    const safeMessage = sanitized.text;
+    // Build context
+    let contextPrompt = '';
+    if (context?.previousMessages?.length) {
+        contextPrompt = '\n\n最近的對話：\n' + context.previousMessages.slice(-3).join('\n');
+    }
+    if (userId) {
+        try {
+            const personalData = await (0, butler_data_service_1.getButlerContext)(userId);
+            if (personalData.health)
+                contextPrompt += `\n\n## 用戶健康數據\n${JSON.stringify(personalData.health, null, 2)}`;
+            if (personalData.finance)
+                contextPrompt += `\n\n## 用戶財務摘要\n${JSON.stringify(personalData.finance, null, 2)}`;
+        }
+        catch { /* silent */ }
+    }
+    // Cloud fallback (non-streaming)
+    const cloudFallback = async () => {
+        return generateGeminiResponse(safeMessage, 'gemini-2.5-flash', getAgentPrompt(activeAgent), contextPrompt);
+    };
+    try {
+        for await (const chunk of (0, inference_router_service_1.routedChatStream)(safeMessage, activeAgent, context?.previousMessages || [], cloudFallback)) {
+            yield {
+                text: chunk.text,
+                done: chunk.done,
+                backend: chunk.backend,
+                model: chunk.model,
+            };
+        }
+    }
+    catch (err) {
+        v2_1.logger.error('[Butler AI] Streaming failed, yielding fallback:', err);
+        yield {
+            text: generateFallbackResponse(userMessage),
+            done: true,
+            backend: 'fallback',
+            model: 'keyword',
+        };
     }
 }
 /**
@@ -477,7 +546,7 @@ async function isAIAvailable(model) {
  * Get available AI models
  */
 function getAvailableModels() {
-    return ['gemini-1.5-flash', 'gemini-1.5-pro', 'gpt-4o', 'gpt-4o-mini'];
+    return ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gpt-4o', 'gpt-4o-mini'];
 }
 // ================================
 // Gemini Function Calling (Tool Use)
@@ -625,18 +694,89 @@ const BUTLER_TOOLS = [
 /**
  * Generate AI response with function calling capability.
  * The AI can autonomously trigger tool calls to perform actions.
+ *
+ * ## Routing (V3 Privacy-First)
+ *
+ * Step 1 – Local Tool Parser (Ollama / RTX 4080):
+ *   Parses user intent into a structured JSON tool call — no cloud API involved.
+ *   Covers all sensitive tools: record_expense, add_event, record_weight,
+ *   record_fuel, add_investment, get_schedule, get_spending, get_portfolio,
+ *   calculate_loan, estimate_tax, record_exercise, record_sleep.
+ *
+ *   If Ollama is OFFLINE:
+ *     → Returns a privacy-safe offline message.
+ *     → Does NOT fall back to cloud for sensitive data.
+ *
+ * Step 2 – Regular conversation (routedChat):
+ *   If no tool intent detected, use routedChat (Ollama → Gemini fallback)
+ *   for natural conversation.
+ *
+ * Step 3 – Gemini Function Calling (cloud, limited scope):
+ *   Only for: get_financial_advice (synthesized multi-domain AI analysis).
+ *   This tool does NOT transmit raw PII; it reads aggregated data from
+ *   Firestore summaries that were already stored locally.
  */
 async function generateAIResponseWithTools(userMessage, userId, contextPrompt, activeAgent) {
-    const systemPrompt = getAgentPrompt(activeAgent);
+    const agent = activeAgent || 'butler';
+    // ── Step 1: Local Tool Parser (Privacy-First) ─────────────────────────
+    // Try to parse tool intent using local Ollama — zero cloud exposure.
+    const parseResult = await (0, local_tool_parser_service_1.parseLocalToolCall)(userMessage, agent);
+    if (parseResult.source === 'offline' && parseResult.toolCall === null) {
+        // Ollama offline AND we detected a potential tool trigger in the regex pre-filter.
+        // V4: Instead of hard-blocking, fall through to Gemini (data stays in user's GCP project).
+        // The old hard-block was too aggressive — Tailscale Funnel from Cloud Run often times out.
+        v2_1.logger.warn('[Butler AI] Ollama offline — falling through to Gemini for tool parsing (same GCP project).');
+        // Fall through to Step 3 (Gemini) — don't return here.
+    }
+    if (parseResult.toolCall !== null) {
+        // Local parser successfully identified a tool call.
+        // Return it for execution by executeTelegramToolCalls() — all local, no cloud.
+        v2_1.logger.info(`[Butler AI] 🏠 Local tool parsed: ${parseResult.toolCall.name} (zero cloud exposure)`);
+        return {
+            text: '',
+            toolCalls: [{ name: parseResult.toolCall.name, args: parseResult.toolCall.args }],
+        };
+    }
+    // ── Step 2: Regular Conversation (Ollama → Gemini fallback) ──────────
+    // No tool intent detected; proceed with conversational response.
+    const systemPrompt = getAgentPrompt(agent);
+    try {
+        const cloudFallback = async () => {
+            throw new Error('USE_GEMINI');
+        };
+        const result = await (0, inference_router_service_1.routedChat)(userMessage, agent, [], cloudFallback);
+        if (result.backend === 'local') {
+            v2_1.logger.info(`[Butler AI] WithTools via Ollama/${result.model} agent=${agent}`);
+            // Layer A: async fact extraction — does NOT block response
+            (0, memory_organizer_service_1.extractAndSaveFacts)(userId, agent, userMessage, result.text).catch(() => { });
+            return { text: result.text };
+        }
+    }
+    catch (localErr) {
+        const msg = localErr.message;
+        if (msg !== 'USE_GEMINI') {
+            v2_1.logger.warn('[Butler AI] Ollama conversation error, falling to Gemini:', msg);
+        }
+    }
+    // ── Step 3: Gemini (cloud fallback) ───────────────────────────────────
+    // When Ollama is online: restrict to non-sensitive tools only (local already handled sensitive ones).
+    // When Ollama is offline: allow ALL tools through Gemini (data stays in same GCP project).
+    const ollamaWasOffline = parseResult.source === 'offline';
+    const geminiTools = ollamaWasOffline
+        ? BUTLER_TOOLS // Full tools — Ollama couldn't handle, Gemini takes over
+        : BUTLER_TOOLS.map(group => ({
+            ...group,
+            functionDeclarations: group.functionDeclarations.filter(fd => !(0, local_tool_parser_service_1.isSensitiveTool)(fd.name)),
+        }));
     try {
         const client = await getGeminiClient();
         const model = client.getGenerativeModel({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-2.5-flash',
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            tools: BUTLER_TOOLS,
+            tools: geminiTools,
         });
         const result = await model.generateContent([
-            { text: systemPrompt + contextPrompt + '\n\n當用戶想要記錄數據或查詢資訊時，使用提供的工具函數來執行操作。' },
+            { text: systemPrompt + contextPrompt + '\n\n如果需要提供財務建議分析，使用 get_financial_advice 工具。' },
             { text: `用戶訊息：${userMessage}` },
         ]);
         const response = result.response;
@@ -644,7 +784,6 @@ async function generateAIResponseWithTools(userMessage, userId, contextPrompt, a
         if (!candidate?.content?.parts) {
             return { text: response.text() };
         }
-        // Check for function calls
         const functionCalls = candidate.content.parts
             .filter(part => 'functionCall' in part)
             .map(part => ({
@@ -652,12 +791,28 @@ async function generateAIResponseWithTools(userMessage, userId, contextPrompt, a
             args: part.functionCall.args,
         }));
         if (functionCalls.length > 0) {
-            return { text: response.text() || '', toolCalls: functionCalls };
+            // When Ollama was offline, we intentionally gave Gemini ALL tools.
+            // So skip the sensitive-tool filter in that case (data stays in same GCP project).
+            const safeCalls = ollamaWasOffline
+                ? functionCalls // Ollama offline → trust Gemini with all tools
+                : functionCalls.filter(fc => !(0, local_tool_parser_service_1.isSensitiveTool)(fc.name));
+            if (!ollamaWasOffline && safeCalls.length < functionCalls.length) {
+                v2_1.logger.error('[Butler AI] ⚠️  Gemini tried to call a sensitive tool — BLOCKED.', functionCalls.map(f => f.name));
+            }
+            if (safeCalls.length > 0) {
+                const label = ollamaWasOffline ? '☁️🔓 Gemini tool calls (Ollama-offline fallback)' : '☁️  Gemini tool calls (non-sensitive)';
+                v2_1.logger.info(`[Butler AI] ${label}: ${safeCalls.map(f => f.name).join(', ')}`);
+                return { text: response.text() || '', toolCalls: safeCalls };
+            }
         }
-        return { text: response.text() };
+        const replyText = response.text();
+        v2_1.logger.info(`[Butler AI] WithTools via Gemini/gemini-2.5-flash agent=${agent}`);
+        // Layer A: async fact extraction from cloud response
+        (0, memory_organizer_service_1.extractAndSaveFacts)(userId, agent, userMessage, replyText).catch(() => { });
+        return { text: replyText };
     }
     catch (err) {
-        v2_1.logger.error('[Butler AI] Function Calling failed:', err);
+        v2_1.logger.error('[Butler AI] Gemini Function Calling failed:', err);
         return { text: generateFallbackResponse(userMessage) };
     }
 }

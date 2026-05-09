@@ -36,10 +36,13 @@ const FETCH_TIMEOUT_MS = 90_000; // 90s — LangGraph pipelines can take time
 investRouter.post('/analyze', async (req: Request, res: Response) => {
     const { symbol, timeframe = '1h', risk_level = 'moderate', user_context } = req.body as InvestBrainAnalyzeRequest;
 
-    if (!symbol) {
-        res.status(400).json({ error: 'symbol is required' });
+    if (typeof symbol !== 'string' || !symbol.trim()) {
+        res.status(400).json({ error: 'symbol must be a non-empty string' });
         return;
     }
+    if (typeof timeframe !== 'string') { res.status(400).json({ error: 'timeframe must be a string' }); return; }
+    if (typeof risk_level !== 'string') { res.status(400).json({ error: 'risk_level must be a string' }); return; }
+    if (user_context !== undefined && typeof user_context !== 'string') { res.status(400).json({ error: 'user_context must be a string' }); return; }
 
     // C-02: Whitelist validation before forwarding to Investment Brain
     const normalizedSymbol = String(symbol).toUpperCase().trim();
@@ -125,10 +128,13 @@ investRouter.post('/analyze', async (req: Request, res: Response) => {
 investRouter.post('/analyze/stream', async (req: Request, res: Response) => {
     const { symbol, timeframe = '1h', risk_level = 'moderate', user_context } = req.body as InvestBrainAnalyzeRequest;
 
-    if (!symbol) {
-        res.status(400).json({ error: 'symbol is required' });
+    if (typeof symbol !== 'string' || !symbol.trim()) {
+        res.status(400).json({ error: 'symbol must be a non-empty string' });
         return;
     }
+    if (typeof timeframe !== 'string') { res.status(400).json({ error: 'timeframe must be a string' }); return; }
+    if (typeof risk_level !== 'string') { res.status(400).json({ error: 'risk_level must be a string' }); return; }
+    if (user_context !== undefined && typeof user_context !== 'string') { res.status(400).json({ error: 'user_context must be a string' }); return; }
 
     const normalizedSymbol = String(symbol).toUpperCase().trim();
     if (!isValidSymbol(normalizedSymbol)) {
@@ -322,8 +328,8 @@ investRouter.get('/sessions', async (_req: Request, res: Response) => {
 // ── GET /invest/quote ─────────────────────────────────────
 investRouter.get('/quote', async (req: Request, res: Response) => {
     const symbol = req.query.symbol as string;
-    if (!symbol) {
-        res.status(400).json({ error: 'symbol is required' });
+    if (typeof symbol !== 'string' || !symbol.trim()) {
+        res.status(400).json({ error: 'symbol must be a non-empty string' });
         return;
     }
     try {
@@ -346,8 +352,10 @@ investRouter.get('/candles', async (req: Request, res: Response) => {
     const start = req.query.start as string;
     const end = req.query.end as string;
     
-    if (!symbol || !start || !end) {
-        res.status(400).json({ error: 'symbol, start, and end are required' });
+    if (typeof symbol !== 'string' || !symbol.trim() ||
+        typeof start !== 'string' || !start.trim() ||
+        typeof end !== 'string' || !end.trim()) {
+        res.status(400).json({ error: 'symbol, start, and end must be non-empty strings' });
         return;
     }
     try {
@@ -367,6 +375,7 @@ investRouter.get('/candles', async (req: Request, res: Response) => {
 // ── GET /invest/news ──────────────────────────────────────
 investRouter.get('/news', async (req: Request, res: Response) => {
     const symbol = req.query.symbol as string || '';
+    if (typeof symbol !== 'string') { res.status(400).json({ error: 'symbol must be a string' }); return; }
     
     try {
         const response = await fetch(`${INVESTMENT_BRAIN_URL}/invest/news?symbol=${encodeURIComponent(symbol)}`, {

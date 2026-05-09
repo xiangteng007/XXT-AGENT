@@ -1,10 +1,7 @@
 /**
- * app.ts — A-01: Express Application (分離自 index.ts)
+ * app.ts �?A-01: Express Application (分離�?index.ts)
  *
- * 將所有路由掛載與中間件配置集中在此處，
- * 使 Express app 可獨立被 supertest 載入進行整合測試，
- * 而不需要啟動 http.Server + WebSocket。
- *
+ * 將所有路由掛載與中間件配置集中在此處�? * �?Express app 可獨立被 supertest 載入進行整合測試�? * 而不需要啟�?http.Server + WebSocket�? *
  * index.ts 負責：HTTP server、WebSocket、graceful shutdown
  * 本檔負責：Express app 設定、路由掛載、中間件
  */
@@ -38,9 +35,11 @@ import { novaRouter } from "./routes/nova";         // E-1: Nova HR Agent
 import { sageRouter } from "./routes/sage";         // E-3: Sage Analytics Agent
 import { turnkeyRouter } from "./routes/turnkey-pipeline"; // Turnkey Delivery Engine
 import { kaizenRouter } from "./routes/kaizen";            // Kaizen Self-Improvement Engine
+import orchestrationRouter from "./routes/orchestration"; // v9.0: AOP 協調引擎
+import { discussionRouter } from "./routes/discussion";  // Phase 4: LangGraph Discussion
 import { firebaseAuthMiddleware } from "./middleware/firebase-auth";
 import { globalRateLimit, agentRateLimit, financeRateLimit, getRateLimitStats } from "./middleware/rate-limiter";
-import { requestIdMiddleware, globalErrorHandler, notFoundHandler } from "./middleware/error-handler";
+import { requestIdMiddleware, requestTimingMiddleware, globalErrorHandler, notFoundHandler } from "./middleware/error-handler";
 import { getContextStoreStats } from "./context-store";
 import { setupSwagger } from "./swagger";            // L1: OpenAPI 文件
 
@@ -62,15 +61,16 @@ export const ALLOWED_ORIGINS = process.env["CORS_ALLOWED_ORIGINS"]
 // ── Express 應用 ──────────────────────────────────────────────
 export const app = express();
 
-// L1: Swagger 生成在中間件前挂載，讓 /api-docs 路由优先完成
+// L1: Swagger 生成在中間件前挂載，�?/api-docs 路由优先完成
 setupSwagger(app);
 
-// M-04: Cloud Run 代理層必須啟用 trust proxy
+// M-04: Cloud Run 代理層必須啟�?trust proxy
 app.set('trust proxy', true);
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(helmet());
 app.use(requestIdMiddleware);
+app.use(requestTimingMiddleware);
 app.use(globalRateLimit);
 
 // CORS
@@ -82,7 +82,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   }
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Request-ID",
+    "Content-Type, Authorization, X-Request-ID, X-Trace-ID, traceparent, tracestate",
   );
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
   if (req.method === "OPTIONS") {
@@ -99,7 +99,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
  *   get:
  *     tags: [System]
  *     summary: 系統健康檢查
- *     description: 回傳 Gateway 狀態、本地 Runner、WebSocket 連線數、Context Store 統計
+ *     description: 回傳 Gateway 狀態、本�?Runner、WebSocket 連線數、Context Store 統計
  *     security: []
  *     responses:
  *       200:
@@ -109,17 +109,38 @@ app.use((req: Request, res: Response, next: NextFunction) => {
  *             schema:
  *               $ref: '#/components/schemas/HealthResponse'
  */
-app.get("/health", (_req: Request, res: Response) => {
+app.get("/health", async (_req: Request, res: Response) => {
   let wsConnections = 0;
   try { wsConnections = getWss().clients.size; } catch { /* WS not init in tests */ }
 
+  // v9.0: ChromaDB 健康檢查（非同步，帶 timeout）
+  let chromaStatus: Record<string, unknown> = { enabled: false };
+  try {
+    const chromaUrl = process.env["CHROMADB_URL"];
+    if (chromaUrl) {
+      const signal = AbortSignal.timeout(2000);
+      const resp = await fetch(`${chromaUrl}/api/v1/heartbeat`, { signal });
+      chromaStatus = {
+        enabled: true,
+        reachable: resp.ok,
+        status: resp.status,
+      };
+    }
+  } catch {
+    chromaStatus = { enabled: Boolean(process.env["CHROMADB_URL"]), reachable: false };
+  }
+
   res.json({
     status: "ok",
+    version: "9.0",
     deploy_mode: DEPLOY_MODE,
     local_runner: localRunner.getStatus(),
     ws_connections: wsConnections,
     context_store: getContextStoreStats(),
     rate_limit_stats: getRateLimitStats(),
+    // v9.0 新增子系統狀�?    rag_memory: chromaStatus,
+    otel_enabled: process.env["OTEL_ENABLED"] === "true",
+    aop_enabled: true,
     server_time: new Date().toISOString(),
   });
 });
@@ -128,7 +149,7 @@ app.use("/vram", vramRouter);
 app.use("/system", systemRouter);
 app.use("/system/agent-bus", agentBusRouter);
 app.use("/system/ai-cost", aiCostRouter);
-app.use("/system/reconcile", reconcileRouter);   // C-1d: Accountant ↔ Finance 對帳
+app.use("/system/reconcile", reconcileRouter);   // C-1d: Accountant �?Finance 對帳
 app.use("/system/turnkey", turnkeyRouter);       // Turnkey Delivery State Machine
 app.use("/system/kaizen", kaizenRouter);         // Agent self-improvement framework
 
@@ -141,23 +162,29 @@ app.use("/invest", firebaseAuthMiddleware, investRouter);
 app.use("/audit", firebaseAuthMiddleware, auditRouter);
 app.use("/regulation", firebaseAuthMiddleware, regulationRouter);
 
-// Division 5 — Financial Layer (強制 PRIVATE + 財務速率限制)
+// Division 5 �?Financial Layer (強制 PRIVATE + 財務速率限制)
 // Note: firebaseAuthMiddleware already applied at the /agents level (L137)
 app.use("/agents/accountant", financeRateLimit, accountantRouter);
 app.use("/agents/guardian",   financeRateLimit, guardianRouter);
 app.use("/agents/finance",    financeRateLimit, financeRouter);
 app.use("/agents/nova",       financeRateLimit, novaRouter);  // E-1: Nova HR
 
-// Division 6 — Engineering & Spatial Design Layer
+// Division 6 �?Engineering & Spatial Design Layer
 app.use("/agents/bim", firebaseAuthMiddleware, bimRouter);
 app.use("/agents/interior", firebaseAuthMiddleware, interiorRouter);
 app.use("/agents/estimator", firebaseAuthMiddleware, estimatorRouter);
 
-// Division 7 — Business Operations Layer (v2.0)
+// Division 7 �?Business Operations Layer (v2.0)
 app.use("/agents/scout", firebaseAuthMiddleware, agentRateLimit, scoutRouter);
 app.use("/agents/zora", firebaseAuthMiddleware, agentRateLimit, zoraRouter);
 app.use("/agents/lex", firebaseAuthMiddleware, agentRateLimit, lexRouter);
 app.use("/agents/sage", firebaseAuthMiddleware, agentRateLimit, sageRouter);
+
+// ── v9.0: Agent Orchestration Protocol (AOP) ────────────────
+app.use("/orchestration", firebaseAuthMiddleware, orchestrationRouter);
+
+// ── Phase 4: LangGraph Multi-Agent Discussion ────────────────
+app.use("/agents/discuss", firebaseAuthMiddleware, discussionRouter);
 
 // ── 404 + 全局 Error Handler（必須在所有路由之後）────────────────
 app.use(notFoundHandler);

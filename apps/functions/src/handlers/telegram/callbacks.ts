@@ -119,7 +119,14 @@ export async function executeTelegramToolCalls(
                         date: new Date().toISOString().split('T')[0],
                         bankAccountId: '', source: 'manual' as const,
                     });
-                    results.push(`✅ 已記錄支出：$${amount} (${description || category || '其他'})`);
+                    // V4: 附帶本月累計
+                    let monthCtx = '';
+                    try {
+                        const now = new Date();
+                        const ms = await financeService.getMonthlySummary(userId, now.getFullYear(), now.getMonth() + 1);
+                        if (ms) monthCtx = `\n📊 本月累計支出：$${(ms.totalExpenses || 0).toLocaleString()}`;
+                    } catch { /* silent */ }
+                    results.push(`✅ 已記錄支出\n\n💰 $${amount.toLocaleString()} — ${description || category || '其他'}${monthCtx}`);
                     break;
                 }
                 case 'record_weight': {
@@ -181,7 +188,9 @@ export async function executeTelegramToolCalls(
                         shares, price, totalAmount: shares * price, fee: 0,
                         date: new Date().toISOString().split('T')[0],
                     });
-                    results.push(`✅ 已記錄${tradeType === 'buy' ? '買入' : '賣出'}：${symbol} ${shares}股 × $${price}`);
+                    const totalAmt = (shares * price).toLocaleString();
+                    const actionLabel = tradeType === 'buy' ? '買入' : '賣出';
+                    results.push(`✅ 已記錄${actionLabel}\n\n📈 ${symbol.toUpperCase()} × ${shares}股 @ $${price}\n💰 交易金額：$${totalAmt}`);
                     break;
                 }
                 case 'get_portfolio': {
@@ -228,7 +237,14 @@ export async function executeTelegramToolCalls(
             }
         } catch (err) {
             logger.error(`[Telegram] Tool call ${call.name} failed:`, err);
-            results.push(`❌ ${call.name} 執行失敗`);
+            const toolLabels: Record<string, string> = {
+                record_expense: '記帳', add_event: '新增行程', record_weight: '體重記錄',
+                get_schedule: '行程查詢', get_spending: '支出查詢', record_fuel: '加油記錄',
+                add_investment: '投資記錄', get_portfolio: '組合查詢',
+                calculate_loan: '貸款試算', estimate_tax: '稅務估算',
+            };
+            const label = toolLabels[call.name] || call.name;
+            results.push(`❌ ${label}失敗，請稍後再試\n\n💡 你也可以用 /help 查看手動指令`);
         }
     }
     return results;

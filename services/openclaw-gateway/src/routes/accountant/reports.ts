@@ -20,8 +20,12 @@ export const reportsRouter = Router();
 // ── GET /report/entity ── 各實體收支比較 ─────────────────────
 reportsRouter.get('/report/entity', async (req: Request, res: Response) => {
   const { entity, period, year } = req.query as Record<string, string | undefined>;
-  const validEntities: EntityType[] = ['personal', 'family', 'co_drone', 'co_construction', 'co_renovation', 'co_design', 'assoc_rescue'];
+  if (entity !== undefined && typeof entity !== 'string') { res.status(400).json({ error: 'entity must be a string' }); return; }
+  if (period !== undefined && (typeof period !== 'string' || !/^\d{6}$/.test(period))) { res.status(400).json({ error: 'period must be in YYYYMM format' }); return; }
+  if (year !== undefined && (typeof year !== 'string' || !/^\d{4}$/.test(year))) { res.status(400).json({ error: 'year must be in YYYY format' }); return; }
+
   const targetYear = year ? parseInt(year) : new Date().getFullYear();
+  const validEntities: EntityType[] = ['co_construction', 'co_renovation', 'co_design', 'co_drone', 'family'];
   const entitiesToQuery: EntityType[] = validEntities.includes(entity as EntityType) ? [entity as EntityType] : validEntities;
 
   const results = await Promise.all(entitiesToQuery.map(async (ent) => {
@@ -48,6 +52,16 @@ reportsRouter.get('/report/entity', async (req: Request, res: Response) => {
 // ── POST /taxplan ── AI 節稅規劃 ─────────────────────────────
 reportsRouter.post('/taxplan', async (req: Request, res: Response) => {
   const { year, mode } = req.body as { year?: number; mode?: string };
+  if (year !== undefined && (typeof year !== 'number' || year < 2020 || year > 2100 || !Number.isInteger(year))) {
+    res.status(400).json({ error: 'year must be a valid integer between 2020 and 2100' });
+    return;
+  }
+
+  if (mode !== undefined && typeof mode !== 'string') {
+    res.status(400).json({ error: 'mode must be a string' });
+    return;
+  }
+
   const targetYear = year ?? new Date().getFullYear();
   const [companyEntries, personalEntries, familyEntries] = await Promise.all([
     queryEntries({ entity_type: 'co_construction', year: targetYear }),

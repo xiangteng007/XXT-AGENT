@@ -21,8 +21,31 @@ const nextConfig = {
     },
 
     // Rewrites for proxying to standalone services
+    // v9.0: 統一 API 閘道 — 所有服務透過 /api/v1/* 代理
     async rewrites() {
+        const gatewayUrl = process.env.OPENCLAW_GATEWAY_URL || 'http://localhost:3100';
+        const aiGatewayUrl = process.env.AI_GATEWAY_URL || 'http://localhost:8080';
+
         return [
+            // ── OpenClaw Gateway (主 Agent 閘道) ───────────────────
+            {
+                source: '/api/v1/agents/:path*',
+                destination: `${gatewayUrl}/agents/:path*`,
+            },
+            {
+                source: '/api/v1/ws',
+                destination: `${gatewayUrl}/ws`,
+            },
+            {
+                source: '/api/v1/health',
+                destination: `${gatewayUrl}/health`,
+            },
+            // ── AI Gateway (推理端點) ────────────────────────────
+            {
+                source: '/api/v1/ai/:path*',
+                destination: `${aiGatewayUrl}/ai/:path*`,
+            },
+            // ── World Monitor (情報中心) — 本機開發 ────────────────
             {
                 source: '/intelligence/:path*',
                 destination: 'http://localhost:5173/:path*',
@@ -30,7 +53,7 @@ const nextConfig = {
             {
                 source: '/intelligence',
                 destination: 'http://localhost:5173/',
-            }
+            },
         ];
     },
 

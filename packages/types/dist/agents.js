@@ -1,3 +1,4 @@
+"use strict";
 /**
  * @xxt-agent/types — Agent 型別定義 (B-4)
  *
@@ -6,7 +7,9 @@
  *
  * @since v8.0
  */
-export const ALL_AGENT_IDS = [
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ALL_AGENT_IDS = void 0;
+exports.ALL_AGENT_IDS = [
     'accountant', 'guardian', 'finance', 'scout', 'zora', 'lex',
     'nova', 'titan', 'lumi', 'rusty', 'invest', 'sage',
 ];
