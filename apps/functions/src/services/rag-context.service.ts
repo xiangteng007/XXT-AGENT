@@ -13,11 +13,12 @@ import { embedText, isOllamaAvailable } from './local-inference.service';
 // ChromaDB 連線 (對齊 memory-store.service.ts)
 // ──────────────────────────────────────────────
 
-const CHROMADB_BASE_URL = (process.env.CHROMADB_URL || 'http://192.168.31.77:8001').replace(/\/$/, '');
-const CHROMADB_AUTH_TOKEN = process.env.CHROMADB_TOKEN || '';
-const CHROMADB_TENANT = 'default_tenant';
-const CHROMADB_DATABASE = 'default_database';
-const CHROMA_API = `${CHROMADB_BASE_URL}/api/v2`;
+import {
+    CHROMADB_TENANT,
+    CHROMADB_DATABASE,
+    CHROMA_API,
+    chromaHeaders,
+} from '../config/chromadb';
 
 /** Distance threshold �?距離 > 0.55 視為不相關，捨棄 */
 const RELEVANCE_THRESHOLD = 0.55;
@@ -41,14 +42,6 @@ interface RetrievedMemory {
 }
 
 // ──────────────────────────────────────────────
-// Helpers
-// ──────────────────────────────────────────────
-
-function chromaHeaders(): Record<string, string> {
-    const h: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (CHROMADB_AUTH_TOKEN) h['Authorization'] = `Bearer ${CHROMADB_AUTH_TOKEN}`;
-    return h;
-}
 
 async function queryCollection(
     collectionName: string,

@@ -7,7 +7,22 @@ functions/node_modules/
 dashboard/.next/
 standalone/
 functions/lib/
+**/dist/
+**/lib/
+!.agent/skills/**/lib/
+!.agents/skills/**/lib/
 *.js.map
+
+# Python
+**/__pycache__/
+*.pyc
+
+# Debug dumps
+logs.json
+logs_utf8.json
+
+# Database files
+*.sqlite
 
 # Firebase
 .firebase/

@@ -18,9 +18,10 @@ import {
     getPreviousMessages,
     getSession,
 } from '../services/butler/conversation-session.service';
-import { generateAIResponseWithTools, generateStreamingResponse } from '../services/butler-ai.service';
+import { generateStreamingResponse } from '../services/butler-ai.service';
 import { retrieveRAGContext } from '../services/rag-context.service';
 import { preWarmModel } from '../services/local-inference.service';
+import { parseLocalToolCall } from '../services/local-tool-parser.service';
 
 // ---- Modular V3 sub-modules ----
 import { handleCommand } from './telegram/commands';
@@ -149,45 +150,38 @@ export async function handleNaturalLanguage(
         ]);
 
         // 組合 context：短期歷史 + RAG 長期記憶
-        const fullContext = history.join('\n') + ragContext;
+        const fullHistory = ragContext
+            ? [...history, `[RAG Context] ${ragContext}`]
+            : history;
 
-        // ── Step 1: Tool parsing (still non-streaming — tool calls need full parse) ──
-        const response = await generateAIResponseWithTools(
-            text,
-            userId,
-            fullContext,
-            session.activeAgent
-        );
+        // ── Step 1: Local tool parsing (fast, non-streaming) ──
+        const agent = session.activeAgent || 'butler';
+        const parseResult = await parseLocalToolCall(text, agent);
 
-        // ── Tool calls path ──
-        if (response.toolCalls && response.toolCalls.length > 0) {
+        if (parseResult.toolCall !== null) {
+            // Tool intent detected — execute tool calls
             stopTyping();
-            const toolResults = await executeTelegramToolCalls(userId, response.toolCalls);
+            logger.info(`[Telegram] 🔧 Tool detected: ${parseResult.toolCall.name} via ${parseResult.source}`);
+            const toolResults = await executeTelegramToolCalls(
+                userId,
+                [{ name: parseResult.toolCall.name, args: parseResult.toolCall.args }]
+            );
             const combined = toolResults.join('\n\n');
             await appendMessage(userId, 'assistant', combined);
             await sendLongMessage(chatId, combined, {
                 reply_markup: {
-                    inline_keyboard: buildToolFollowUpKeyboard(response.toolCalls),
+                    inline_keyboard: buildToolFollowUpKeyboard(
+                        [{ name: parseResult.toolCall.name, args: parseResult.toolCall.args }]
+                    ),
                 },
             });
             return;
         }
 
-        // ── Conversational path ──
+        // ── Step 2: Streaming conversation (PRIMARY path) ──
+        // No tool intent → stream AI response with progressive Telegram edits
         stopTyping();
-        const aiText = response.text || '';
-
-        if (aiText) {
-            // WithTools Step 2 (Ollama) or Step 3 (Gemini) already produced a response
-            await appendMessage(userId, 'assistant', aiText);
-            const suggestedButtons = inferNextActions(text, aiText, session.activeAgent);
-            await sendLongMessage(chatId, aiText, {
-                reply_markup: { inline_keyboard: suggestedButtons },
-            });
-        } else {
-            // No response from WithTools — use streaming path as fallback
-            await handleStreamingResponse(chatId, userId, text, history, session.activeAgent);
-        }
+        await handleStreamingResponse(chatId, userId, text, fullHistory, agent);
 
     } catch (error) {
         stopTyping();
