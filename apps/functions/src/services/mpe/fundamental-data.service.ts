@@ -153,6 +153,78 @@ export async function fetchMarginBalance(
 }
 
 // ─────────────────────────────────────────
+// TWSE BWIBBU — 本益比/淨值比/殖利率（免費）
+// + FinMind — 外資持股比例
+// ─────────────────────────────────────────
+
+interface ValuationResult {
+  foreignOwnership: number;
+  pe: number;
+  pb: number;
+  dividend: number;
+}
+
+async function fetchValuationMetrics(symbol: string): Promise<ValuationResult> {
+  const result: ValuationResult = { foreignOwnership: 0, pe: 0, pb: 0, dividend: 0 };
+
+  // 1. TWSE BWIBBU_d — PE / PB / Dividend Yield (完全免費)
+  try {
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const url = `${TWSE_BASE}/afterTrading/BWIBBU_d?date=${today}&stockNo=${symbol}&response=json`;
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 XXT-Agent/1.0' },
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (resp.ok) {
+      const json = await resp.json() as {
+        data?: string[][];
+        stat?: string;
+      };
+      if (json.stat === 'OK' && json.data && json.data.length > 0) {
+        // Latest row: [殖利率, 股利年度, 本益比, 股價淨值比, 財報年/季]
+        const latest = json.data[json.data.length - 1];
+        result.dividend = parseFloat(latest[0]) || 0;
+        result.pe = parseFloat(latest[2]) || 0;
+        result.pb = parseFloat(latest[3]) || 0;
+      }
+    }
+  } catch (err) {
+    logger.warn(`[FundamentalData] TWSE BWIBBU fetch failed for ${symbol}:`, err instanceof Error ? err.message : err);
+  }
+
+  // 2. FinMind — 外資持股比例（需 token，無 token 跳過）
+  if (FINMIND_TOKEN) {
+    try {
+      const endDate = new Date().toISOString().slice(0, 10);
+      const startDate = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+      const params = new URLSearchParams({
+        dataset: 'TaiwanStockShareholding',
+        data_id: symbol,
+        start_date: startDate,
+        end_date: endDate,
+        token: FINMIND_TOKEN,
+      });
+      const resp = await fetch(`${FINMIND_BASE}?${params}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (resp.ok) {
+        const json = await resp.json() as { data?: Array<Record<string, unknown>> };
+        const rows = json.data ?? [];
+        if (rows.length > 0) {
+          const latest = rows[rows.length - 1];
+          result.foreignOwnership = Number(latest['ForeignInvestmentSharesRatio'] ?? 0);
+        }
+      }
+    } catch (err) {
+      logger.warn(`[FundamentalData] FinMind shareholding fetch failed for ${symbol}:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  return result;
+}
+
+// ─────────────────────────────────────────
 // Full Fundamental Snapshot
 // ─────────────────────────────────────────
 
@@ -161,9 +233,10 @@ export async function fetchFundamentalSnapshot(symbol: string): Promise<Fundamen
   const cached = await getCachedFundamental(cacheKey);
   if (cached) return cached;
 
-  const [institutional, margin] = await Promise.all([
+  const [institutional, margin, valuation] = await Promise.all([
     fetchInstitutionalFlow(symbol),
     fetchMarginBalance(symbol),
+    fetchValuationMetrics(symbol),
   ]);
 
   const snapshot: FundamentalSnapshot = {
@@ -171,10 +244,10 @@ export async function fetchFundamentalSnapshot(symbol: string): Promise<Fundamen
     date: new Date().toISOString().slice(0, 10),
     institutional,
     margin,
-    foreignOwnership: 0,  // TODO: TWSE FINI API
-    pe: 0,                // TODO: FinMind PriceEarningRatio
-    pb: 0,
-    dividend: 0,
+    foreignOwnership: valuation.foreignOwnership,
+    pe: valuation.pe,
+    pb: valuation.pb,
+    dividend: valuation.dividend,
   };
 
   // Cache for 60 minutes
@@ -225,6 +298,16 @@ export function formatFundamentalForPrompt(snap: FundamentalSnapshot): string {
       `融資餘額：${m.marginBalance.toLocaleString()}千股 (${m.marginBalanceChange > 0 ? '+' : ''}${m.marginBalanceChange.toLocaleString()})`,
       `券資比：${m.shortRatio.toFixed(2)}%`,
     );
+  }
+
+  // Valuation metrics
+  const valParts: string[] = [];
+  if (snap.pe > 0) valParts.push(`PE ${snap.pe.toFixed(1)}`);
+  if (snap.pb > 0) valParts.push(`PB ${snap.pb.toFixed(2)}`);
+  if (snap.dividend > 0) valParts.push(`殖利率 ${snap.dividend.toFixed(2)}%`);
+  if (snap.foreignOwnership > 0) valParts.push(`外資持股 ${snap.foreignOwnership.toFixed(1)}%`);
+  if (valParts.length > 0) {
+    lines.push(`估值：${valParts.join(' / ')}`);
   }
 
   return lines.join('\n');

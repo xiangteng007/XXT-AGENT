@@ -822,21 +822,18 @@ export async function generateAIResponseWithTools(
     // No tool intent detected; proceed with conversational response.
     const systemPrompt = getAgentPrompt(agent);
     try {
-        const cloudFallback = async (): Promise<string> => {
-            throw new Error('USE_GEMINI');
-        };
+        // Cloud fallback returns null to signal "use Gemini WithTools instead"
+        const cloudFallback = async (): Promise<string> => '';
         const result = await routedChat(userMessage, agent, [], cloudFallback);
-        if (result.backend === 'local') {
+        if (result.backend === 'local' && result.text) {
             logger.info(`[Butler AI] WithTools via Ollama/${result.model} agent=${agent}`);
             // Layer A: async fact extraction — does NOT block response
             extractAndSaveFacts(userId, agent, userMessage, result.text).catch(() => {/* silent */});
             return { text: result.text };
         }
+        // Cloud fallback returned empty → fall through to Gemini WithTools (Step 3)
     } catch (localErr) {
-        const msg = (localErr as Error).message;
-        if (msg !== 'USE_GEMINI') {
-            logger.warn('[Butler AI] Ollama conversation error, falling to Gemini:', msg);
-        }
+        logger.warn('[Butler AI] Ollama conversation error, falling to Gemini:', (localErr as Error).message);
     }
 
     // ── Step 3: Gemini (cloud fallback) ───────────────────────────────────
