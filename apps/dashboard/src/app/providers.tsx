@@ -7,6 +7,7 @@
 
 import { ReactNode } from 'react';
 import { AuthProvider } from '@/lib/AuthContext';
+import { RBACProvider } from '@/contexts/RBACContext';
 
 interface ProvidersProps {
     children: ReactNode;
@@ -15,7 +16,9 @@ interface ProvidersProps {
 export function Providers({ children }: ProvidersProps) {
     return (
         <AuthProvider>
-            {children}
+            <RBACProvider>
+                {children}
+            </RBACProvider>
         </AuthProvider>
     );
 }
