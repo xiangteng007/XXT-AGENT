@@ -57,6 +57,17 @@ const nextConfig = {
         ];
     },
 
+    // Root redirect — handled at config level to avoid SSG issues
+    async redirects() {
+        return [
+            {
+                source: '/',
+                destination: '/butler',
+                permanent: false,
+            },
+        ];
+    },
+
     // Security headers
     async headers() {
         return [

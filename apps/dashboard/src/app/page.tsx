@@ -1,11 +1,8 @@
-export const dynamic = 'force-dynamic';
-
-import { redirect } from 'next/navigation';
-
 /**
- * Root page redirect — sends all traffic to the main app.
- * The (app) layout handles auth checks and will redirect to /login if needed.
+ * Root page — minimal placeholder.
+ * Actual redirect from / → /butler is handled via next.config.js redirects
+ * to avoid SSG errors on Vercel (redirect() is a dynamic server function).
  */
 export default function RootPage() {
-    redirect('/butler');
+    return null;
 }
