@@ -27,12 +27,17 @@ export default function MetricsPage() {
 
     useEffect(() => {
         async function loadMetrics() {
-            const token = await getIdToken();
-            const res = await fetch('/api/admin/metrics', {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (res.ok) {
-                setData(await res.json());
+            try {
+                const token = await getIdToken();
+                if (!token) { setLoading(false); return; }
+                const res = await fetch('/api/admin/metrics', {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (res.ok) {
+                    setData(await res.json());
+                }
+            } catch (err) {
+                console.error('Failed to load metrics:', err);
             }
             setLoading(false);
         }

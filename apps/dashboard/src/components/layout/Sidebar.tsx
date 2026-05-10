@@ -256,14 +256,7 @@ const mainNav: NavItem[] = [
             { href: '/ai/analysis', label: '🧠 AI 分析' },
         ],
     },
-    {
-        href: '/guardian', label: '保險守衛', icon: <ShieldIcon />,
-        children: [
-            { href: '/guardian', label: '🛡️ 守衛總覽' },
-            { href: '/guardian/policies', label: '📋 保單列表' },
-            { href: '/guardian/bookings', label: '📅 自動預約' },
-        ],
-    },
+    { href: '/guardian', label: '保險守衛', icon: <ShieldIcon /> },
     { href: '/scout', label: 'UAV 任務', icon: <CarIcon /> },
     { href: '/lex', label: '合約法務', icon: <LogIcon /> },
     { href: '/zora', label: '協會管理', icon: <HeartIcon /> },
@@ -278,17 +271,6 @@ const adminNav: NavItem[] = [
     { href: '/logs', label: '系統日誌', icon: <LogIcon /> },
     { href: '/metrics', label: '系統指標', icon: <ChartIcon /> },
     { href: '/system', label: '系統健康', icon: <BellIcon /> },
-    {
-        href: '/dashboard', label: 'Showcase', icon: <ChartIcon />,
-        children: [
-            { href: '/dashboard/infrastructure', label: '🏗️ 基礎設施' },
-            { href: '/dashboard/financial', label: '💰 財務總覽' },
-            { href: '/dashboard/observability', label: '🔍 可觀測性' },
-            { href: '/dashboard/matrix', label: '🧬 Agent 矩陣' },
-            { href: '/dashboard/war-room', label: '⚔️ 戰情室' },
-            { href: '/dashboard/bots', label: '🤖 Bot 中心' },
-        ],
-    },
 ];
 
 const settingsNav: NavItem[] = [

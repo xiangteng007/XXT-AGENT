@@ -51,6 +51,9 @@ export default function TeamMembersPage() {
     useEffect(() => {
         if (currentTeamId) {
             loadMembers();
+        } else {
+            // No team configured — stop loading to prevent infinite skeleton
+            setIsLoading(false);
         }
     }, [currentTeamId, loadMembers]);
 

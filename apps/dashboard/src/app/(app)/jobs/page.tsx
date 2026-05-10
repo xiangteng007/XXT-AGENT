@@ -20,19 +20,30 @@ export default function JobsPage() {
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('');
 
+    const [error, setError] = useState<string | null>(null);
+
     const loadJobs = useCallback(async () => {
         setLoading(true);
-        const token = await getIdToken();
-        const params = new URLSearchParams();
-        if (statusFilter) params.set('status', statusFilter);
-        params.set('limit', '100');
+        try {
+            const token = await getIdToken();
+            if (!token) { setError('尚未登入'); setLoading(false); return; }
+            const params = new URLSearchParams();
+            if (statusFilter) params.set('status', statusFilter);
+            params.set('limit', '100');
 
-        const res = await fetch(`/api/admin/jobs?${params}`, {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-            const data = await res.json();
-            setJobs(data.jobs);
+            const res = await fetch(`/api/admin/jobs?${params}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setJobs(data.jobs);
+                setError(null);
+            } else {
+                setError(`API 錯誤 (${res.status})`);
+            }
+        } catch (err) {
+            console.error('Failed to load jobs:', err);
+            setError('無法連線到後端服務');
         }
         setLoading(false);
     }, [getIdToken, statusFilter]);
@@ -82,7 +93,12 @@ export default function JobsPage() {
                 </select>
             </div>
 
-            {loading ? <p>載入中...</p> : (
+            {error ? (
+                <div style={{ textAlign: 'center', padding: '48px 24px' }}>
+                    <p style={{ fontSize: '18px', color: 'var(--text-primary)', marginBottom: '8px' }}>⚠️ {error}</p>
+                    <button className="btn btn-secondary" onClick={loadJobs}>重試</button>
+                </div>
+            ) : loading ? <p>載入中...</p> : (
                 <table className={styles.table}>
                     <thead><tr><th>Job ID</th><th>Tenant</th><th>狀態</th><th>Attempts</th><th>建立時間</th><th>操作</th></tr></thead>
                     <tbody>

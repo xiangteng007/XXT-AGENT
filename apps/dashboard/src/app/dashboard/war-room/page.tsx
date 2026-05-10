@@ -231,7 +231,7 @@ export default function WarRoomPage() {
               currency: 'NTD',
               date: '2026-05-01',
               category: '工程款',
-              entity: 'SENTENG',
+              entity: 'XXT',
               description: '第2期工程款入帳',
               entry_id: 'TX-202605-001'
             }} 

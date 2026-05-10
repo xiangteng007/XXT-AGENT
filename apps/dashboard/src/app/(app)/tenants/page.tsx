@@ -33,18 +33,29 @@ export default function TenantsPage() {
         timezone: 'Asia/Taipei',
     });
 
+    const [error, setError] = useState<string | null>(null);
+
     const loadTenants = useCallback(async () => {
         try {
             const token = await getIdToken();
+            if (!token) {
+                setError('尚未登入或 Firebase 未配置');
+                setLoading(false);
+                return;
+            }
             const res = await fetch('/api/admin/tenants', {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.ok) {
                 const data = await res.json();
                 setTenants(data.tenants);
+                setError(null);
+            } else {
+                setError(`API 錯誤 (${res.status})`);
             }
         } catch (err) {
             console.error('Failed to load tenants:', err);
+            setError('無法連線到後端服務');
         } finally {
             setLoading(false);
         }
@@ -156,7 +167,13 @@ export default function TenantsPage() {
                 </form>
             )}
 
-            {loading ? (
+            {error ? (
+                <div style={{ textAlign: 'center', padding: '48px 24px' }}>
+                    <p style={{ fontSize: '18px', color: 'var(--text-primary)', marginBottom: '8px' }}>⚠️ {error}</p>
+                    <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '16px' }}>請確認後端服務已啟動並已登入管理員帳號</p>
+                    <button className="btn btn-secondary" onClick={loadTenants}>重試</button>
+                </div>
+            ) : loading ? (
                 <p>載入中...</p>
             ) : (
                 <table className={styles.table}>
