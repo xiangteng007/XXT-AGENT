@@ -90,7 +90,7 @@ export async function GET() {
         timestamp: new Date().toISOString(),
         gpu: status,
         config: {
-            ollama_url: OLLAMA_URL.replace(/\\/\\/(.+?)@/, '//***@'),
+            ollama_url: OLLAMA_URL.replace(/:\/\/[^@]+@/, '://***@'),
             gpu_model: 'RTX 4080 SUPER',
             vram_total_mb: 16384,
         },
