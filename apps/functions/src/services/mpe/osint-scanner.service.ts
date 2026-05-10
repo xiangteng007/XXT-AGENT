@@ -288,11 +288,16 @@ export async function runOsintScan(symbol?: string): Promise<SentimentReport> {
     breakdown: breakdown.trim(),
   };
 
-  // Persist to Firestore
-  await db.collection('mpe_sentiment_history').add({
+  // Persist to Firestore (filter out undefined values)
+  const firestoreData: Record<string, unknown> = {
     ...report,
     timestamp: Timestamp.fromDate(report.timestamp),
+  };
+  // Firestore does not accept undefined values
+  Object.keys(firestoreData).forEach(key => {
+    if (firestoreData[key] === undefined) delete firestoreData[key];
   });
+  await db.collection('mpe_sentiment_history').add(firestoreData);
 
   logger.info(`[OSINT] Scan complete: score=${overallScore}, news=${scored.length}, keyEvents=${keyEvents.length}`);
   return report;
