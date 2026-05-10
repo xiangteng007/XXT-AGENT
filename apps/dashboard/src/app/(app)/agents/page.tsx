@@ -1,53 +1,84 @@
 import React from 'react';
 import { AGENTS_DATA } from '@/lib/constants/agents';
 import { AgentCard } from '@/components/ui/agent-card';
-import { Bot } from 'lucide-react';
+import { Bot, Zap, Shield } from 'lucide-react';
 
 export const metadata = {
-  title: 'Agents Directory | XXT-AGENT',
-  description: 'View and manage all connected AI agents',
+  title: 'Agents Directory | XXT',
+  description: '查看並管理所有 AI 代理人',
 };
 
 export default function AgentsPage() {
   const onlineAgents = AGENTS_DATA.filter((a) => a.status === 'ONLINE').length;
+  const standbyAgents = AGENTS_DATA.filter((a) => a.status === 'STANDBY').length;
   const totalAgents = AGENTS_DATA.length;
 
   return (
-    <div className="min-h-screen bg-[#1a1a1a] p-8">
-      <div className="max-w-7xl mx-auto space-y-8">
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-end border-b border-[#3d3d3d]/50 pb-6 bg-gradient-to-b from-[#1a1a1a]/80 to-transparent p-4 rounded-t-lg backdrop-blur-sm">
+    <div className="agents-directory">
+      {/* Hero Header */}
+      <header className="agents-header">
+        <div className="agents-header-content">
+          <div className="agents-header-icon">
+            <Bot size={28} />
+          </div>
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <Bot className="text-[#D97706]" size={28} />
-              <h1 className="text-4xl font-bold text-[#f5f5f5] tracking-tight uppercase drop-shadow-md">
-                Agents Directory
-              </h1>
-            </div>
-            <p className="text-[#9ca3af] font-mono text-sm uppercase tracking-widest drop-shadow-md">
-              System Status: SECURE // Operator ID Verified
+            <h1 className="agents-title">AI 代理人目錄</h1>
+            <p className="agents-subtitle">
+              XXT 智慧代理人生態系 — {totalAgents} 位專業 AI 代理人
             </p>
           </div>
+        </div>
 
-          <div className="mt-4 md:mt-0 flex gap-6 font-mono text-sm bg-[#1a1a1a]/50 p-3 rounded border border-[#3d3d3d]/50 backdrop-blur-md">
-            <div className="flex flex-col items-end">
-              <span className="text-[#9ca3af]">UPLINK STATUS</span>
-              <span className="text-[#10b981] font-bold">
-                {onlineAgents} / {totalAgents} ONLINE
-              </span>
-            </div>
-            <div className="flex flex-col items-end">
-              <span className="text-[#9ca3af]">SYSTEM VERSION</span>
-              <span className="text-[#D97706] font-bold">v8.0</span>
+        <div className="agents-stats">
+          <div className="agents-stat">
+            <Zap size={16} className="agents-stat-icon online" />
+            <div>
+              <span className="agents-stat-value">{onlineAgents}</span>
+              <span className="agents-stat-label">上線中</span>
             </div>
           </div>
-        </header>
+          <div className="agents-stat">
+            <Shield size={16} className="agents-stat-icon standby" />
+            <div>
+              <span className="agents-stat-value">{standbyAgents}</span>
+              <span className="agents-stat-label">待命中</span>
+            </div>
+          </div>
+          <div className="agents-stat">
+            <Bot size={16} className="agents-stat-icon total" />
+            <div>
+              <span className="agents-stat-value">{totalAgents}</span>
+              <span className="agents-stat-label">總數</span>
+            </div>
+          </div>
+        </div>
+      </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {AGENTS_DATA.map((agent) => (
+      {/* Core Team Section */}
+      <section className="agents-section">
+        <h2 className="agents-section-title">
+          <span className="agents-section-dot core" />
+          核心團隊
+        </h2>
+        <div className="agents-grid">
+          {AGENTS_DATA.filter(a => ['argus', 'nova', 'rusty', 'lumi', 'titan'].includes(a.id)).map((agent) => (
             <AgentCard key={agent.id} agent={agent} />
           ))}
         </div>
-      </div>
+      </section>
+
+      {/* UAV Division */}
+      <section className="agents-section">
+        <h2 className="agents-section-title">
+          <span className="agents-section-dot uav" />
+          無人機事業部
+        </h2>
+        <div className="agents-grid">
+          {AGENTS_DATA.filter(a => ['hardware-innovator', 'firmware-engineer', 'forge', 'matter', 'evolution-researcher', 'qa-engineer', 'rf-engineer', 'hmi-designer', 'power-engineer'].includes(a.id)).map((agent) => (
+            <AgentCard key={agent.id} agent={agent} />
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
