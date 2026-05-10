@@ -73,7 +73,7 @@ export function Header({
                 <button className="header-icon-btn" onClick={handleMenuClick} aria-label="Toggle menu">
                     <Menu size={20} strokeWidth={1.5} />
                 </button>
-                <span className="header-logo">SENTENG</span>
+                <span className="header-logo">XXT</span>
             </div>
 
             {/* Center Section */}
