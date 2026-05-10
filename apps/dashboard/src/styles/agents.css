@@ -179,7 +179,8 @@
 }
 
 .agent-card-img {
-  object-fit: contain;
+  object-fit: cover;
+  object-position: center top;
   transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
