@@ -110,40 +110,25 @@ const nextConfig = {
 
 module.exports = nextConfig;
 
+// Sentry build integration — only applied when SENTRY_AUTH_TOKEN is present (CI pipelines).
+// On Vercel, withSentryConfig modifies webpack output causing ENOENT for
+// page_client-reference-manifest.js in route groups with 'use client' pages.
+// Error tracking still works via instrumentation.ts + @sentry/nextjs client SDK.
+if (process.env.SENTRY_AUTH_TOKEN) {
+  const { withSentryConfig } = require("@sentry/nextjs");
 
-
-// Injected content via Sentry wizard below
-
-const { withSentryConfig } = require("@sentry/nextjs");
-
-module.exports = withSentryConfig(module.exports, {
-  org: "xxt-agent",
-  project: "xxt-dashboard",
-
-  // Only print logs for uploading source maps in CI
-  silent: !process.env.CI,
-
-  // Disable source map uploads on Vercel (prevents SSG manifest conflicts)
-  sourcemaps: {
-    disable: !process.env.CI,
-  },
-
-  // Upload a larger set of source maps for prettier stack traces (increases build time)
-  widenClientFileUpload: true,
-
-  // Route browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers.
-  tunnelRoute: "/monitoring",
-
-  // Disable automatic page wrapping that causes page_client-reference-manifest.js errors
-  autoInstrumentServerFunctions: false,
-  autoInstrumentMiddleware: false,
-  autoInstrumentAppDirectory: false,
-
-  webpack: {
-    automaticVercelMonitors: false,
-
-    treeshake: {
-      removeDebugLogging: true,
+  module.exports = withSentryConfig(module.exports, {
+    org: "xxt-agent",
+    project: "xxt-dashboard",
+    silent: !process.env.CI,
+    widenClientFileUpload: true,
+    tunnelRoute: "/monitoring",
+    autoInstrumentServerFunctions: false,
+    autoInstrumentMiddleware: false,
+    autoInstrumentAppDirectory: false,
+    webpack: {
+      automaticVercelMonitors: false,
+      treeshake: { removeDebugLogging: true },
     },
-  },
-});
+  });
+}
