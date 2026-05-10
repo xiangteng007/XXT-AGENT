@@ -1,22 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getAdminDb } from '@/lib/firebase-admin';
 
-if (!getApps().length) {
-    const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
-    if (sa) {
-        initializeApp({ credential: cert(JSON.parse(sa)) });
-    } else {
-        initializeApp();
-    }
-}
-const db = getFirestore();
 
 export async function GET(req: NextRequest) {
     const uid = req.headers.get('x-user-id');
     if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     try {
+        const db = getAdminDb();
         const snapshot = await db.collection(`users/${uid}/butler/finance/loans`)
             .where('isActive', '==', true).get();
         const loans = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));

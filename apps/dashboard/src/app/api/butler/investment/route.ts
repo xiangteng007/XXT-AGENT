@@ -1,22 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
-
-if (!getApps().length) {
-    const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
-    if (sa) {
-        initializeApp({ credential: cert(JSON.parse(sa)) });
-    } else {
-        initializeApp();
-    }
-}
-const db = getFirestore();
+import { getAdminDb } from '@/lib/firebase-admin';
 
 export async function GET(req: NextRequest) {
     const uid = req.headers.get('x-user-id');
     if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     try {
+        const db = getAdminDb();
         // Get holdings
         const holdingsSnap = await db.collection(`users/${uid}/butler/finance/investments`).get();
         const holdings = holdingsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));

@@ -1,16 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getAdminDb } from '@/lib/firebase-admin';
 
-if (!getApps().length) {
-    const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
-    if (sa) {
-        initializeApp({ credential: cert(JSON.parse(sa)) });
-    } else {
-        initializeApp();
-    }
-}
-const db = getFirestore();
+
 
 // Taiwan tax brackets (2025/2026)
 const TAX_BRACKETS = [
@@ -27,6 +18,7 @@ export async function GET(req: NextRequest) {
     if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     try {
+        const db = getAdminDb();
         const year = new Date().getFullYear();
         const doc = await db.doc(`users/${uid}/butler/finance/tax/${year}`).get();
         const profile = doc.exists ? doc.data() : null;
