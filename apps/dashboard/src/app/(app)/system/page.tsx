@@ -28,15 +28,17 @@ const crUrl = (service: string, path = '/healthz') =>
 
 const SERVICES: Array<{ name: string; url: string; emoji: string }> = [
     { name: 'AI Gateway', url: crUrl('ai-gateway', '/health'), emoji: '🤖' },
+    { name: 'OpenClaw Gateway', url: crUrl('openclaw-gateway', '/health'), emoji: '🧠' },
     { name: 'Market Streamer', url: crUrl('market-streamer'), emoji: '📈' },
     { name: 'Quote Normalizer', url: crUrl('quote-normalizer'), emoji: '📊' },
     { name: 'Alert Engine', url: crUrl('alert-engine'), emoji: '🔔' },
     { name: 'News Collector', url: crUrl('news-collector'), emoji: '📰' },
-    { name: 'Trade Planner', url: crUrl('trade-planner-worker'), emoji: '📋' },
-    { name: 'Event Fusion', url: crUrl('event-fusion-engine'), emoji: '⚡' },
+    { name: 'Trade Planner', url: crUrl('trade-planner'), emoji: '📋' },
+    { name: 'Event Fusion', url: crUrl('fusion-engine'), emoji: '⚡' },
     { name: 'Social Worker', url: crUrl('social-worker'), emoji: '👥' },
+    { name: 'Social Collector', url: crUrl('social-collector'), emoji: '📡' },
     { name: 'Social Dispatcher', url: crUrl('social-dispatcher'), emoji: '📤' },
-    { name: 'Telegram Bot', url: crUrl('telegram-command-bot'), emoji: '🤖' },
+    { name: 'Telegram Bot', url: crUrl('telegram-bot'), emoji: '💬' },
 ];
 
 // ================================
