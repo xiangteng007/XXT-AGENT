@@ -42,6 +42,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                     {/* 離線偵測提示 */}
                     <OfflineIndicator />
                 </Providers>
+                <script
+                    dangerouslySetInnerHTML={{
+                        __html: `if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('/sw.js').catch(()=>{})})}`,
+                    }}
+                />
             </body>
         </html>
     );

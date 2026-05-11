@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { exportCSV } from '@/lib/export';
 import { usePortfolios, usePortfolio } from '@/lib/hooks/usePortfolio';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +35,7 @@ import {
     Target,
     Shield,
     Activity,
+    Download,
 } from 'lucide-react';
 
 // Portfolio types
@@ -375,6 +377,23 @@ export default function PortfolioPage() {
                         <Button variant="outline" size="sm">
                             <Edit className="w-4 h-4 mr-1" />
                             編輯組合
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => {
+                            if (!activePortfolio) return;
+                            exportCSV(activePortfolio.positions.map(p => ({
+                                '代碼': p.symbol,
+                                '名稱': p.name,
+                                '數量': p.quantity,
+                                '成本價': p.avgCost,
+                                '現價': p.currentPrice,
+                                '市值': p.marketValue,
+                                '未實現損益': p.unrealizedPnL,
+                                '損益率%': p.unrealizedPnLPct,
+                                '佔比%': p.weight,
+                            })), `portfolio_${activePortfolio.name}`);
+                        }}>
+                            <Download className="w-4 h-4 mr-1" />
+                            匯出 CSV
                         </Button>
                         <Button
                             variant="outline"

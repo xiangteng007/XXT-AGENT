@@ -1,11 +1,11 @@
 {
-    "name": "XXT 個人管家",
-    "short_name": "XXT Butler",
-    "description": "AI 驅動的個人智能管家 — 投資、健康、車輛、行程管理",
+    "name": "XXT Dashboard",
+    "short_name": "XXT",
+    "description": "XXT-AGENT 智能儀表板 — 市場監控、保險管理、AI 助理",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#0a0a0f",
-    "theme_color": "#d4a574",
+    "background_color": "#ffffff",
+    "theme_color": "#745b00",
     "orientation": "any",
     "icons": [
         {
@@ -14,5 +14,6 @@
             "type": "image/x-icon"
         }
     ],
-    "categories": ["finance", "productivity", "lifestyle"]
+    "categories": ["finance", "business", "productivity"],
+    "lang": "zh-TW"
 }
