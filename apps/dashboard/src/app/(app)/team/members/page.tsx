@@ -52,7 +52,12 @@ export default function TeamMembersPage() {
         if (currentTeamId) {
             loadMembers();
         } else {
-            // No team configured — stop loading to prevent infinite skeleton
+            // No team configured — show demo members
+            setMembers([
+                { userId: 'demo-001', email: 'admin@xxt-agent.com', displayName: '系統管理員', role: 'owner' as Role, joinedAt: '2025-01-01T00:00:00Z' },
+                { userId: 'demo-002', email: 'operator@xxt-agent.com', displayName: '操作員', role: 'admin' as Role, joinedAt: '2025-06-15T00:00:00Z' },
+                { userId: 'demo-003', email: 'viewer@xxt-agent.com', displayName: '觀察者', role: 'viewer' as Role, joinedAt: '2026-01-10T00:00:00Z' },
+            ]);
             setIsLoading(false);
         }
     }, [currentTeamId, loadMembers]);

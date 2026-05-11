@@ -86,17 +86,42 @@ export default function SystemHealthPage() {
 
     const refreshAll = useCallback(async () => {
         setIsRefreshing(true);
-        const results = await Promise.allSettled(
-            SERVICES.map(s => checkServiceHealth(s.name, s.url))
-        );
-
-        const statuses = results.map((r, i) =>
-            r.status === 'fulfilled'
-                ? r.value
-                : { name: SERVICES[i].name, url: SERVICES[i].url, status: 'unhealthy' as const, error: 'Check failed' }
-        );
-
-        setServices(statuses);
+        try {
+            // Use server-side proxy to avoid CORS
+            const res = await fetch('/api/system/check');
+            if (res.ok) {
+                const data = await res.json();
+                const statuses: ServiceStatus[] = (data.services || []).map((s: { name: string; status: string; latencyMs: number; error?: string; checkedAt?: string }) => ({
+                    name: s.name,
+                    url: '',
+                    status: s.status as 'healthy' | 'unhealthy',
+                    latencyMs: s.latencyMs,
+                    error: s.error,
+                    checkedAt: s.checkedAt ? new Date(s.checkedAt).toLocaleTimeString('zh-TW') : undefined,
+                }));
+                setServices(statuses);
+            } else {
+                // Fallback: direct check (will likely CORS-fail on production)
+                const results = await Promise.allSettled(
+                    SERVICES.map(s => checkServiceHealth(s.name, s.url))
+                );
+                setServices(results.map((r, i) =>
+                    r.status === 'fulfilled'
+                        ? r.value
+                        : { name: SERVICES[i].name, url: SERVICES[i].url, status: 'unhealthy' as const, error: 'Check failed' }
+                ));
+            }
+        } catch {
+            // Fallback to direct check
+            const results = await Promise.allSettled(
+                SERVICES.map(s => checkServiceHealth(s.name, s.url))
+            );
+            setServices(results.map((r, i) =>
+                r.status === 'fulfilled'
+                    ? r.value
+                    : { name: SERVICES[i].name, url: SERVICES[i].url, status: 'unhealthy' as const, error: 'Check failed' }
+            ));
+        }
         setLastRefresh(new Date().toLocaleTimeString('zh-TW'));
         setIsRefreshing(false);
     }, []);
