@@ -1,9 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useWarRoomStore } from '@/lib/store/warRoomStore';
-import { GuardianWidget } from '@/components/war-room/GuardianWidget';
-import { useAuth } from '@/lib/AuthContext';
+import { Shield, RefreshCw, FileText, DollarSign, CheckCircle, AlertCircle } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
 
 interface PolicySummary {
   policy_id: string;
@@ -17,132 +16,192 @@ interface PolicySummary {
   coverage_end: string;
 }
 
-const GATEWAY_URL = process.env.NEXT_PUBLIC_OPENCLAW_GATEWAY_URL ?? 'http://localhost:3100';
+// Demo policies for when the backend is unavailable
+const DEMO_POLICIES: PolicySummary[] = [
+  {
+    policy_id: 'POL-2026-001',
+    policy_name: '工程營造綜合保險',
+    insurer: '富邦產險',
+    status: 'active',
+    ledger_linked: true,
+    annual_premium: 150000,
+    currency: 'NTD',
+    coverage_start: '2026-01-01',
+    coverage_end: '2026-12-31',
+  },
+  {
+    policy_id: 'POL-2026-002',
+    policy_name: '第三人責任險',
+    insurer: '國泰產險',
+    status: 'active',
+    ledger_linked: true,
+    annual_premium: 85000,
+    currency: 'NTD',
+    coverage_start: '2026-03-01',
+    coverage_end: '2027-02-28',
+  },
+  {
+    policy_id: 'POL-2026-003',
+    policy_name: '營建機具險',
+    insurer: '新光產險',
+    status: 'active',
+    ledger_linked: false,
+    annual_premium: 42000,
+    currency: 'NTD',
+    coverage_start: '2026-06-01',
+    coverage_end: '2027-05-31',
+  },
+];
+
+const GATEWAY_URL = process.env.NEXT_PUBLIC_OPENCLAW_GATEWAY_URL ?? '';
 
 export default function GuardianPage() {
-  const { getIdToken } = useAuth();
-  const openCommsPanel = useWarRoomStore(s => s.openCommsPanel);
   const [policies, setPolicies] = useState<PolicySummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
 
   const fetchPolicies = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
-      const token = await getIdToken();
-      const res = await fetch(`${GATEWAY_URL}/guardian/policies`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      if (!GATEWAY_URL) {
+        setPolicies(DEMO_POLICIES);
+        setIsDemo(true);
+        setLoading(false);
+        return;
+      }
+      const res = await fetch(`${GATEWAY_URL}/guardian/policies`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setPolicies(data.policies ?? []);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(`無法載入保單資料：${msg}`);
+      setIsDemo(false);
+    } catch {
+      setPolicies(DEMO_POLICIES);
+      setIsDemo(true);
     } finally {
       setLoading(false);
     }
-  }, [getIdToken]);
+  }, []);
 
-  useEffect(() => {
-    fetchPolicies();
-  }, [fetchPolicies]);
+  useEffect(() => { fetchPolicies(); }, [fetchPolicies]);
+
+  const activePolicies = policies.filter(p => p.status === 'active');
+  const totalPremium = policies.reduce((sum, p) => sum + p.annual_premium, 0);
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-[#0ea5e9] font-mono tracking-tight">
-            🛡️ 保險守衛 Guardian
-          </h1>
-          <p className="text-[#9ca3af] text-sm mt-1">
-            保單總覽、自動預約連結狀態與理賠保障分析
-          </p>
+    <div style={{ padding: '24px 32px 48px', maxWidth: '1400px', margin: '0 auto' }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+        gap: '24px', marginBottom: '32px', padding: '24px 28px',
+        background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.08), rgba(99, 102, 241, 0.05))',
+        borderRadius: '20px', border: '1px solid rgba(14, 165, 233, 0.12)', flexWrap: 'wrap',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: 16,
+            background: 'linear-gradient(135deg, #0ea5e9, #6366f1)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white',
+          }}>
+            <Shield size={26} />
+          </div>
+          <div>
+            <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+              保險守衛
+            </h1>
+            <p style={{ fontSize: '14px', color: 'var(--text-muted)', margin: '4px 0 0' }}>
+              保單管理、到期追蹤與理賠保障分析
+              {isDemo && <span style={{ marginLeft: 8, fontSize: '11px', color: '#f59e0b' }}>● 展示模式</span>}
+            </p>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={fetchPolicies}
-            className="px-3 py-1.5 text-xs font-mono border border-[#0ea5e9]/30 text-[#0ea5e9] bg-[#0ea5e9]/10 hover:bg-[#0ea5e9]/20 rounded transition-colors"
-          >
-            重新整理
-          </button>
-          <button
-            onClick={() => openCommsPanel('guardian')}
-            className="px-3 py-1.5 text-xs font-mono border border-[#0ea5e9]/60 text-white bg-[#0ea5e9]/20 hover:bg-[#0ea5e9]/30 rounded transition-colors"
-          >
-            📡 聯繫 Guardian
-          </button>
-        </div>
+        <button onClick={fetchPolicies} style={{
+          display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', fontSize: '13px',
+          fontWeight: 500, color: '#6366f1', background: 'rgba(99,102,241,0.08)',
+          border: '1px solid rgba(99,102,241,0.2)', borderRadius: 10, cursor: 'pointer',
+        }}>
+          <RefreshCw size={14} /> 重新整理
+        </button>
       </div>
 
-      {/* Stats Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '32px' }}>
         {[
-          { label: '保單總數', value: policies.length, accent: '#0ea5e9' },
-          { label: '有效保單', value: policies.filter(p => p.status === 'active').length, accent: '#22c55e' },
-          { label: '帳務已連結', value: policies.filter(p => p.ledger_linked).length, accent: '#22c55e' },
-          { label: '待連結', value: policies.filter(p => !p.ledger_linked).length, accent: '#f59e0b' },
+          { label: '保單總數', value: policies.length, icon: FileText, color: '#6366f1' },
+          { label: '有效保單', value: activePolicies.length, icon: CheckCircle, color: '#10b981' },
+          { label: '年度總保費', value: `NT$ ${totalPremium.toLocaleString()}`, icon: DollarSign, color: '#f59e0b' },
+          { label: '待連結帳務', value: policies.filter(p => !p.ledger_linked).length, icon: AlertCircle, color: '#ef4444' },
         ].map(stat => (
-          <div
-            key={stat.label}
-            className="border rounded p-3 text-center"
-            style={{ borderColor: `${stat.accent}30`, background: `${stat.accent}08` }}
-          >
-            <div className="text-2xl font-bold font-mono" style={{ color: stat.accent }}>
-              {stat.value}
+          <div key={stat.label} style={{
+            padding: '16px 20px', borderRadius: 16,
+            background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(0,0,0,0.06)',
+            backdropFilter: 'blur(8px)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <stat.icon size={16} color={stat.color} />
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500 }}>{stat.label}</span>
             </div>
-            <div className="text-[10px] text-[#9ca3af] uppercase tracking-wider mt-1">{stat.label}</div>
+            <span style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {stat.value}
+            </span>
           </div>
         ))}
       </div>
 
-      {/* Content */}
+      {/* Policy Cards */}
       {loading ? (
-        <div className="flex items-center justify-center py-20 text-[#9ca3af] font-mono text-sm">
-          <span className="animate-pulse">LOADING POLICY DATA...</span>
-        </div>
-      ) : error ? (
-        <div className="border border-[#ef4444]/30 bg-[#ef4444]/10 rounded p-4 text-[#ef4444] text-sm font-mono">
-          ⚠ {error}
-          <button onClick={fetchPolicies} className="ml-3 underline text-xs">重試</button>
-        </div>
+        <EmptyState title="載入中..." description="正在讀取保單資料" />
       ) : policies.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-[#9ca3af] font-mono text-sm gap-3">
-          <span className="text-4xl">🛡️</span>
-          <p>尚無保單資料</p>
-          <button
-            onClick={() => openCommsPanel('guardian')}
-            className="mt-2 px-4 py-1.5 text-xs border border-[#0ea5e9]/30 text-[#0ea5e9] rounded hover:bg-[#0ea5e9]/10 transition-colors"
-          >
-            詢問 Guardian 新增保單
-          </button>
-        </div>
+        <EmptyState
+          icon={Shield}
+          title="尚無保單資料"
+          description="新增保單以開始追蹤您的保險保障"
+          actionLabel="新增保單"
+          onAction={() => alert('保單新增功能開發中')}
+        />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '20px' }}>
           {policies.map(policy => (
-            <div key={policy.policy_id} className="flex flex-col gap-2">
-              <GuardianWidget
-                actionType="policy_summary"
-                data={{
-                  policy_id:      policy.policy_id,
-                  policy_name:    policy.policy_name,
-                  insurer:        policy.insurer,
-                  status:         policy.status,
-                  ledger_linked:  policy.ledger_linked,
-                  annual_premium: policy.annual_premium,
-                  currency:       policy.currency,
-                  coverage_start: policy.coverage_start,
-                  coverage_end:   policy.coverage_end,
-                }}
-              />
-              <button
-                onClick={() => openCommsPanel('guardian')}
-                className="text-[10px] font-mono text-[#9ca3af] hover:text-[#0ea5e9] text-right transition-colors"
-              >
-                查詢此保單 →
-              </button>
+            <div key={policy.policy_id} style={{
+              padding: '24px', borderRadius: 16,
+              background: 'rgba(255,255,255,0.75)', border: '1px solid rgba(0,0,0,0.06)',
+              backdropFilter: 'blur(12px)', transition: 'all 0.3s',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <span style={{
+                  padding: '3px 10px', borderRadius: 20, fontSize: '11px', fontWeight: 600,
+                  background: policy.status === 'active' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                  color: policy.status === 'active' ? '#10b981' : '#ef4444',
+                }}>
+                  {policy.status === 'active' ? '有效' : '已過期'}
+                </span>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{policy.policy_id}</span>
+              </div>
+              <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px' }}>
+                {policy.policy_name}
+              </h3>
+              <p style={{ fontSize: '13px', color: '#6366f1', margin: '0 0 16px', fontWeight: 500 }}>
+                {policy.insurer}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>年度保費</span>
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {policy.currency} {policy.annual_premium.toLocaleString()}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>保障期間</span>
+                  <span style={{ color: 'var(--text-primary)' }}>
+                    {policy.coverage_start} ~ {policy.coverage_end}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>帳務連結</span>
+                  <span style={{ color: policy.ledger_linked ? '#10b981' : '#f59e0b', fontWeight: 500 }}>
+                    {policy.ledger_linked ? '✓ 已連結' : '⚠ 未連結'}
+                  </span>
+                </div>
+              </div>
             </div>
           ))}
         </div>
