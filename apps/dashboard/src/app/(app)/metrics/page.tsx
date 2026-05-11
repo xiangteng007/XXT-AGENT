@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import styles from './metrics.module.css';
 
 interface Metrics {
@@ -55,8 +57,8 @@ export default function MetricsPage() {
         return d > 0 ? `+${d}` : `${d}`;
     };
 
-    if (loading) return <p>載入中...</p>;
-    if (!data) return <p>無法載入統計</p>;
+    if (loading) return <EmptyState title="載入中..." description="正在讀取統計數據" />;
+    if (!data) return <ErrorState message="無法載入統計" detail="請確認已登入並有權限存取" type="auth" />;
 
     const todayRate = calcRate(data.today.ok_count, data.today.failed_count);
     const yesterdayRate = calcRate(data.yesterday.ok_count, data.yesterday.failed_count);

@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/lib/AuthContext';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import styles from './tenants.module.css';
 
 interface Tenant {
@@ -168,13 +170,9 @@ export default function TenantsPage() {
             )}
 
             {error ? (
-                <div style={{ textAlign: 'center', padding: '48px 24px' }}>
-                    <p style={{ fontSize: '18px', color: 'var(--text-primary)', marginBottom: '8px' }}>⚠️ {error}</p>
-                    <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '16px' }}>請確認後端服務已啟動並已登入管理員帳號</p>
-                    <button className="btn btn-secondary" onClick={loadTenants}>重試</button>
-                </div>
+                <ErrorState message={error} detail="請確認後端服務已啟動並已登入管理員帳號" onRetry={loadTenants} type="network" />
             ) : loading ? (
-                <p>載入中...</p>
+                <EmptyState title="載入中..." description="正在讀取租戶資料" />
             ) : (
                 <table className={styles.table}>
                     <thead>

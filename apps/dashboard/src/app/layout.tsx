@@ -5,8 +5,11 @@ import '@/styles/globals.css';
 import '@/styles/animations.css';
 
 export const metadata = {
-    title: 'XXT Personal Butler',
-    description: '個人生活管理助理儀表板',
+    title: {
+        default: 'XXT Personal Butler',
+        template: '%s | XXT Dashboard',
+    },
+    description: 'XXT 個人生活管理助理 — AI 驅動的全方位智慧儀表板',
     manifest: '/manifest.json',
     themeColor: '#d4a574',
     appleWebApp: {
@@ -16,6 +19,11 @@ export const metadata = {
     },
     icons: {
         icon: '/favicon.svg',
+    },
+    openGraph: {
+        title: 'XXT Dashboard',
+        description: 'AI 驅動的個人管家 — 管理市場、新聞、社群、財務',
+        type: 'website',
     },
 };
 

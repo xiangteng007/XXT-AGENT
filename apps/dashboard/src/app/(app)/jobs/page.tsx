@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/lib/AuthContext';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import styles from './jobs.module.css';
 
 interface Job {
@@ -94,11 +96,8 @@ export default function JobsPage() {
             </div>
 
             {error ? (
-                <div style={{ textAlign: 'center', padding: '48px 24px' }}>
-                    <p style={{ fontSize: '18px', color: 'var(--text-primary)', marginBottom: '8px' }}>⚠️ {error}</p>
-                    <button className="btn btn-secondary" onClick={loadJobs}>重試</button>
-                </div>
-            ) : loading ? <p>載入中...</p> : (
+                <ErrorState message={error} onRetry={loadJobs} type="network" />
+            ) : loading ? <EmptyState title="載入中..." description="正在讀取排程任務" compact /> : (
                 <table className={styles.table}>
                     <thead><tr><th>Job ID</th><th>Tenant</th><th>狀態</th><th>Attempts</th><th>建立時間</th><th>操作</th></tr></thead>
                     <tbody>
