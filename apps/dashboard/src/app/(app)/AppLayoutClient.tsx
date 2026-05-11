@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/AuthContext';
 import { AppShellProvider, AppShell, Header, Sidebar, MobileBottom } from '@/components/layout';
+import { Breadcrumb } from '@/components/ui/breadcrumb-nav';
 import '@/styles/appshell.css';
 
 interface AdminInfo {
@@ -201,6 +202,7 @@ export default function AppLayoutClient({ children }: { children: React.ReactNod
                 sidebar={<Sidebar />}
                 mobileBottom={<MobileBottom />}
             >
+                <Breadcrumb />
                 {children}
             </AppShell>
         </AppShellProvider>
