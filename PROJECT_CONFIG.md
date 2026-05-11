@@ -56,6 +56,14 @@
 | **Regulation RAG** | Cloud Run (Internal) | `services/regulation-rag` | ✅ Active |
 | **Event Fusion Engine** | Cloud Run | `services/event-fusion-engine` | ✅ Active |
 | **News Collector** | Cloud Run (v9.2) | `services/news-collector` | ✅ Active |
+| **Market Streamer** | Cloud Run | `services/market-streamer` | ✅ Active (IAM) |
+| **Quote Normalizer** | Cloud Run | `services/quote-normalizer` | ✅ Active (IAM) |
+| **Alert Engine** | Cloud Run | `services/alert-engine` | ✅ Active (IAM) |
+| **Trade Planner** | Cloud Run | `services/trade-planner-worker` | ✅ Active (IAM) |
+| **Social Worker** | Cloud Run | `services/social-worker` | ✅ Active (IAM) |
+| **Social Collector** | Cloud Run | `services/social-worker` | ✅ Active (IAM) |
+| **Social Dispatcher** | Cloud Run | `services/social-dispatcher` | ✅ Active (IAM) |
+| **Investment Brain** | Cloud Run (Planned) | `services/investment-brain` | 🔧 本地就緒 |
 | **Secret Manager** | GCP | — | ✅ Active |
 
 ### Standalone Apps
@@ -147,8 +155,8 @@
 
 ## Architecture Version
 
-- **Current**: v2.5.1 (2026 Q2 — OpenClaw v7.5 + Telegram V9.2 + Carbon Copper V5 Dashboard + Full Audit + Model Strategy)
-- **Last Updated**: 2026-05-05
+- **Current**: v2.6.0 (2026 Q2 — Full Service Audit + IAM Auth + SSE Notifications + 17 Cloud Run Services)
+- **Last Updated**: 2026-05-12
 
 ---
 

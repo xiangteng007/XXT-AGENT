@@ -72,11 +72,14 @@ export default function AppLayoutClient({ children }: { children: React.ReactNod
         }
     }, [user, getIdToken, isConfigured]);
 
-    // Fetch notifications (fused_events)
+    // ── Notifications: SSE-first with polling fallback ──
+    // SSE provides real-time events via /api/notifications/stream
+    // Polling /api/admin/fused-events ensures data on SSE failures
     useEffect(() => {
-        async function fetchNotifications() {
-            if (!user || !adminInfo || !isConfigured) return;
+        if (!user || !adminInfo || !isConfigured) return;
 
+        // Initial fetch for existing notifications
+        async function fetchNotifications() {
             try {
                 const token = await getIdToken();
                 const res = await fetch('/api/admin/fused-events?limit=20', {
@@ -92,12 +95,10 @@ export default function AppLayoutClient({ children }: { children: React.ReactNod
             }
         }
 
-        if (adminInfo) {
-            fetchNotifications();
-            // Poll every 30 seconds
-            const interval = setInterval(fetchNotifications, 30000);
-            return () => clearInterval(interval);
-        }
+        fetchNotifications();
+        // Reduced polling frequency since SSE handles real-time
+        const interval = setInterval(fetchNotifications, 120000);
+        return () => clearInterval(interval);
     }, [user, adminInfo, getIdToken, isConfigured]);
 
     // Loading state

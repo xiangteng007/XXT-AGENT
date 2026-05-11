@@ -119,7 +119,7 @@ jobs:
       - name: Build & Push changed services
         run: |
           PROJECT_ID=$(gcloud config get-value project)
-          SERVICES="market-streamer news-collector social-dispatcher social-worker event-fusion-engine alert-engine ai-gateway trade-planner-worker telegram-command-bot quote-normalizer"
+          SERVICES="market-streamer news-collector social-dispatcher social-worker event-fusion-engine alert-engine ai-gateway trade-planner-worker telegram-command-bot quote-normalizer investment-brain regulation-rag openclaw-gateway"
           BUILT=0
 
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)

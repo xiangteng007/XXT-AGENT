@@ -1,17 +1,28 @@
 /**
  * GET /api/notifications/stream - Server-Sent Events for real-time notifications
- * Streams dashboard events (market alerts, system health, etc.)
+ * Streams dashboard events from Firestore (fused_events collection)
+ * Falls back to heartbeat-only mode if no credentials available
  */
 import { NextRequest } from 'next/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+// Lazy-load Firestore to avoid cold start penalty
+async function getFirestoreDb() {
+  try {
+    const { getAdminDb } = await import('@/lib/firebase-admin');
+    return getAdminDb();
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(req: NextRequest) {
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
-    start(controller) {
+    async start(controller) {
       // Send initial connection event
       controller.enqueue(encoder.encode(`data: ${JSON.stringify({
         type: 'connected',
@@ -19,7 +30,7 @@ export async function GET(req: NextRequest) {
         timestamp: new Date().toISOString(),
       })}\n\n`));
 
-      // Heartbeat every 30s to keep connection alive
+      // Heartbeat every 25s to keep connection alive
       const heartbeat = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({
@@ -29,35 +40,54 @@ export async function GET(req: NextRequest) {
         } catch {
           clearInterval(heartbeat);
         }
-      }, 30000);
+      }, 25000);
 
-      // Simulate periodic events (in production, replace with real event sources)
-      const events = setInterval(() => {
+      // Track last seen event timestamp to avoid duplicates
+      let lastSeenTs = new Date().toISOString();
+
+      // Poll Firestore for new fused_events every 30s
+      const db = await getFirestoreDb();
+      const pollEvents = db ? setInterval(async () => {
         try {
-          const notifications = [
-            { type: 'market', title: '市場波動提醒', message: '台積電 (2330) 漲幅超過 2%', severity: 'info' },
-            { type: 'system', title: '系統狀態更新', message: '所有服務運行正常', severity: 'success' },
-            { type: 'news', title: '新聞快訊', message: '聯準會最新利率決議即將公布', severity: 'warning' },
-            { type: 'guardian', title: '保單到期提醒', message: '工程營造綜合保險將於 30 天後到期', severity: 'warning' },
-            { type: 'social', title: '社群趨勢', message: '偵測到關鍵字「AI 晶片」討論度上升', severity: 'info' },
-          ];
-          const event = notifications[Math.floor(Math.random() * notifications.length)];
+          const snapshot = await db
+            .collection('fused_events')
+            .where('ts', '>', lastSeenTs)
+            .orderBy('ts', 'desc')
+            .limit(5)
+            .get();
 
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-            ...event,
-            id: `evt-${Date.now()}`,
-            timestamp: new Date().toISOString(),
-          })}\n\n`));
-        } catch {
-          clearInterval(events);
+          if (!snapshot.empty) {
+            for (const doc of snapshot.docs) {
+              const data = doc.data();
+              const event = {
+                id: doc.id,
+                type: mapDomainToType(data.domain),
+                title: data.title || '系統通知',
+                message: data.summary || data.title || '',
+                severity: mapSeverity(data.severity),
+                domain: data.domain,
+                timestamp: data.ts || new Date().toISOString(),
+              };
+
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+            }
+
+            // Update watermark
+            const latest = snapshot.docs[0].data();
+            if (latest.ts) {
+              lastSeenTs = latest.ts;
+            }
+          }
+        } catch (err) {
+          console.error('SSE poll error:', err);
         }
-      }, 60000); // Every 60 seconds
+      }, 30000) : null;
 
       // Cleanup on close
       req.signal.addEventListener('abort', () => {
         clearInterval(heartbeat);
-        clearInterval(events);
-        controller.close();
+        if (pollEvents) clearInterval(pollEvents);
+        try { controller.close(); } catch { /* already closed */ }
       });
     },
   });
@@ -70,4 +100,21 @@ export async function GET(req: NextRequest) {
       'X-Accel-Buffering': 'no',
     },
   });
+}
+
+function mapDomainToType(domain?: string): string {
+  switch (domain) {
+    case 'market': return 'market';
+    case 'news': return 'news';
+    case 'social': return 'social';
+    case 'guardian': return 'guardian';
+    case 'system': return 'system';
+    default: return 'system';
+  }
+}
+
+function mapSeverity(severity?: number): string {
+  if (!severity || severity <= 3) return 'info';
+  if (severity <= 5) return 'warning';
+  return 'error';
 }
