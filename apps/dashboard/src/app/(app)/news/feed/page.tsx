@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { useNewsArticles, useNewsMutations } from '@/lib/hooks/useNewsData';
 import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -374,13 +375,12 @@ export default function NewsFeedPage() {
             )}
 
             {filteredArticles.length === 0 && (
-                <div className="text-center py-12 text-muted-foreground">
-                    <Newspaper className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>沒有符合篩選條件的新聞</p>
-                    <Button variant="link" onClick={handleClearFilters}>
-                        清除篩選條件
-                    </Button>
-                </div>
+                <EmptyState
+                    title="沒有符合篩選條件的新聞"
+                    description="嘗試調整篩選條件或清除篩選"
+                    actionLabel="清除篩選條件"
+                    onAction={handleClearFilters}
+                />
             )}
         </div>
     );

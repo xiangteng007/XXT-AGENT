@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import {
@@ -316,10 +317,12 @@ export default function NewsAlertsPage() {
             </div>
 
             {alerts.length === 0 && (
-                <div className="text-center py-12">
-                    <Bell className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">尚無警報規則</p>
-                </div>
+                <EmptyState
+                    title="尚無警報規則"
+                    description="建立新聞警報以即時接收重大市場事件通知"
+                    actionLabel="新增警報"
+                    onAction={() => setShowForm(true)}
+                />
             )}
         </div>
     );

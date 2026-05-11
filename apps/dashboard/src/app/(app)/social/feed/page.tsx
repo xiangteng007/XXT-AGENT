@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSocialPosts, usePostFilter } from '@/lib/hooks/useSocialData';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -289,15 +290,12 @@ export default function SocialFeedPage() {
             {/* Feed */}
             <div className="space-y-3">
                 {visiblePosts.length === 0 ? (
-                    <Card>
-                        <CardContent className="py-12 text-center text-muted-foreground">
-                            <Zap className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                            <p>沒有符合條件的貼文</p>
-                            <Button variant="link" onClick={handleClearFilters}>
-                                清除篩選條件
-                            </Button>
-                        </CardContent>
-                    </Card>
+                    <EmptyState
+                        title="沒有符合條件的貼文"
+                        description="嘗試調整篩選條件或清除篩選"
+                        actionLabel="清除篩選條件"
+                        onAction={handleClearFilters}
+                    />
                 ) : (
                     visiblePosts.map((post) => (
                         <Card key={post.id} className="overflow-hidden hover:shadow-md transition-shadow">

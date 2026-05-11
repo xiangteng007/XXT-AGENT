@@ -166,6 +166,18 @@
     }
 }
 
+/* Extra small screens (375px phones) */
+@media (max-width: 480px) {
+    .appshell-main {
+        padding: 12px;
+        padding-bottom: calc(var(--mobile-bottom-height) + 12px);
+    }
+
+    .appshell-header {
+        padding: 0 12px;
+    }
+}
+
 /* ================================
    Premium Header Components
    ================================ */

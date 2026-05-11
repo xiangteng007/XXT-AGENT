@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useTrackedAccounts, useSocialMutations } from '@/lib/hooks/useSocialData';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -230,11 +231,14 @@ export default function AccountsPage() {
             {/* Account List */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {filteredAccounts.length === 0 ? (
-                    <Card className="md:col-span-2 lg:col-span-3">
-                        <CardContent className="py-12 text-center text-muted-foreground">
-                            沒有符合條件的追蹤帳號
-                        </CardContent>
-                    </Card>
+                    <div className="md:col-span-2 lg:col-span-3">
+                        <EmptyState
+                            title="沒有符合條件的追蹤帳號"
+                            description="新增追蹤帳號以開始監控社群動態"
+                            actionLabel="新增帳號"
+                            onAction={() => setShowAddForm(true)}
+                        />
+                    </div>
                 ) : (
                     filteredAccounts.map((account) => (
                         <Card key={account.id} className="hover:shadow-md transition-shadow">
