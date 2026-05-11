@@ -54,7 +54,6 @@ const DEMO_POLICIES: PolicySummary[] = [
 ];
 
 const STORAGE_KEY = 'xxt-guardian-policies';
-const GATEWAY_URL = process.env.NEXT_PUBLIC_OPENCLAW_GATEWAY_URL ?? '';
 
 function loadLocalPolicies(): PolicySummary[] | null {
   if (typeof window === 'undefined') return null;
@@ -92,17 +91,9 @@ export default function GuardianPage() {
   const fetchPolicies = useCallback(async () => {
     try {
       setLoading(true);
-      // Try localStorage first
-      const local = loadLocalPolicies();
-      if (local && local.length > 0) {
-        setPolicies(local);
-        setIsDemo(false);
-        setLoading(false);
-        return;
-      }
-      // Try backend
-      if (GATEWAY_URL) {
-        const res = await fetch(`${GATEWAY_URL}/guardian/policies`);
+      // 1. Try internal API (Firestore-backed)
+      try {
+        const res = await fetch('/api/guardian/policies');
         if (res.ok) {
           const data = await res.json();
           const serverPolicies = data.policies ?? [];
@@ -114,8 +105,16 @@ export default function GuardianPage() {
             return;
           }
         }
+      } catch { /* API unavailable, continue */ }
+      // 2. Try localStorage
+      const local = loadLocalPolicies();
+      if (local && local.length > 0) {
+        setPolicies(local);
+        setIsDemo(false);
+        setLoading(false);
+        return;
       }
-      // Fallback to demo
+      // 3. Fallback to demo
       setPolicies(DEMO_POLICIES);
       setIsDemo(true);
     } catch {
