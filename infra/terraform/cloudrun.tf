@@ -14,7 +14,8 @@ locals {
     ai_gateway        = "${local.ar_host}/${var.project_id}/${local.ar_repo}/ai-gateway:latest"
     # v9.0 新增
     regulation_rag    = "${local.ar_host}/${var.project_id}/${local.ar_repo}/regulation-rag:latest"
-    openclaw_gateway  = "${local.ar_host}/${var.project_id}/${local.ar_repo}/openclaw-gateway:latest"
+    # openclaw-gateway uses dedicated AR repo 'openclaw' (not ai-me-services)
+    openclaw_gateway  = "${local.ar_host}/${var.project_id}/openclaw/gateway:latest"
   }
 }
 
@@ -540,10 +541,11 @@ resource "google_cloud_run_v2_service" "regulation_rag" {
   }
 }
 
-# openclaw-gateway: 補齊 CHROMADB secrets
+# openclaw-gateway: 獨立 AR repo + CI/CD workflow
 resource "google_cloud_run_v2_service" "openclaw_gateway" {
-  name     = "openclaw-gateway"
-  location = var.region
+  name                = "openclaw-gateway"
+  location            = var.region
+  deletion_protection = false
 
   template {
     service_account = google_service_account.runtime_sa.email

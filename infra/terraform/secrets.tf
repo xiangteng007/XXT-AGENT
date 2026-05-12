@@ -12,3 +12,16 @@ data "google_secret_manager_secret" "line_notify_token" {
   count     = var.line_notify_token == "" ? 0 : 1
   secret_id = "line-notify-token"
 }
+
+# v9.0 secrets for OpenClaw Gateway + Regulation RAG (created 2026-05-12)
+data "google_secret_manager_secret" "chromadb_url" {
+  secret_id = "chromadb-url"
+}
+
+data "google_secret_manager_secret" "chromadb_token" {
+  secret_id = "chromadb-token"
+}
+
+data "google_secret_manager_secret" "internal_service_secret" {
+  secret_id = "internal-service-secret"
+}

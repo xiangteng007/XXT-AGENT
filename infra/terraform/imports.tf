@@ -52,3 +52,14 @@ import {
   id = "projects/xxt-agent/locations/asia-east1/services/telegram-bot"
   to = google_cloud_run_v2_service.telegram_bot
 }
+
+# v9.0 新增服務
+import {
+  id = "projects/xxt-agent/locations/asia-east1/services/regulation-rag"
+  to = google_cloud_run_v2_service.regulation_rag
+}
+
+import {
+  id = "projects/xxt-agent/locations/asia-east1/services/openclaw-gateway"
+  to = google_cloud_run_v2_service.openclaw_gateway
+}
