@@ -80,6 +80,13 @@ async function fetchSocialFeed(feed: typeof SOCIAL_FEEDS[0]): Promise<SocialPost
       const pubDate = extractTag(entry, 'pubDate') || extractTag(entry, 'updated');
       const author = extractTag(entry, 'author') || extractTag(entry, 'dc:creator') || 'anonymous';
 
+      // Extract real engagement from Reddit RSS content
+      // Reddit includes "N comments" and upvote score in the feed content
+      const commentsMatch = content.match(/(\d+)\s*comment/i);
+      const scoreMatch = content.match(/score:\s*(\d+)/i) || content.match(/points?:\s*(\d+)/i);
+      const comments = commentsMatch ? parseInt(commentsMatch[1], 10) : 0;
+      const score = scoreMatch ? parseInt(scoreMatch[1], 10) : 0;
+
       return {
         id: `${feed.tag}-${idx}-${Date.now()}`,
         platform: feed.platform,
@@ -89,9 +96,9 @@ async function fetchSocialFeed(feed: typeof SOCIAL_FEEDS[0]): Promise<SocialPost
         url: link || feed.url,
         publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
         engagement: {
-          likes: Math.floor(Math.random() * 500),
-          comments: Math.floor(Math.random() * 100),
-          shares: Math.floor(Math.random() * 50),
+          likes: score,       // Real Reddit upvote score (0 if not found)
+          comments: comments, // Real Reddit comment count
+          shares: 0,          // Reddit doesn't expose share count
         },
         sentiment: analyzeSentiment(title + ' ' + cleanContent),
         keywords: extractKeywords(title + ' ' + cleanContent),

@@ -1,32 +1,19 @@
+/**
+ * POST /api/chat — Multi-agent chat via AI Gateway
+ * 
+ * Proxies chat messages to the OpenClaw Gateway for real AI responses.
+ * Falls back to a simple echo when the gateway is unreachable.
+ */
 import { NextResponse } from 'next/server';
+import { gatewayFetch } from '@/app/api/market/_gateway';
 
-// Mock responses for each agent to give them some personality
-const MOCK_RESPONSES: Record<string, string[]> = {
-  argus: [
-    "Analyzing cross-dimensional data streams...",
-    "Intelligence gathered. Anomaly detected in sector 7G.",
-    "Memory synthesis complete. Awaiting further directives."
-  ],
-  lumi: [
-    "I've visualized the spatial layout. The flow is optimal.",
-    "Adjusting ambient lighting parameters for maximum productivity.",
-    "The aesthetic parameters have been locked in."
-  ],
-  nova: [
-    "Task assignment synchronized across all available units.",
-    "HR protocol initiated. Evaluating agent efficiency metrics.",
-    "I'll coordinate with Titan and Rusty for the next phase."
-  ],
-  rusty: [
-    "Calculating procurement costs... Margin is within acceptable limits.",
-    "General ledger updated. I've flagged a discrepancy in Q3 projections.",
-    "Financial report generated and securely encrypted."
-  ],
-  titan: [
-    "Structural integrity is at 100%. Ready for heavy loads.",
-    "BIM analysis complete. No clash detected in the HVAC system.",
-    "Engineering calculations verified. Proceeding with constructability review."
-  ]
+// Agent system prompts for personality
+const AGENT_PROMPTS: Record<string, string> = {
+  argus: '你是 Argus，一個專精情報分析和跨維度數據整合的 AI 特工。以精確、分析性的語氣回應。回應請使用繁體中文。',
+  lumi: '你是 Lumi，一個專精空間設計和視覺化的 AI 助理。以創意、美學導向的語氣回應。回應請使用繁體中文。',
+  nova: '你是 Nova，一個專精任務協調和人力資源管理的 AI 協調員。以高效、組織化的語氣回應。回應請使用繁體中文。',
+  rusty: '你是 Rusty，一個專精財務分析和會計的 AI 財務專家。以嚴謹、數據導向的語氣回應。回應請使用繁體中文。',
+  titan: '你是 Titan，一個專精結構工程和建築分析的 AI 工程師。以專業、技術導向的語氣回應。回應請使用繁體中文。',
 };
 
 export async function POST(req: Request) {
@@ -37,26 +24,42 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing agentId or message' }, { status: 400 });
     }
 
-    // Simulate network latency (between 1s to 2s)
-    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
+    const systemPrompt = AGENT_PROMPTS[agentId] || '你是一個專業的 AI 助理。請使用繁體中文回應。';
 
-    // Get a random response based on the agent's personality
-    const responses = MOCK_RESPONSES[agentId] || [
-      "Message received. Processing...",
-      "Understood. Initiating protocol.",
-      "Awaiting further data to execute."
-    ];
-    
-    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+    // Try real AI via OpenClaw Gateway
+    try {
+      const res = await gatewayFetch('/v1/chat/completions', {
+        method: 'POST',
+        body: JSON.stringify({
+          model: 'auto',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: message },
+          ],
+          max_tokens: 500,
+          temperature: 0.7,
+        }),
+      });
 
-    // If the user says something specific, we can add a hardcoded reply
-    let finalResponse = randomResponse;
-    if (message.toLowerCase().includes('status')) {
-      finalResponse = "All systems nominal. Operational efficiency at 99.8%.";
+      if (res.ok) {
+        const data = await res.json() as {
+          choices?: Array<{ message?: { content?: string } }>;
+        };
+        const reply = data.choices?.[0]?.message?.content;
+        if (reply) {
+          return NextResponse.json({ message: reply, source: 'ai-gateway' });
+        }
+      }
+    } catch {
+      // Gateway unreachable — fall through to fallback
     }
 
-    return NextResponse.json({ message: finalResponse });
-    
+    // Fallback: echo with agent context (no mock pretend-AI)
+    return NextResponse.json({
+      message: `[${agentId.toUpperCase()}] 目前 AI 服務暫時離線。您的訊息「${message.slice(0, 50)}...」已記錄，服務恢復後將回覆。`,
+      source: 'fallback',
+    });
+
   } catch (error) {
     console.error('Chat API Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
