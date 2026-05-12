@@ -119,7 +119,7 @@ jobs:
       - name: Build & Push changed services
         run: |
           PROJECT_ID=$(gcloud config get-value project)
-          SERVICES="market-streamer news-collector social-dispatcher social-worker event-fusion-engine alert-engine ai-gateway trade-planner-worker telegram-command-bot quote-normalizer investment-brain regulation-rag openclaw-gateway"
+          SERVICES="market-streamer news-collector social-dispatcher social-worker event-fusion-engine alert-engine ai-gateway trade-planner-worker telegram-command-bot quote-normalizer investment-brain regulation-rag"
           BUILT=0
 
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
@@ -129,16 +129,9 @@ jobs:
             echo "Manual trigger - building ALL services"
             for svc in $SERVICES; do
               echo "🔨 Building $svc..."
-              # openclaw-gateway needs repo root context (depends on packages/types)
-              if [ "$svc" = "openclaw-gateway" ]; then
-                docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest \
-                             -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA \
-                             -f services/$svc/Dockerfile .
-              else
-                docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest \
-                             -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA \
-                             services/$svc
-              fi
+              docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest \
+                           -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA \
+                           services/$svc
               docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest
               docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA
               BUILT=$((BUILT + 1))
@@ -148,15 +141,9 @@ jobs:
             for svc in $SERVICES; do
               if echo "$CHANGED" | grep -q "services/$svc"; then
                 echo "🔨 Building $svc (changed)..."
-                if [ "$svc" = "openclaw-gateway" ]; then
-                  docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest \
-                               -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA \
-                               -f services/$svc/Dockerfile .
-                else
-                  docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest \
-                               -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA \
-                               services/$svc
-                fi
+                docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest \
+                             -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA \
+                             services/$svc
                 docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest
                 docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA
                 BUILT=$((BUILT + 1))
