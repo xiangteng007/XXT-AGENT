@@ -38,7 +38,7 @@ jobs:
 
       - name: "Run Unit Tests (D-02)"
         working-directory: services/openclaw-gateway
-        run: pnpm test
+        run: pnpm test:unit
 
       - name: TypeScript Check
         working-directory: services/openclaw-gateway
