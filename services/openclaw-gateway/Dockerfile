@@ -2,7 +2,7 @@ FROM node:20.19.0-alpine3.21 AS builder
 
 WORKDIR /workspace
 
-# Copy types package first (dependency)
+# Copy and build types package first (dependency)
 COPY packages/types/ packages/types/
 RUN cd packages/types && npm install --ignore-scripts && npm run build
 
@@ -10,8 +10,15 @@ RUN cd packages/types && npm install --ignore-scripts && npm run build
 COPY services/openclaw-gateway/ services/openclaw-gateway/
 WORKDIR /workspace/services/openclaw-gateway
 
-RUN npm install --legacy-peer-deps || true
-RUN npm install typescript@5 --save-dev
+# Manually link @xxt-agent/types (avoid file: link issues in Docker)
+RUN mkdir -p node_modules/@xxt-agent && \
+    cp -r /workspace/packages/types node_modules/@xxt-agent/types
+
+# Install remaining deps — delete lockfile to avoid edgesOut error from file: links
+RUN rm -f package-lock.json && \
+    npm install --legacy-peer-deps
+
+# Build TypeScript
 RUN ./node_modules/.bin/tsc
 
 # ── Production stage ──────────────────────────────────────────
@@ -20,14 +27,16 @@ FROM node:20.19.0-alpine3.21 AS runtime
 WORKDIR /app
 
 # Copy built output
-COPY --from=builder /workspace/packages/types/dist /workspace/packages/types/dist
-COPY --from=builder /workspace/packages/types/package.json /workspace/packages/types/package.json
 COPY --from=builder /workspace/services/openclaw-gateway/dist ./dist
 COPY --from=builder /workspace/services/openclaw-gateway/package.json .
-COPY --from=builder /workspace/services/openclaw-gateway/package-lock.json .
 
-# Production deps only
-RUN npm install --omit=dev --legacy-peer-deps
+# Copy types package dist (runtime dependency)
+COPY --from=builder /workspace/packages/types/dist ./node_modules/@xxt-agent/types/dist
+COPY --from=builder /workspace/packages/types/package.json ./node_modules/@xxt-agent/types/package.json
+
+# Production deps only — delete lockfile, manually link types
+RUN rm -f package-lock.json && \
+    npm install --omit=dev --legacy-peer-deps
 
 # Agent configs (mounted as volume in Cloud Run, or baked-in for immutable builds)
 COPY .agent/agents/ /app/.agent/agents/
