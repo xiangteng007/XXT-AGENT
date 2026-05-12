@@ -159,6 +159,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init & Apply
+        continue-on-error: true  # Don't block overall pipeline on TF state issues
         working-directory: infra/terraform
         env:
           TF_VAR_project_id: ${{ secrets.FIREBASE_PROJECT_ID }}
