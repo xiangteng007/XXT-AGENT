@@ -13,11 +13,7 @@
     "resolveJsonModule": true,
     "declaration": false,
     "declarationMap": false,
-    "sourceMap": true,
-    "paths": {
-      "@xxt-agent/types": ["../../packages/types/src/index.ts"]
-    },
-    "baseUrl": "."
+    "sourceMap": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
