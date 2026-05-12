@@ -65,16 +65,17 @@ async function getGcpIdToken(targetAudience: string): Promise<string | null> {
     });
 
     const client = await auth.getIdTokenClient(targetAudience);
-    const headers = await client.getRequestHeaders();
-    const token = headers.Authorization?.replace('Bearer ', '') || null;
+    const reqHeaders = await client.getRequestHeaders();
+    // getRequestHeaders() returns Headers object — use .get()
+    const authValue = reqHeaders.get('Authorization') ?? '';
 
-    if (token) {
-      cachedIdToken = token;
+    if (authValue) {
+      cachedIdToken = authValue.replace('Bearer ', '');
       // JWT tokens are typically valid for 1 hour
       tokenExpiry = Date.now() + 55 * 60 * 1000;
     }
 
-    return token ? headers.Authorization! : null;
+    return authValue || null;
   } catch (err) {
     console.error('Failed to get GCP ID token:', err);
     return null;
