@@ -36,6 +36,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build @xxt-agent/types
+        working-directory: packages/types
+        run: pnpm build
+
       - name: "Run Unit Tests (D-02)"
         working-directory: services/openclaw-gateway
         run: pnpm test:unit
