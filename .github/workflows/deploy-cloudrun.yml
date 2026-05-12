@@ -129,9 +129,16 @@ jobs:
             echo "Manual trigger - building ALL services"
             for svc in $SERVICES; do
               echo "🔨 Building $svc..."
-              docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest \
-                           -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA \
-                           services/$svc
+              # openclaw-gateway needs repo root context (depends on packages/types)
+              if [ "$svc" = "openclaw-gateway" ]; then
+                docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest \
+                             -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA \
+                             -f services/$svc/Dockerfile .
+              else
+                docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest \
+                             -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA \
+                             services/$svc
+              fi
               docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest
               docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA
               BUILT=$((BUILT + 1))
@@ -141,9 +148,15 @@ jobs:
             for svc in $SERVICES; do
               if echo "$CHANGED" | grep -q "services/$svc"; then
                 echo "🔨 Building $svc (changed)..."
-                docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest \
-                             -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA \
-                             services/$svc
+                if [ "$svc" = "openclaw-gateway" ]; then
+                  docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest \
+                               -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA \
+                               -f services/$svc/Dockerfile .
+                else
+                  docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest \
+                               -t $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA \
+                               services/$svc
+                fi
                 docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:latest
                 docker push $REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/$svc:$SHORT_SHA
                 BUILT=$((BUILT + 1))
