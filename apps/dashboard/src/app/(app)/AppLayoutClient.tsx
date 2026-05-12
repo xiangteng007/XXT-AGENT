@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/AuthContext';
+import { useNotifications } from '@/lib/hooks/useNotifications';
 import { AppShellProvider, AppShell, Header, Sidebar, MobileBottom } from '@/components/layout';
 import { Breadcrumb } from '@/components/ui/breadcrumb-nav';
 import '@/styles/appshell.css';
@@ -29,6 +30,35 @@ export default function AppLayoutClient({ children }: { children: React.ReactNod
     const [checkingAdmin, setCheckingAdmin] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [notifications, setNotifications] = useState<FusedEvent[]>([]);
+
+    // ── SSE real-time notifications ──
+    const { notifications: sseEvents, connected: sseConnected } = useNotifications(30);
+
+    // Merge SSE events into the notification list
+    const mergeSSENotifications = useCallback(() => {
+        if (sseEvents.length === 0) return;
+
+        setNotifications(prev => {
+            const existingIds = new Set(prev.map(n => n.id));
+            const newEvents: FusedEvent[] = sseEvents
+                .filter(e => !existingIds.has(e.id))
+                .map(e => ({
+                    id: e.id,
+                    title: e.title || e.message,
+                    domain: e.type === 'market' || e.type === 'news' || e.type === 'social' || e.type === 'guardian' || e.type === 'system'
+                        ? e.type : 'system',
+                    severity: e.severity === 'error' ? 8 : e.severity === 'warning' ? 5 : 2,
+                    ts: e.timestamp,
+                }));
+
+            if (newEvents.length === 0) return prev;
+            return [...newEvents, ...prev].slice(0, 50);
+        });
+    }, [sseEvents]);
+
+    useEffect(() => {
+        mergeSSENotifications();
+    }, [mergeSSENotifications]);
 
     // Redirect if not logged in (only if Firebase is configured)
     useEffect(() => {
@@ -72,9 +102,9 @@ export default function AppLayoutClient({ children }: { children: React.ReactNod
         }
     }, [user, getIdToken, isConfigured]);
 
-    // ── Notifications: SSE-first with polling fallback ──
-    // SSE provides real-time events via /api/notifications/stream
-    // Polling /api/admin/fused-events ensures data on SSE failures
+    // ── Polling fallback for initial data + SSE gap recovery ──
+    // SSE provides real-time events (wired above via useNotifications)
+    // Polling ensures we have historical data on page load
     useEffect(() => {
         if (!user || !adminInfo || !isConfigured) return;
 
