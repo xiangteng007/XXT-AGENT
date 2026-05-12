@@ -30,13 +30,13 @@ WORKDIR /app
 COPY --from=builder /workspace/services/openclaw-gateway/dist ./dist
 COPY --from=builder /workspace/services/openclaw-gateway/package.json .
 
-# Copy types package dist (runtime dependency)
-COPY --from=builder /workspace/packages/types/dist ./node_modules/@xxt-agent/types/dist
-COPY --from=builder /workspace/packages/types/package.json ./node_modules/@xxt-agent/types/package.json
-
-# Production deps only — delete lockfile, manually link types
+# Production deps only — delete lockfile to avoid file: link issues
 RUN rm -f package-lock.json && \
     npm install --omit=dev --legacy-peer-deps
+
+# Copy types package dist AFTER npm install (npm would delete it otherwise)
+COPY --from=builder /workspace/packages/types/dist ./node_modules/@xxt-agent/types/dist
+COPY --from=builder /workspace/packages/types/package.json ./node_modules/@xxt-agent/types/package.json
 
 # Agent configs (mounted as volume in Cloud Run, or baked-in for immutable builds)
 COPY .agent/agents/ /app/.agent/agents/
