@@ -105,7 +105,7 @@ resource "google_pubsub_subscription" "law_updates_rag_sub" {
 
   dead_letter_policy {
     dead_letter_topic     = data.google_pubsub_topic.events_dlq.id
-    max_delivery_attempts = 3
+    max_delivery_attempts = 5
   }
 }
 

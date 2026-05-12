@@ -559,10 +559,7 @@ resource "google_cloud_run_v2_service" "openclaw_gateway" {
         name  = "NODE_ENV"
         value = "production"
       }
-      env {
-        name  = "PORT"
-        value = "3100"
-      }
+
       env {
         name  = "OTEL_ENABLED"
         value = "true"
