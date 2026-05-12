@@ -5,7 +5,7 @@
  * Used by Server Components or Server Actions to fetch data from the Butler API.
  */
 
-const BUTLER_API_URL = process.env.NEXT_PUBLIC_BUTLER_API_URL || 
+const BUTLER_API_URL = process.env.BUTLER_API_URL || process.env.NEXT_PUBLIC_BUTLER_API_URL || 
     'https://asia-east1-xxt-agent.cloudfunctions.net/butlerApi';
 
 interface FetchOptions {

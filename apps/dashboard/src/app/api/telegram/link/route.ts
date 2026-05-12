@@ -24,8 +24,8 @@ export async function POST(request: NextRequest) {
         // 4. Link the Telegram user ID to the Firebase UID
         // 5. Mark the code as used
 
-        // For now, call the Cloud Function API
-        const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://asia-east1-xxt-agent.cloudfunctions.net';
+        // Server-side env var (no NEXT_PUBLIC_ prefix needed for API routes)
+        const apiBaseUrl = process.env.CLOUD_FUNCTIONS_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'https://asia-east1-xxt-agent.cloudfunctions.net';
         
         const response = await fetch(`${apiBaseUrl}/linkTelegramAccount`, {
             method: 'POST',
