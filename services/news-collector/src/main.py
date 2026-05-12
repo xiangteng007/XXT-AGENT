@@ -218,13 +218,15 @@ async def fetch_coingecko_movers(max_items: int = 10) -> list[dict]:
                     key=lambda x: abs(x.get("price_change_percentage_24h", 0) or 0),
                     reverse=True,
                 )
+                _up = "\U0001f4c8"
+                _dn = "\U0001f4c9"
                 return [
                     {
                         "source": "coingecko",
                         "source_name": "CoinGecko Markets",
                         "headline": (
                             f"\U0001f4ca {c['name']} ({c['symbol'].upper()}) "
-                            f"{'\U0001f4c8' if (c.get('price_change_percentage_24h') or 0) > 0 else '\U0001f4c9'} "
+                            f"{_up if (c.get('price_change_percentage_24h') or 0) > 0 else _dn} "
                             f"{c.get('price_change_percentage_24h', 0):.1f}% (24h)"
                         ),
                         "url": f"https://www.coingecko.com/en/coins/{c['id']}",
