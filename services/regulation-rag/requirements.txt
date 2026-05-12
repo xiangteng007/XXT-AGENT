@@ -6,3 +6,4 @@ beautifulsoup4==4.12.3
 pydantic==2.10.4
 python-multipart==0.0.20
 qdrant-client>=1.7.0
+google-generativeai>=0.8.0

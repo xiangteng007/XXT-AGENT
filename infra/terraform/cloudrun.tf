@@ -487,9 +487,11 @@ resource "google_cloud_run_v2_service" "telegram_bot" {
 # ── v9.0 新增服務 ─────────────────────────────────────────────
 
 # regulation-rag: Internal-only（不對外暴露）
+# Embedding: Ollama (NAS/GPU) → Gemini text-embedding-004 (Cloud fallback)
 resource "google_cloud_run_v2_service" "regulation_rag" {
-  name     = "regulation-rag"
-  location = var.region
+  name                = "regulation-rag"
+  location            = var.region
+  deletion_protection = false
 
   # 僅允許 VPC 內部及 runtime SA 存取
   ingress = "INGRESS_TRAFFIC_INTERNAL_ONLY"
@@ -504,6 +506,16 @@ resource "google_cloud_run_v2_service" "regulation_rag" {
       env {
         name  = "GCP_PROJECT_ID"
         value = var.project_id
+      }
+      # Gemini API Key for cloud embedding fallback
+      env {
+        name = "GEMINI_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = "gemini-api-key"
+            version = "latest"
+          }
+        }
       }
       env {
         name  = "CHROMADB_URL"

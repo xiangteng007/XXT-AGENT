@@ -22,8 +22,12 @@ import time
 import os
 from typing import Optional
 from ollama_embed import get_embedding, ping_ollama
+from cloud_embed import get_cloud_embedding, ping_cloud_embed
 from regulation_store import RegulationStore
 from query_cache import query_cache
+
+# Embedding mode: "ollama" (local GPU) or "cloud" (Gemini API)
+EMBED_MODE: str = "cloud"  # Will be auto-detected at startup
 
 # ── P1: CORS 白名單（不再允許 *）─────────────────────────────
 # 生產環境請設定 ALLOWED_ORIGINS 環境變數（逗號分隔）
@@ -46,14 +50,32 @@ store: Optional[RegulationStore] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global store
+    global store, EMBED_MODE
     store = RegulationStore(qdrant_url=QDRANT_URL, qdrant_path=QDRANT_PATH)
     print(f"[RegRAG] Loaded {store.total_chunks()} chunks from Qdrant {'('+QDRANT_URL+')' if QDRANT_URL else 'local path'}")
+
+    # Auto-detect embedding mode: Ollama (local GPU) → Gemini (cloud)
     try:
-        reachable = await ping_ollama(OLLAMA_BASE)
+        ollama_ok = await ping_ollama(OLLAMA_BASE)
     except Exception:
-        reachable = False
-    print(f"[RegRAG] Ollama reachable: {reachable} ({OLLAMA_BASE})")
+        ollama_ok = False
+
+    if ollama_ok:
+        EMBED_MODE = "ollama"
+        print(f"[RegRAG] ✅ Ollama reachable ({OLLAMA_BASE}) → using LOCAL embedding")
+    else:
+        try:
+            cloud_ok = await ping_cloud_embed()
+        except Exception:
+            cloud_ok = False
+        if cloud_ok:
+            EMBED_MODE = "cloud"
+            print(f"[RegRAG] ☁️ Ollama unreachable, Gemini available → using CLOUD embedding")
+        else:
+            EMBED_MODE = "none"
+            print(f"[RegRAG] ⚠️ No embedding backend available (Ollama: {OLLAMA_BASE}, Gemini: {'key set' if os.getenv('GEMINI_API_KEY') else 'NO KEY'})")
+
+    print(f"[RegRAG] Embed mode: {EMBED_MODE} | Model: {EMBED_MODEL}")
     # P1: 啟動時印出 CORS 白名單供稽核
     print(f"[RegRAG] CORS allowed origins: {ALLOWED_ORIGINS}")
     yield
@@ -111,6 +133,7 @@ async def health():
         ollama_ok = False
     return {
         "status": "ok",
+        "embed_mode": EMBED_MODE,
         "chunks": chunk_count,
         "ollama": ollama_ok,
         "embed_model": EMBED_MODEL,
@@ -138,13 +161,21 @@ async def query_regulations(req: QueryRequest):
     k = req.top_k or TOP_K
 
     # 取得 query embedding（優先使用快取）
-    cached_vec = query_cache.get(req.query, EMBED_MODEL)
+    cache_key_model = f"{EMBED_MODE}:{EMBED_MODEL}"
+    cached_vec = query_cache.get(req.query, cache_key_model)
     if cached_vec:
         query_vec = cached_vec
     else:
         try:
-            query_vec = await get_embedding(req.query, OLLAMA_BASE, EMBED_MODEL)
-            query_cache.set(req.query, EMBED_MODEL, query_vec)
+            if EMBED_MODE == "ollama":
+                query_vec = await get_embedding(req.query, OLLAMA_BASE, EMBED_MODEL)
+            elif EMBED_MODE == "cloud":
+                query_vec = await get_cloud_embedding(req.query, dimensions=768)
+            else:
+                raise HTTPException(503, "No embedding backend available")
+            query_cache.set(req.query, cache_key_model, query_vec)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(503, f"Embedding service unavailable: {e}")
 
