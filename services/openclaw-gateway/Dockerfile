@@ -10,8 +10,8 @@ RUN cd packages/types && npm install --ignore-scripts && npm run build
 COPY services/openclaw-gateway/ services/openclaw-gateway/
 WORKDIR /workspace/services/openclaw-gateway
 
-RUN npm install --legacy-peer-deps
-RUN npm run build
+RUN npm install --legacy-peer-deps && ls node_modules/.bin/tsc || echo "tsc not in node_modules/.bin"
+RUN npx tsc
 
 # ── Production stage ──────────────────────────────────────────
 FROM node:20.19.0-alpine3.21 AS runtime
