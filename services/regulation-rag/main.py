@@ -40,7 +40,7 @@ QDRANT_PATH    = os.getenv("CHROMA_PATH", "./data/qdrant_db") # Fallback to loca
 OLLAMA_BASE   = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 EMBED_MODEL   = os.getenv("EMBED_MODEL", "nomic-embed-text")
 TOP_K         = int(os.getenv("RAG_TOP_K", "5"))
-PORT          = int(os.getenv("PORT", "8092"))
+PORT          = int(os.getenv("PORT", "8080"))
 
 store: Optional[RegulationStore] = None
 
@@ -49,7 +49,10 @@ async def lifespan(app: FastAPI):
     global store
     store = RegulationStore(qdrant_url=QDRANT_URL, qdrant_path=QDRANT_PATH)
     print(f"[RegRAG] Loaded {store.total_chunks()} chunks from Qdrant {'('+QDRANT_URL+')' if QDRANT_URL else 'local path'}")
-    reachable = await ping_ollama(OLLAMA_BASE)
+    try:
+        reachable = await ping_ollama(OLLAMA_BASE)
+    except Exception:
+        reachable = False
     print(f"[RegRAG] Ollama reachable: {reachable} ({OLLAMA_BASE})")
     # P1: 啟動時印出 CORS 白名單供稽核
     print(f"[RegRAG] CORS allowed origins: {ALLOWED_ORIGINS}")
@@ -102,7 +105,10 @@ class QueryResponse(BaseModel):
 async def health():
     global store
     chunk_count = store.total_chunks() if store else 0
-    ollama_ok = await ping_ollama(OLLAMA_BASE)
+    try:
+        ollama_ok = await ping_ollama(OLLAMA_BASE)
+    except Exception:
+        ollama_ok = False
     return {
         "status": "ok",
         "chunks": chunk_count,
