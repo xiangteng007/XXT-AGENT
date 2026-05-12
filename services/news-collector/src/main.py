@@ -575,6 +575,5 @@ def create_app() -> web.Application:
 
 
 if __name__ == "__main__":
-    import web as _web  # type: ignore
     logger.info("Starting news-collector v9.2")
-    _web.run_app(create_app(), host="0.0.0.0", port=8080)
+    web.run_app(create_app(), host="0.0.0.0", port=8080)

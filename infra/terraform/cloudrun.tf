@@ -240,6 +240,7 @@ resource "google_cloud_run_v2_service" "social_worker" {
 resource "google_cloud_run_v2_service" "social_dispatcher" {
   name     = "social-collector" # Keep name for backward compat if needed
   location = var.region
+  deletion_protection = false
 
   template {
     service_account = google_service_account.runtime_sa.email
