@@ -16,7 +16,7 @@ FROM node:20-slim
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --only=production --legacy-peer-deps
+RUN npm ci --omit=dev --legacy-peer-deps
 
 COPY --from=builder /app/dist ./dist
 
