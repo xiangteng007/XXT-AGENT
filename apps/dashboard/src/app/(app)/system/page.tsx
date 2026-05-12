@@ -29,6 +29,7 @@ const crUrl = (service: string, path = '/healthz') =>
 const SERVICES: Array<{ name: string; url: string; emoji: string }> = [
     { name: 'AI Gateway', url: crUrl('ai-gateway', '/health'), emoji: '🤖' },
     { name: 'OpenClaw Gateway', url: crUrl('openclaw-gateway', '/health'), emoji: '🧠' },
+    { name: 'Regulation RAG', url: crUrl('regulation-rag', '/health'), emoji: '⚖️' },
     { name: 'Market Streamer', url: crUrl('market-streamer'), emoji: '📈' },
     { name: 'Quote Normalizer', url: crUrl('quote-normalizer'), emoji: '📊' },
     { name: 'Alert Engine', url: crUrl('alert-engine'), emoji: '🔔' },

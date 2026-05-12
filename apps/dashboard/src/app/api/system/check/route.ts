@@ -16,6 +16,7 @@ const crUrl = (service: string, path = '/healthz') =>
 const SERVICES = [
   { id: 'ai-gateway',        name: 'AI Gateway',        path: '/health',  emoji: '🤖' },
   { id: 'openclaw-gateway',   name: 'OpenClaw Gateway',  path: '/health',  emoji: '🧠' },
+  { id: 'regulation-rag',     name: 'Regulation RAG',    path: '/health',  emoji: '⚖️' },
   { id: 'market-streamer',    name: 'Market Streamer',   path: '/healthz', emoji: '📈' },
   { id: 'quote-normalizer',   name: 'Quote Normalizer',  path: '/healthz', emoji: '📊' },
   { id: 'alert-engine',       name: 'Alert Engine',      path: '/healthz', emoji: '🔔' },
