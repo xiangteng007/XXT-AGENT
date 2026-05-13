@@ -22,15 +22,15 @@ const SERVICES = [
   { id: 'ai-gateway',        name: 'AI Gateway',        path: '/health',  emoji: '🤖' },  // Express
   { id: 'openclaw-gateway',   name: 'OpenClaw Gateway',  path: '/health',  emoji: '🧠' },  // NestJS
   { id: 'regulation-rag',     name: 'Regulation RAG',    path: '/health',  emoji: '⚖️' },  // FastAPI
-  { id: 'market-streamer',    name: 'Market Streamer',   path: '/healthz', emoji: '📈' },  // aiohttp
-  { id: 'quote-normalizer',   name: 'Quote Normalizer',  path: '/healthz', emoji: '📊' },  // aiohttp
-  { id: 'alert-engine',       name: 'Alert Engine',      path: '/healthz', emoji: '🔔' },  // aiohttp
-  { id: 'news-collector',     name: 'News Collector',    path: '/healthz', emoji: '📰' },  // aiohttp
-  { id: 'trade-planner',      name: 'Trade Planner',     path: '/healthz', emoji: '📋' },  // aiohttp
-  { id: 'fusion-engine',      name: 'Event Fusion',      path: '/healthz', emoji: '⚡' },  // aiohttp
+  { id: 'market-streamer',    name: 'Market Streamer',   path: '/health',  emoji: '📈' },  // aiohttp
+  { id: 'quote-normalizer',   name: 'Quote Normalizer',  path: '/health',  emoji: '📊' },  // aiohttp
+  { id: 'alert-engine',       name: 'Alert Engine',      path: '/health',  emoji: '🔔' },  // aiohttp
+  { id: 'news-collector',     name: 'News Collector',    path: '/health',  emoji: '📰' },  // aiohttp
+  { id: 'trade-planner',      name: 'Trade Planner',     path: '/health',  emoji: '📋' },  // aiohttp
+  { id: 'fusion-engine',      name: 'Event Fusion',      path: '/health',  emoji: '⚡' },  // aiohttp
   { id: 'social-worker',      name: 'Social Worker',     path: '/health',  emoji: '👥' },  // FastAPI
-  { id: 'social-collector',   name: 'Social Collector',  path: '/healthz', emoji: '📡' },  // likely aiohttp
-  { id: 'telegram-bot',       name: 'Telegram Bot',      path: '/healthz', emoji: '💬' },  // aiohttp
+  { id: 'social-collector',   name: 'Social Collector',  path: '/health',  emoji: '📡' },  // FastAPI (social-dispatcher)
+  { id: 'telegram-bot',       name: 'Telegram Bot',      path: '/health',  emoji: '💬' },  // aiohttp
 ];
 
 interface CheckResult {

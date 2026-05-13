@@ -14,5 +14,6 @@ def create_health_app() -> web.Application:
     """Create aiohttp application with health check route."""
     app = web.Application()
     app.router.add_get("/healthz", health_handler)
+    app.router.add_get("/health", health_handler)
     app.router.add_get("/", health_handler)  # Root path for simple checks
     return app

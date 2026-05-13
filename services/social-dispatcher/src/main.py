@@ -217,6 +217,7 @@ async def handle_notify(request: Request):
 
 # ── Health & Status ───────────────────────────────────────────
 @app.get("/healthz")
+@app.get("/health")
 async def healthz():
     return {"ok": True, "service": "social-dispatcher", "version": "1.0.0", "env": ENV}
 

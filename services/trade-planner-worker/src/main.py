@@ -199,6 +199,7 @@ def create_app() -> web.Application:
 
     app.router.add_post("/analyze", handle_analyze)
     app.router.add_get("/healthz", handle_health)
+    app.router.add_get("/health", handle_health)
     
     return app
 

@@ -978,6 +978,7 @@ def create_app() -> web.Application:
 
     app.router.add_post("/telegram", handle_telegram)
     app.router.add_get("/healthz", handle_health)
+    app.router.add_get("/health", handle_health)
     
     app.on_startup.append(start_telegram_polling)
     app.on_cleanup.append(cleanup_telegram_polling)
