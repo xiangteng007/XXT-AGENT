@@ -38,14 +38,14 @@ interface CheckResult {
   checkedAt: string;
 }
 
-// ── IAM Token Cache ──────────────────────────────────────────
-let cachedIdToken: string | null = null;
-let tokenExpiry = 0;
+// ── IAM Token Cache (per-audience) ───────────────────────────
+const tokenCache = new Map<string, { header: string; expiry: number }>();
 
 async function getGcpIdToken(targetAudience: string): Promise<string | null> {
   // Return cached token if still valid (with 60s buffer)
-  if (cachedIdToken && Date.now() < tokenExpiry - 60_000) {
-    return cachedIdToken;
+  const cached = tokenCache.get(targetAudience);
+  if (cached && Date.now() < cached.expiry - 60_000) {
+    return cached.header;
   }
 
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
@@ -66,13 +66,13 @@ async function getGcpIdToken(targetAudience: string): Promise<string | null> {
 
     const client = await auth.getIdTokenClient(targetAudience);
     const reqHeaders = await client.getRequestHeaders();
-    // getRequestHeaders() returns Headers object — use .get()
     const authValue = reqHeaders.get('Authorization') ?? '';
 
     if (authValue) {
-      cachedIdToken = authValue.replace('Bearer ', '');
-      // JWT tokens are typically valid for 1 hour
-      tokenExpiry = Date.now() + 55 * 60 * 1000;
+      tokenCache.set(targetAudience, {
+        header: authValue, // Full "Bearer TOKEN" value
+        expiry: Date.now() + 55 * 60 * 1000,
+      });
     }
 
     return authValue || null;
