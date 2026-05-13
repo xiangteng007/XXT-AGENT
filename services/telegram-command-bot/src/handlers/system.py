@@ -77,7 +77,7 @@ async def _check_gateway(gateway_url: str, internal_secret: str) -> dict:
         timeout = ClientTimeout(total=8)
         async with ClientSession(timeout=timeout) as session:
             async with session.get(
-                f"{gateway_url}/healthz",
+                f"{gateway_url}/health",
                 headers={"Authorization": f"Bearer {internal_secret}"},
             ) as resp:
                 if resp.status == 200:

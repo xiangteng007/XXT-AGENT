@@ -13,11 +13,11 @@ export const revalidate = 0;
 // Cloud Run URL format: SERVICE-HASH.a.run.app (classic format)
 const CR_HASH = process.env.CLOUD_RUN_SERVICE_HASH || 'hwx3zjt7lq-de';
 
-const crUrl = (service: string, path = '/healthz') =>
+const crUrl = (service: string, path = '/health') =>
   `https://${service}-${CR_HASH}.a.run.app${path}`;
 
 // Service names match actual Cloud Run deployment names
-// Path per service verified from source: FastAPI → /health, aiohttp → /healthz
+// All services use /health (NOT /healthz — GCP LB intercepts /healthz)
 const SERVICES = [
   { id: 'ai-gateway',        name: 'AI Gateway',        path: '/health',  emoji: '🤖' },  // Express
   { id: 'openclaw-gateway',   name: 'OpenClaw Gateway',  path: '/health',  emoji: '🧠' },  // NestJS
