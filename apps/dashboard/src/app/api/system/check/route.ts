@@ -110,6 +110,8 @@ async function checkService(svc: typeof SERVICES[0]): Promise<CheckResult> {
     const res = await fetch(url, {
       method: 'GET',
       headers,
+      redirect: 'manual',
+      cache: 'no-store',
       signal: AbortSignal.timeout(8000),
     });
 
@@ -125,12 +127,17 @@ async function checkService(svc: typeof SERVICES[0]): Promise<CheckResult> {
       };
     }
 
+    let errorInfo: string | undefined;
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      errorInfo = `HTTP ${res.status} (token:${hadToken}) url:${url} body:${body.slice(0, 80)}`;
+    }
     return {
       name: svc.name,
       emoji: svc.emoji,
       status: res.ok ? 'healthy' : 'unhealthy',
       latencyMs: Date.now() - start,
-      error: res.ok ? undefined : `HTTP ${res.status} (token:${hadToken})`,
+      error: errorInfo,
       checkedAt: new Date().toISOString(),
     };
   } catch (err) {
