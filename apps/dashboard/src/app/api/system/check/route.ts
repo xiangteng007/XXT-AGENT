@@ -70,11 +70,13 @@ async function getGcpIdToken(targetAudience: string): Promise<string | null> {
 
     const client = await auth.getIdTokenClient(targetAudience);
     const reqHeaders = await client.getRequestHeaders();
-    const authValue = reqHeaders.get('Authorization') ?? '';
+    // getRequestHeaders() returns a plain object { Authorization: 'Bearer ...' }
+    // NOT a Headers instance — must use bracket notation
+    const authValue = (reqHeaders as Record<string, string>)['Authorization'] || '';
 
     if (authValue) {
       tokenCache.set(targetAudience, {
-        header: authValue, // Full "Bearer TOKEN" value
+        header: authValue,
         expiry: Date.now() + 55 * 60 * 1000,
       });
     }
@@ -138,6 +140,21 @@ async function checkService(svc: typeof SERVICES[0]): Promise<CheckResult> {
 }
 
 export async function GET() {
+  // Diagnostic: test token generation for a known service
+  const testAudience = `https://market-streamer-${CR_HASH}.${CR_REGION}.run.app`;
+  let tokenDiag: Record<string, unknown> = {};
+  try {
+    const token = await getGcpIdToken(testAudience);
+    tokenDiag = {
+      hasToken: Boolean(token),
+      tokenLength: token?.length ?? 0,
+      startsWithBearer: token?.startsWith('Bearer ') ?? false,
+      audience: testAudience,
+    };
+  } catch (err) {
+    tokenDiag = { error: String(err) };
+  }
+
   const results = await Promise.allSettled(SERVICES.map(checkService));
   const services = results.map((r, i) =>
     r.status === 'fulfilled'
@@ -150,6 +167,7 @@ export async function GET() {
   return NextResponse.json({
     services,
     summary: { total: services.length, healthy, unhealthy: services.length - healthy },
+    _diag: tokenDiag,
     checkedAt: new Date().toISOString(),
   }, {
     headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
