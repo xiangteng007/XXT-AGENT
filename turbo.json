@@ -4,7 +4,19 @@
         "build": {
             "dependsOn": ["^build"],
             "outputs": [".next/**", "!.next/cache/**", "lib/**", "dist/**"],
-            "env": ["NODE_ENV", "NEXT_PUBLIC_*"]
+            "env": [
+                "NODE_ENV",
+                "NEXT_PUBLIC_*",
+                "FIREBASE_PROJECT_ID",
+                "FIREBASE_CLIENT_EMAIL",
+                "FIREBASE_PRIVATE_KEY",
+                "OPENCLAW_GATEWAY_URL",
+                "AI_GATEWAY_URL",
+                "CLOUD_FUNCTIONS_URL",
+                "BUTLER_API_URL",
+                "CLOUD_RUN_PROJECT_HASH",
+                "CLOUD_RUN_REGION"
+            ]
         },
         "dev": {
             "cache": false,
