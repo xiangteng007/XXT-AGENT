@@ -13,20 +13,20 @@ const crUrl = (service: string, path = '/healthz') =>
   `https://${service}-${CR_HASH}.${CR_REGION}.run.app${path}`;
 
 // Service names match actual Cloud Run deployment names
+// All services use /health (confirmed via 403 response = endpoint exists, IAM required)
 const SERVICES = [
   { id: 'ai-gateway',        name: 'AI Gateway',        path: '/health',  emoji: '🤖' },
   { id: 'openclaw-gateway',   name: 'OpenClaw Gateway',  path: '/health',  emoji: '🧠' },
   { id: 'regulation-rag',     name: 'Regulation RAG',    path: '/health',  emoji: '⚖️' },
-  { id: 'market-streamer',    name: 'Market Streamer',   path: '/healthz', emoji: '📈' },
-  { id: 'quote-normalizer',   name: 'Quote Normalizer',  path: '/healthz', emoji: '📊' },
-  { id: 'alert-engine',       name: 'Alert Engine',      path: '/healthz', emoji: '🔔' },
-  { id: 'news-collector',     name: 'News Collector',    path: '/healthz', emoji: '📰' },
-  { id: 'trade-planner',      name: 'Trade Planner',     path: '/healthz', emoji: '📋' },
-  { id: 'fusion-engine',      name: 'Event Fusion',      path: '/healthz', emoji: '⚡' },
-  { id: 'social-worker',      name: 'Social Worker',     path: '/healthz', emoji: '👥' },
-  { id: 'social-collector',   name: 'Social Collector',  path: '/healthz', emoji: '📡' },
-  { id: 'social-dispatcher',  name: 'Social Dispatcher', path: '/healthz', emoji: '📤' },
-  { id: 'telegram-bot',       name: 'Telegram Bot',      path: '/healthz', emoji: '💬' },
+  { id: 'market-streamer',    name: 'Market Streamer',   path: '/health',  emoji: '📈' },
+  { id: 'quote-normalizer',   name: 'Quote Normalizer',  path: '/health',  emoji: '📊' },
+  { id: 'alert-engine',       name: 'Alert Engine',      path: '/health',  emoji: '🔔' },
+  { id: 'news-collector',     name: 'News Collector',    path: '/health',  emoji: '📰' },
+  { id: 'trade-planner',      name: 'Trade Planner',     path: '/health',  emoji: '📋' },
+  { id: 'fusion-engine',      name: 'Event Fusion',      path: '/health',  emoji: '⚡' },
+  { id: 'social-worker',      name: 'Social Worker',     path: '/health',  emoji: '👥' },
+  { id: 'social-collector',   name: 'Social Collector',  path: '/health',  emoji: '📡' },
+  { id: 'telegram-bot',       name: 'Telegram Bot',      path: '/health',  emoji: '💬' },
 ];
 
 interface CheckResult {

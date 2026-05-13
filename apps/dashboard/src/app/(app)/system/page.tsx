@@ -23,13 +23,13 @@ interface ServiceStatus {
 /** Cloud Run base URL pattern. Set NEXT_PUBLIC_CLOUD_RUN_PROJECT_HASH in .env to override. */
 const CR_HASH = process.env.NEXT_PUBLIC_CLOUD_RUN_PROJECT_HASH || '257379536720';
 const CR_REGION = process.env.NEXT_PUBLIC_CLOUD_RUN_REGION || 'asia-east1';
-const crUrl = (service: string, path = '/healthz') =>
+const crUrl = (service: string, path = '/health') =>
     `https://${service}-${CR_HASH}.${CR_REGION}.run.app${path}`;
 
 const SERVICES: Array<{ name: string; url: string; emoji: string }> = [
-    { name: 'AI Gateway', url: crUrl('ai-gateway', '/health'), emoji: '🤖' },
-    { name: 'OpenClaw Gateway', url: crUrl('openclaw-gateway', '/health'), emoji: '🧠' },
-    { name: 'Regulation RAG', url: crUrl('regulation-rag', '/health'), emoji: '⚖️' },
+    { name: 'AI Gateway', url: crUrl('ai-gateway'), emoji: '🤖' },
+    { name: 'OpenClaw Gateway', url: crUrl('openclaw-gateway'), emoji: '🧠' },
+    { name: 'Regulation RAG', url: crUrl('regulation-rag'), emoji: '⚖️' },
     { name: 'Market Streamer', url: crUrl('market-streamer'), emoji: '📈' },
     { name: 'Quote Normalizer', url: crUrl('quote-normalizer'), emoji: '📊' },
     { name: 'Alert Engine', url: crUrl('alert-engine'), emoji: '🔔' },
@@ -38,7 +38,6 @@ const SERVICES: Array<{ name: string; url: string; emoji: string }> = [
     { name: 'Event Fusion', url: crUrl('fusion-engine'), emoji: '⚡' },
     { name: 'Social Worker', url: crUrl('social-worker'), emoji: '👥' },
     { name: 'Social Collector', url: crUrl('social-collector'), emoji: '📡' },
-    { name: 'Social Dispatcher', url: crUrl('social-dispatcher'), emoji: '📤' },
     { name: 'Telegram Bot', url: crUrl('telegram-bot'), emoji: '💬' },
 ];
 
