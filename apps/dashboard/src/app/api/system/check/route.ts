@@ -146,11 +146,6 @@ export async function GET() {
   return NextResponse.json({
     services,
     summary: { total: services.length, healthy, unhealthy: services.length - healthy },
-    credentials: {
-      hasClientEmail: Boolean(process.env.FIREBASE_CLIENT_EMAIL),
-      hasPrivateKey: Boolean(process.env.FIREBASE_PRIVATE_KEY),
-      privateKeyLength: process.env.FIREBASE_PRIVATE_KEY?.length ?? 0,
-    },
     checkedAt: new Date().toISOString(),
   });
 }
