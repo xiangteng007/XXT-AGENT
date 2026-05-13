@@ -129,8 +129,7 @@ async function checkServiceWithToken(
 
     let errorInfo: string | undefined;
     if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      errorInfo = `HTTP ${res.status} (token:${hadToken}) body:${body.slice(0, 80)}`;
+      errorInfo = `HTTP ${res.status}`;
     }
     return {
       name: svc.name,
@@ -152,7 +151,9 @@ async function checkServiceWithToken(
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const showDiag = searchParams.get('diag') === '1';
   // Pre-generate tokens for all unique audiences SEQUENTIALLY
   // This avoids concurrent token generation race conditions
   const tokenMap = new Map<string, string | null>();
@@ -189,12 +190,16 @@ export async function GET() {
 
   const healthy = services.filter(s => s.status === 'healthy').length;
 
-  return NextResponse.json({
+  const payload: Record<string, unknown> = {
     services,
     summary: { total: services.length, healthy, unhealthy: services.length - healthy },
-    _diag: tokenDiag,
     checkedAt: new Date().toISOString(),
-  }, {
+  };
+  if (showDiag) {
+    payload._diag = tokenDiag;
+  }
+
+  return NextResponse.json(payload, {
     headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
   });
 }
