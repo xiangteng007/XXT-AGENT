@@ -10,11 +10,11 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const CR_HASH = process.env.CLOUD_RUN_PROJECT_HASH || process.env.NEXT_PUBLIC_CLOUD_RUN_PROJECT_HASH || '257379536720';
-const CR_REGION = process.env.CLOUD_RUN_REGION || process.env.NEXT_PUBLIC_CLOUD_RUN_REGION || 'asia-east1';
+// Cloud Run URL format: SERVICE-HASH.a.run.app (classic format)
+const CR_HASH = process.env.CLOUD_RUN_SERVICE_HASH || 'hwx3zjt7lq-de';
 
 const crUrl = (service: string, path = '/healthz') =>
-  `https://${service}-${CR_HASH}.${CR_REGION}.run.app${path}`;
+  `https://${service}-${CR_HASH}.a.run.app${path}`;
 
 // Service names match actual Cloud Run deployment names
 // Path per service verified from source: FastAPI → /health, aiohttp → /healthz
@@ -147,7 +147,7 @@ async function checkService(svc: typeof SERVICES[0]): Promise<CheckResult> {
 
 export async function GET() {
   // Diagnostic: test token generation for a known service
-  const testAudience = `https://market-streamer-${CR_HASH}.${CR_REGION}.run.app`;
+  const testAudience = `https://market-streamer-${CR_HASH}.a.run.app`;
   let tokenDiag: Record<string, unknown> = {};
   try {
     const token = await getGcpIdToken(testAudience);
