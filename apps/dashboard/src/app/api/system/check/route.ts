@@ -6,6 +6,10 @@ import { NextResponse } from 'next/server';
  * Falls back to unauthenticated requests for allUsers services (e.g., AI Gateway).
  */
 
+// Force dynamic rendering — no edge caching for health checks
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const CR_HASH = process.env.CLOUD_RUN_PROJECT_HASH || process.env.NEXT_PUBLIC_CLOUD_RUN_PROJECT_HASH || '257379536720';
 const CR_REGION = process.env.CLOUD_RUN_REGION || process.env.NEXT_PUBLIC_CLOUD_RUN_REGION || 'asia-east1';
 
@@ -147,5 +151,7 @@ export async function GET() {
     services,
     summary: { total: services.length, healthy, unhealthy: services.length - healthy },
     checkedAt: new Date().toISOString(),
+  }, {
+    headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
   });
 }
