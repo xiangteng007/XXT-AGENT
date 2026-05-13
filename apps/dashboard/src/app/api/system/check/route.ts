@@ -70,10 +70,13 @@ async function getGcpIdToken(targetAudience: string): Promise<string | null> {
 
     const client = await auth.getIdTokenClient(targetAudience);
     const reqHeaders = await client.getRequestHeaders();
-    // getRequestHeaders() may return Headers or a plain object depending on version
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const hdrs = reqHeaders as any;
-    const authValue: string = (typeof hdrs.get === 'function' ? hdrs.get('Authorization') : hdrs['Authorization']) || '';
+    // getRequestHeaders() may return Headers or plain object depending on version
+    let authValue = '';
+    if (typeof (reqHeaders as unknown as { get?: unknown }).get === 'function') {
+      authValue = (reqHeaders as unknown as { get(k: string): string }).get('Authorization') || '';
+    } else {
+      authValue = String((reqHeaders as unknown as Record<string, unknown>)['Authorization'] || '')
+    }
 
     if (authValue) {
       tokenCache.set(targetAudience, {
