@@ -93,19 +93,19 @@ async function getGcpIdToken(targetAudience: string): Promise<string | null> {
 }
 
 // ── Health Check Logic ───────────────────────────────────────
-async function checkService(svc: typeof SERVICES[0]): Promise<CheckResult> {
-  const url = crUrl(svc.id, svc.path);
+async function checkServiceWithToken(
+  svc: typeof SERVICES[0],
+  url: string,
+  authHeader: string | null,
+): Promise<CheckResult> {
   const start = Date.now();
+  const hadToken = Boolean(authHeader);
 
   try {
-    // Try with IAM token first
-    const audience = url.replace(svc.path, '');
-    const authHeader = await getGcpIdToken(audience);
     const headers: Record<string, string> = {};
     if (authHeader) {
       headers['Authorization'] = authHeader;
     }
-    const hadToken = Boolean(authHeader);
 
     const res = await fetch(url, {
       method: 'GET',
@@ -130,7 +130,7 @@ async function checkService(svc: typeof SERVICES[0]): Promise<CheckResult> {
     let errorInfo: string | undefined;
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      errorInfo = `HTTP ${res.status} (token:${hadToken}) url:${url} body:${body.slice(0, 80)}`;
+      errorInfo = `HTTP ${res.status} (token:${hadToken}) body:${body.slice(0, 80)}`;
     }
     return {
       name: svc.name,
@@ -153,22 +153,34 @@ async function checkService(svc: typeof SERVICES[0]): Promise<CheckResult> {
 }
 
 export async function GET() {
-  // Diagnostic: test token generation for a known service
-  const testAudience = `https://market-streamer-${CR_HASH}.a.run.app`;
-  let tokenDiag: Record<string, unknown> = {};
-  try {
-    const token = await getGcpIdToken(testAudience);
-    tokenDiag = {
-      hasToken: Boolean(token),
-      tokenLength: token?.length ?? 0,
-      startsWithBearer: token?.startsWith('Bearer ') ?? false,
-      audience: testAudience,
-    };
-  } catch (err) {
-    tokenDiag = { error: String(err) };
+  // Pre-generate tokens for all unique audiences SEQUENTIALLY
+  // This avoids concurrent token generation race conditions
+  const tokenMap = new Map<string, string | null>();
+  for (const svc of SERVICES) {
+    const audience = crUrl(svc.id, '').replace(/\/$/, '');
+    if (!tokenMap.has(audience)) {
+      tokenMap.set(audience, await getGcpIdToken(audience));
+    }
   }
 
-  const results = await Promise.allSettled(SERVICES.map(checkService));
+  // Diagnostic info
+  const tokenDiag = {
+    totalAudiences: tokenMap.size,
+    withToken: Array.from(tokenMap.values()).filter(Boolean).length,
+    audiences: Object.fromEntries(
+      Array.from(tokenMap.entries()).map(([k, v]) => [k.split('-hwx')[0].split('//')[1], Boolean(v)])
+    ),
+  };
+
+  // Now run health checks concurrently with pre-resolved tokens
+  const checkWithToken = (svc: typeof SERVICES[0]) => {
+    const url = crUrl(svc.id, svc.path);
+    const audience = crUrl(svc.id, '').replace(/\/$/, '');
+    const token = tokenMap.get(audience) ?? null;
+    return checkServiceWithToken(svc, url, token);
+  };
+
+  const results = await Promise.allSettled(SERVICES.map(checkWithToken));
   const services = results.map((r, i) =>
     r.status === 'fulfilled'
       ? r.value
