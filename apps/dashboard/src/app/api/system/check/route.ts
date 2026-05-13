@@ -99,11 +99,13 @@ async function checkService(svc: typeof SERVICES[0]): Promise<CheckResult> {
 
   try {
     // Try with IAM token first
-    const authHeader = await getGcpIdToken(url.replace(svc.path, ''));
+    const audience = url.replace(svc.path, '');
+    const authHeader = await getGcpIdToken(audience);
     const headers: Record<string, string> = {};
     if (authHeader) {
       headers['Authorization'] = authHeader;
     }
+    const hadToken = Boolean(authHeader);
 
     const res = await fetch(url, {
       method: 'GET',
@@ -128,7 +130,7 @@ async function checkService(svc: typeof SERVICES[0]): Promise<CheckResult> {
       emoji: svc.emoji,
       status: res.ok ? 'healthy' : 'unhealthy',
       latencyMs: Date.now() - start,
-      error: res.ok ? undefined : `HTTP ${res.status}`,
+      error: res.ok ? undefined : `HTTP ${res.status} (token:${hadToken})`,
       checkedAt: new Date().toISOString(),
     };
   } catch (err) {
