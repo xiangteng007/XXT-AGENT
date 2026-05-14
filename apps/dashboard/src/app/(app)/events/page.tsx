@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
-import { getFusedEvents } from '@/lib/api/client';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import type { FusedEvent } from '@/lib/api/types';
 import { DataTable, FilterBar, SeverityBadge, LoadingSkeleton, EmptyState } from '@/components/shared';
 import type { Column } from '@/components/shared/DataTable';
@@ -16,6 +16,7 @@ import {
 import { TrendingUp, Newspaper, MessageSquare, Zap, ExternalLink } from 'lucide-react';
 
 export default function EventsPage() {
+    const { getIdToken } = useAuth();
     const [events, setEvents] = useState<FusedEvent[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedEvent, setSelectedEvent] = useState<FusedEvent | null>(null);
@@ -27,19 +28,24 @@ export default function EventsPage() {
     const [sortKey, setSortKey] = useState('ts');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-    useEffect(() => {
-        async function loadEvents() {
-            try {
-                const data = await getFusedEvents();
+    const loadEvents = useCallback(async () => {
+        try {
+            const token = await getIdToken();
+            const res = await fetch('/api/events', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
                 setEvents(data);
-            } catch (error) {
-                console.error('Failed to load events:', error);
-            } finally {
-                setLoading(false);
             }
+        } catch (error) {
+            console.error('Failed to load events:', error);
+        } finally {
+            setLoading(false);
         }
-        loadEvents();
-    }, []);
+    }, [getIdToken]);
+
+    useEffect(() => { loadEvents(); }, [loadEvents]);
 
     // Filtered and sorted events
     const filteredEvents = useMemo(() => {

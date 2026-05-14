@@ -25,11 +25,9 @@ interface FinancialData {
   ledger: LedgerEntry[];
 }
 
-// Fallback mock data when API is unavailable
-const MOCK_LEDGER: LedgerEntry[] = [
-  { entry_id: 'PR-2026-041', type: 'expense', category: 'material', description: 'Grade-A rebar procurement', amount: 2450000 },
-  { entry_id: 'PR-2026-042', type: 'expense', category: 'interior', description: 'Lobby acoustic wall panels', amount: 320000 },
-  { entry_id: 'AU-2026-018', type: 'expense', category: 'tax', description: 'Q3 VAT audit anomaly flag', amount: -15000 },
+// Fallback sample entries shown when API is unavailable (with ⚠️ banner)
+const SAMPLE_LEDGER: LedgerEntry[] = [
+  { entry_id: 'DEMO-001', type: 'expense', category: 'material', description: '尚無資料 — 連線 OpenClaw 後顯示即時帳本', amount: 0 },
 ];
 
 export default function FinancialConstructionPage() {
@@ -58,9 +56,9 @@ export default function FinancialConstructionPage() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const entries = (data?.ledger && data.ledger.length > 0) ? data.ledger : MOCK_LEDGER;
-  const totalIncome = data?.summary?.total_income_taxed ?? 45200000;
-  const totalExpense = data?.summary?.total_expense_taxed ?? 12800000;
+  const entries = (data?.ledger && data.ledger.length > 0) ? data.ledger : SAMPLE_LEDGER;
+  const totalIncome = data?.summary?.total_income_taxed ?? 0;
+  const totalExpense = data?.summary?.total_expense_taxed ?? 0;
   const netAmount = totalIncome - totalExpense;
 
   const metrics = [

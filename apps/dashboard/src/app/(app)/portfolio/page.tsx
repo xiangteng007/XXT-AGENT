@@ -170,7 +170,7 @@ export default function PortfolioPage() {
         if (!activePortfolio) return;
         const quantity = parseFloat(posQuantity);
         const cost = parseFloat(posCost);
-        const currentPrice = cost * (1 + (Math.random() - 0.3) * 0.2); // Simulate current price
+        const currentPrice = cost; // Initial price = cost; real-time prices update on server refresh
 
         const newPosition: Position = {
             id: Date.now().toString(),
