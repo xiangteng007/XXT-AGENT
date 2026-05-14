@@ -127,15 +127,12 @@ class QueryResponse(BaseModel):
 async def health():
     global store
     chunk_count = store.total_chunks() if store else 0
-    try:
-        ollama_ok = await ping_ollama(OLLAMA_BASE)
-    except Exception:
-        ollama_ok = False
+    # NOTE: Do NOT ping Ollama here — it causes 8s+ timeouts on Cloud Run cold starts.
+    # Embed mode is already determined during lifespan startup.
     return {
         "status": "ok",
         "embed_mode": EMBED_MODE,
         "chunks": chunk_count,
-        "ollama": ollama_ok,
         "embed_model": EMBED_MODEL,
         "qdrant_url": QDRANT_URL,
         "qdrant_path": QDRANT_PATH,

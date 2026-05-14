@@ -112,7 +112,7 @@ async function checkServiceWithToken(
       headers,
       redirect: 'manual',
       cache: 'no-store',
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(15000),
     });
 
     // If 403 with token, report as IAM issue; if 403 without token, expected

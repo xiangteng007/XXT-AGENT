@@ -1,6 +1,6 @@
 // Settings store using localStorage
 
-export type DataMode = 'mock' | 'live';
+export type DataMode = 'live';
 
 export interface UIPreferences {
     sidebarCollapsed: boolean;

@@ -110,7 +110,7 @@ async def _check_dashboard(dashboard_url: str) -> dict:
         return {"ok": False, "error": "not configured"}
     try:
         from aiohttp import ClientSession, ClientTimeout
-        timeout = ClientTimeout(total=12)
+        timeout = ClientTimeout(total=25)
         async with ClientSession(timeout=timeout) as session:
             # Check dashboard itself
             async with session.get(dashboard_url) as resp:
