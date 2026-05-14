@@ -16,7 +16,7 @@ export interface Settings {
 const STORAGE_KEY = 'dashboard-settings';
 
 const DEFAULT_SETTINGS: Settings = {
-    dataMode: 'mock',
+    dataMode: 'live',
     apiBaseUrl: '',
     uiPreferences: {
         sidebarCollapsed: false,

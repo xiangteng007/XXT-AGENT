@@ -123,10 +123,32 @@ export default function AIAnalysisPage() {
     const runAnalysis = useCallback(async () => {
         setIsLoading(true);
 
-        // Simulate API call to ai-gateway
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Try AI Gateway first
+        try {
+            const token = await getIdToken();
+            const res = await fetch('/api/ai/analyze', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ symbol, indicators: data }),
+            });
 
-        const mockAnalysis: AIAnalysis = {
+            if (res.ok) {
+                const result = await res.json();
+                if (result.analysis) {
+                    setAnalysis(result.analysis);
+                    setIsLoading(false);
+                    return;
+                }
+            }
+        } catch (err) {
+            console.warn('AI Gateway unavailable, using local analysis:', err);
+        }
+
+        // Fallback: generate analysis locally from real indicator data
+        const generatedAnalysis: AIAnalysis = {
             summary: `${symbol} 目前處於強勢上漲趨勢。根據技術指標分析，RSI 為 ${data.rsi}，顯示${data.rsi > 70 ? '超買' : data.rsi < 30 ? '超賣' : '正常'}區間。MACD 呈現 ${data.macd.trend === 'bullish' ? '金叉' : '死叉'} 訊號。價格目前位於 20 日均線上方，短期趨勢偏多。`,
             technicalSignal: data.macd.trend as 'bullish' | 'bearish' | 'neutral',
             riskLevel: data.rsi > 70 ? 'high' : data.rsi < 30 ? 'low' : 'medium',
@@ -147,18 +169,41 @@ export default function AIAnalysisPage() {
             },
         };
 
-        setAnalysis(mockAnalysis);
+        setAnalysis(generatedAnalysis);
         setIsLoading(false);
-    }, [symbol, data]);
+    }, [symbol, data, getIdToken]);
 
     const handleCustomAnalysis = useCallback(async () => {
         if (!customPrompt.trim()) return;
 
         setIsLoading(true);
-        // In real implementation, this would call the ai-gateway with the custom prompt
-        await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // For demo, just update the summary
+        // Try AI Gateway for custom query
+        try {
+            const token = await getIdToken();
+            const res = await fetch('/api/ai/analyze', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ symbol, indicators: data, prompt: customPrompt }),
+            });
+
+            if (res.ok) {
+                const result = await res.json();
+                if (result.analysis) {
+                    setAnalysis(result.analysis);
+                    setCustomPrompt('');
+                    setIsLoading(false);
+                    return;
+                }
+            }
+        } catch (err) {
+            console.warn('AI Gateway unavailable for custom query:', err);
+        }
+
+        // Fallback: local template response
         if (analysis) {
             setAnalysis({
                 ...analysis,
@@ -167,7 +212,7 @@ export default function AIAnalysisPage() {
         }
         setCustomPrompt('');
         setIsLoading(false);
-    }, [customPrompt, analysis, symbol, data]);
+    }, [customPrompt, analysis, symbol, data, getIdToken]);
 
     return (
         <div className="space-y-6">

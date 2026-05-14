@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useSectorHeatmap } from '@/lib/hooks/useMarketData';
+import { useSectorHeatmap, useQuotes } from '@/lib/hooks/useMarketData';
 import { useSectorStore } from '@/lib/market/sectorStore';
 import { SectorManager } from '@/components/market/SectorManager';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,22 +43,45 @@ export default function MarketHeatmapPage() {
         reset,
     } = useSectorStore();
 
+    // Collect all unique symbols from custom sectors for real-time quotes
+    const allSymbols = useMemo(
+        () => Array.from(new Set(customSectors.flatMap(s => s.stocks.map(st => st.symbol)))),
+        [customSectors]
+    );
+    const { quotes } = useQuotes(allSymbols);
+
+    // Build quote lookup map for O(1) access
+    const quoteMap = useMemo(() => {
+        const map: Record<string, { changePct: number; volume: number; marketCap: number }> = {};
+        quotes.forEach(q => {
+            map[q.symbol] = {
+                changePct: q.changePct ?? 0,
+                volume: q.volume ?? 0,
+                marketCap: q.marketCap ?? 1e11,
+            };
+        });
+        return map;
+    }, [quotes]);
+
     const isLoading = apiLoading || customLoading;
 
     // 合併 API 資料與自訂版塊結構
     const displaySectors = customSectors.map(sector => {
-        // 為每個股票取得即時報價 (使用 mock 資料模擬)
-        const stocks = sector.stocks.map(stock => ({
-            symbol: stock.symbol,
-            name: stock.name,
-            sector: sector.id,
-            industry: '',
-            marketCap: 1e11,
-            weight: 1 / sector.stocks.length,
-            changePct: (Math.random() - 0.5) * 6, // 模擬 -3% ~ +3%
-            volume: Math.random() * 1e9,
-            color: '',
-        }));
+        // 使用即時報價數據
+        const stocks = sector.stocks.map(stock => {
+            const q = quoteMap[stock.symbol];
+            return {
+                symbol: stock.symbol,
+                name: stock.name,
+                sector: sector.id,
+                industry: '',
+                marketCap: q?.marketCap ?? 1e11,
+                weight: 1 / sector.stocks.length,
+                changePct: q?.changePct ?? 0,
+                volume: q?.volume ?? 0,
+                color: '',
+            };
+        });
 
         const avgChange = stocks.length > 0
             ? stocks.reduce((sum, s) => sum + s.changePct, 0) / stocks.length

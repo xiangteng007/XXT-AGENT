@@ -357,22 +357,26 @@ export interface MacroEvent {
 }
 
 export function useMacroCalendar() {
-    // Mock implementation for now
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const dayAfter = new Date(today);
-    dayAfter.setDate(dayAfter.getDate() + 2);
-    
-    const events: MacroEvent[] = [
-        { id: '1', date: today.toISOString().split('T')[0], title: 'US Core CPI', impact: 'high', country: 'US' },
-        { id: '2', date: tomorrow.toISOString().split('T')[0], title: 'FED Interest Rate Decision', impact: 'high', country: 'US' },
-        { id: '3', date: dayAfter.toISOString().split('T')[0], title: 'Initial Jobless Claims', impact: 'medium', country: 'US' },
-    ];
-    
+    const { getIdToken, user } = useAuth();
+
+    const fetcher = async (url: string) => {
+        const token = await getIdToken();
+        const res = await fetch(`${API_BASE}${url}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error('Failed to fetch macro calendar');
+        return res.json();
+    };
+
+    const { data, error, isLoading } = useSWR<{ events: MacroEvent[] }>(
+        user ? '/api/market/macro-calendar' : null,
+        fetcher,
+        { refreshInterval: 300000 }  // 5 minutes
+    );
+
     return {
-        events,
-        isLoading: false,
-        error: null,
+        events: data?.events || [],
+        isLoading,
+        error,
     };
 }

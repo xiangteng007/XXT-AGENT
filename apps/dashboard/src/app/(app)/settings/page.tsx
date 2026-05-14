@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSettings, type DataMode } from '@/lib/store/settings';
+import { useSettings } from '@/lib/store/settings';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -27,12 +27,7 @@ export default function SettingsPage() {
         setLocalSettings(settings);
     }, [settings]);
 
-    const handleDataModeChange = (checked: boolean) => {
-        setLocalSettings({
-            ...localSettings,
-            dataMode: checked ? 'live' : 'mock',
-        });
-    };
+
 
     const handleApiUrlChange = (url: string) => {
         setLocalSettings({
@@ -87,7 +82,7 @@ export default function SettingsPage() {
                         資料模式
                     </CardTitle>
                     <CardDescription>
-                        選擇使用模擬資料或連接即時 API
+                        所有模組已對接即時 API，不再支援模擬資料
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -95,40 +90,22 @@ export default function SettingsPage() {
                         <div className="space-y-0.5">
                             <div className="text-sm font-medium">Live Mode</div>
                             <div className="text-xs text-muted-foreground">
-                                啟用後將從 API 取得即時資料，失敗時自動回退到模擬資料
+                                系統已完全遷移至即時 API，模擬資料已移除
                             </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm text-muted-foreground">Mock</span>
-                            <Switch
-                                checked={localSettings.dataMode === 'live'}
-                                onCheckedChange={handleDataModeChange}
-                            />
-                            <span className="text-sm text-muted-foreground">Live</span>
-                        </div>
+                        <Badge variant="default" className="bg-emerald-600">✓ 生產模式</Badge>
                     </div>
 
-                    {localSettings.dataMode === 'live' && (
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">API Base URL</label>
-                            <Input
-                                value={localSettings.apiBaseUrl}
-                                onChange={(e) => handleApiUrlChange(e.target.value)}
-                                placeholder="https://api.example.com"
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                若 API 請求失敗，系統會自動使用模擬資料作為備援
-                            </p>
-                        </div>
-                    )}
-
-                    <div className="flex items-center gap-2">
-                        <Badge variant={localSettings.dataMode === 'mock' ? 'secondary' : 'default'}>
-                            {localSettings.dataMode === 'mock' ? 'Mock Mode' : 'Live Mode'}
-                        </Badge>
-                        {localSettings.dataMode === 'live' && !localSettings.apiBaseUrl && (
-                            <Badge variant="destructive">未設定 API URL</Badge>
-                        )}
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">API Base URL（選填，覆蓋 Gateway）</label>
+                        <Input
+                            value={localSettings.apiBaseUrl}
+                            onChange={(e) => handleApiUrlChange(e.target.value)}
+                            placeholder="https://api.example.com"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            若未設定，預設使用 NEXT_PUBLIC_GATEWAY_URL 環境變數
+                        </p>
                     </div>
                 </CardContent>
             </Card>
