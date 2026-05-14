@@ -67,6 +67,25 @@ export async function GET(req: NextRequest) {
             });
         });
 
+        // Calculate previous period keyword counts for change calculation
+        const periodMs = now.getTime() - since.getTime();
+        const prevSince = new Date(since.getTime() - periodMs);
+        const prevSnapshot = await db.collection('social_posts')
+            .where('createdAt', '>=', prevSince)
+            .where('createdAt', '<', since)
+            .orderBy('createdAt', 'desc')
+            .limit(1000)
+            .get();
+
+        const prevKeywordCounts: Record<string, number> = {};
+        prevSnapshot.docs.forEach(doc => {
+            const data = doc.data();
+            const keywords = data.keywords || [];
+            keywords.forEach((kw: string) => {
+                prevKeywordCounts[kw] = (prevKeywordCounts[kw] || 0) + 1;
+            });
+        });
+
         // Convert to array and sort by count
         const trends = Object.entries(keywordCounts)
             .map(([keyword, data]) => {
@@ -81,10 +100,16 @@ export async function GET(req: NextRequest) {
 
                 const hasMixed = Object.keys(sentimentCounts).length > 1;
 
+                // Calculate real change vs previous period
+                const prevCount = prevKeywordCounts[keyword] || 0;
+                const change = prevCount > 0
+                    ? Math.round(((data.count - prevCount) / prevCount) * 100)
+                    : data.count > 0 ? 100 : 0;
+
                 return {
                     keyword,
                     count: data.count,
-                    change: Math.floor(Math.random() * 100 - 30), // TODO: Calculate real change
+                    change,
                     sentiment: hasMixed && data.sentiments.length > 5 ? 'mixed' : maxSentiment,
                     platforms: Array.from(data.platforms),
                     lastSeen: data.lastSeen.toISOString(),

@@ -52,8 +52,8 @@ export async function POST(req: NextRequest) {
             result: null,
         });
 
-        // TODO: Enqueue Cloud Task to process backfill
-        // This would call the social-collector-worker with backfill flag
+        // FUTURE: Enqueue GCP Cloud Task to invoke social-collector service
+        // with backfill flag. Job tracking via backfill_jobs collection above.
 
         return NextResponse.json({
             success: true,
