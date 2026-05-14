@@ -67,9 +67,9 @@ export default function ButlerDashboardPage() {
                 </div>
                 <div className="flex items-center gap-2">
                     <Button variant="outline" asChild>
-                        <Link href="/butler/admin">
+                        <Link href="/system/linebot">
                             <Settings className="h-4 w-4 mr-2" />
-                            管理面板
+                            LINE Bot 管理
                         </Link>
                     </Button>
                     <Button asChild>

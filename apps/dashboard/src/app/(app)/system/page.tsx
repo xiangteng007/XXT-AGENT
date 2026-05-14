@@ -126,7 +126,7 @@ export default function SystemHealthPage() {
                         <Server className="h-6 w-6 text-cyan-400" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold">系統健康監控</h1>
+                        <h1 className="text-2xl font-bold">運維中心 — 基礎設施</h1>
                         <p className="text-muted-foreground">
                             Cloud Run 微服務即時狀態 • 最後更新：{lastRefresh || '—'}
                         </p>

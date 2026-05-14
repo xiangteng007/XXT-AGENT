@@ -13,7 +13,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   health: '健康追蹤',
   vehicle: '車輛管理',
   chat: 'AI 對話',
-  admin: '管家設定',
+  admin: 'LINE Bot 管理',
   market: '市場監控',
   quotes: '即時報價',
   watchlist: '自選清單',
