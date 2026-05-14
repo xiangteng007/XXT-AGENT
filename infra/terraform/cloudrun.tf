@@ -500,6 +500,14 @@ resource "google_cloud_run_v2_service" "regulation_rag" {
     service_account = google_service_account.runtime_sa.email
     containers {
       image = local.img.regulation_rag
+      resources {
+        limits = {
+          memory = "512Mi"
+          cpu    = "1"
+        }
+        cpu_idle          = true
+        startup_cpu_boost = true
+      }
       ports {
         container_port = 8080
       }
@@ -545,10 +553,13 @@ resource "google_cloud_run_v2_service" "regulation_rag" {
           port = 8080
         }
         initial_delay_seconds = 10
-        timeout_seconds       = 10
+        timeout_seconds       = 15
         period_seconds        = 15
-        failure_threshold     = 5
+        failure_threshold     = 6
       }
+    }
+    scaling {
+      min_instance_count = 1
     }
   }
 }
