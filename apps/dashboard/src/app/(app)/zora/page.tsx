@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { LoadingSkeleton } from '@/components/shared';
 import {
     HeartHandshake, Users, Package, ClipboardList,
     Plus, Search, DollarSign, TrendingUp, Loader2,
@@ -58,33 +60,6 @@ interface RescueMission {
     start_date: string;
 }
 
-/* ── Mock Data ── */
-const MOCK_DONATIONS: Donation[] = [
-    { id: 'DON-2025-089', donor_name: '李先生 (匿名)', amount: 50000, currency: 'TWD', date: '2025-04-03', type: 'individual', deductible: true, receipt_issued: true },
-    { id: 'DON-2025-088', donor_name: '晨星集團', amount: 200000, currency: 'TWD', date: '2025-04-02', type: 'corporate', deductible: true, receipt_issued: true, project_id: 'PRJ-001' },
-    { id: 'DON-2025-087', donor_name: '王小明', amount: 3000, currency: 'TWD', date: '2025-04-01', type: 'individual', deductible: false, receipt_issued: true },
-    { id: 'DON-2025-086', donor_name: '台北市社會局 (補助款)', amount: 500000, currency: 'TWD', date: '2025-03-28', type: 'government_grant', deductible: false, receipt_issued: true, project_id: 'PRJ-002' },
-    { id: 'DON-2025-085', donor_name: '陳美美', amount: 5000, currency: 'TWD', date: '2025-03-27', type: 'individual', deductible: true, receipt_issued: false },
-];
-
-const MOCK_VOLUNTEERS: Volunteer[] = [
-    { id: 'VOL-001', name: '黃志明', phone: '09XX-XXXXXX', specialty: '繩索救援', total_hours: 320, status: 'active', join_date: '2020-01-15', insured: true },
-    { id: 'VOL-002', name: '吳雅婷', phone: '09XX-XXXXXX', specialty: '醫護急救', total_hours: 205, status: 'active', join_date: '2021-06-01', insured: true },
-    { id: 'VOL-003', name: '劉建宏', phone: '09XX-XXXXXX', specialty: '水域救援', total_hours: 180, status: 'active', join_date: '2022-03-10', insured: false },
-    { id: 'VOL-004', name: '林淑芬', phone: '09XX-XXXXXX', specialty: '心理輔導', total_hours: 95, status: 'inactive', join_date: '2023-01-20', insured: true },
-];
-
-const MOCK_PROJECTS: Project[] = [
-    { id: 'PRJ-001', title: '偏鄉學童急救訓練計畫', type: 'corporate_sponsored', status: 'active', budget: 500000, spent: 210000, start_date: '2025-01-01', end_date: '2025-12-31' },
-    { id: 'PRJ-002', title: '社區防災自主能力建構', type: 'government_grant', status: 'active', budget: 800000, spent: 312000, start_date: '2025-03-01', end_date: '2025-11-30' },
-    { id: 'PRJ-003', title: '山地搜救裝備更新', type: 'self_funded', status: 'completed', budget: 150000, spent: 148500, start_date: '2024-06-01', end_date: '2024-12-31' },
-];
-
-const MOCK_MISSIONS: RescueMission[] = [
-    { id: 'RSQ-2025-012', title: '宜蘭山區健行者失蹤', location: '宜蘭縣大同鄉', type: 'missing_person', status: 'active', volunteer_count: 12, start_date: '2025-04-04' },
-    { id: 'RSQ-2025-011', title: '南投土石流救援支援', location: '南投縣信義鄉', type: 'flood', status: 'completed', volunteer_count: 28, start_date: '2025-03-20' },
-];
-
 /* ── Helpers ── */
 function formatNTD(amount: number): string {
     if (amount >= 1_000_000) return `NT$ ${(amount / 1_000_000).toFixed(1)}M`;
@@ -97,11 +72,40 @@ const RESCUE_TYPE_ICONS: Record<string, string> = { flood: '🌊', earthquake: '
 
 /* ── Main Component ── */
 export default function ZoraAssociationPage() {
+    const { getIdToken } = useAuth();
     const [activeTab, setActiveTab] = useState<'donations' | 'volunteers' | 'projects' | 'missions'>('donations');
     const [searchQuery, setSearchQuery] = useState('');
     const [chatMsg, setChatMsg] = useState('');
     const [chatReply, setChatReply] = useState('');
     const [chatLoading, setChatLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+
+    const [donations, setDonations] = useState<Donation[]>([]);
+    const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [missions, setMissions] = useState<RescueMission[]>([]);
+
+    const fetchZoraData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const token = await getIdToken();
+            const res = await fetch('/api/zora/data', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.donations?.length) setDonations(data.donations);
+                if (data.volunteers?.length) setVolunteers(data.volunteers);
+                if (data.projects?.length) setProjects(data.projects);
+                if (data.missions?.length) setMissions(data.missions);
+            }
+        } catch (err) {
+            console.error('Failed to load Zora data:', err);
+        }
+        setIsLoading(false);
+    }, [getIdToken]);
+
+    useEffect(() => { fetchZoraData(); }, [fetchZoraData]);
 
     const askZora = async () => {
         if (!chatMsg.trim()) return;
@@ -118,18 +122,27 @@ export default function ZoraAssociationPage() {
         finally { setChatLoading(false); }
     };
 
-    const totalDonations = MOCK_DONATIONS.reduce((s, d) => s + d.amount, 0);
-    const pendingReceipts = MOCK_DONATIONS.filter(d => !d.receipt_issued).length;
-    const activeVolunteers = MOCK_VOLUNTEERS.filter(v => v.status === 'active').length;
-    const uninsuredVols = MOCK_VOLUNTEERS.filter(v => v.status === 'active' && !v.insured).length;
+    const totalDonations = donations.reduce((s, d) => s + d.amount, 0);
+    const pendingReceipts = donations.filter(d => !d.receipt_issued).length;
+    const activeVolunteers = volunteers.filter(v => v.status === 'active').length;
+    const uninsuredVols = volunteers.filter(v => v.status === 'active' && !v.insured).length;
 
-    const filteredDonations = MOCK_DONATIONS.filter(d =>
+    const filteredDonations = donations.filter(d =>
         d.donor_name.toLowerCase().includes(searchQuery.toLowerCase())
     );
-    const filteredVolunteers = MOCK_VOLUNTEERS.filter(v =>
+    const filteredVolunteers = volunteers.filter(v =>
         v.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         v.specialty.toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    if (isLoading) {
+        return (
+            <div className="space-y-6">
+                <h1 className="text-2xl font-bold">協會管理面板</h1>
+                <LoadingSkeleton type="card" count={4} />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -286,7 +299,7 @@ export default function ZoraAssociationPage() {
                     {/* Projects Tab */}
                     {activeTab === 'projects' && (
                         <div className="space-y-3">
-                            {MOCK_PROJECTS.map(p => {
+                            {projects.map(p => {
                                 const pct = Math.round((p.spent / p.budget) * 100);
                                 return (
                                     <div key={p.id} className="p-4 rounded-xl border border-border/40 bg-card/30">
@@ -321,7 +334,7 @@ export default function ZoraAssociationPage() {
                     {/* Rescue Missions Tab */}
                     {activeTab === 'missions' && (
                         <div className="space-y-3">
-                            {MOCK_MISSIONS.map(m => (
+                            {missions.map(m => (
                                 <div key={m.id} className={`p-4 rounded-xl border transition-all ${m.status === 'active' ? 'border-red-500/30 bg-red-500/5' : 'border-border/40 bg-card/30'}`}>
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-3">

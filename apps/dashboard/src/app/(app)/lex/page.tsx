@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -71,65 +72,15 @@ function formatNTD(amount: number): string {
     return `NT$ ${amount}`;
 }
 
-/* ── Mock data for UI demonstration ── */
-const MOCK_CONTRACTS: Contract[] = [
-    {
-        id: 'CTR-2024-001', title: '大直豪宅新建工程合約', party: '美聯建設股份有限公司',
-        entity: 'co_construction', contract_type: 'construction', status: 'active',
-        value: 45000000, currency: 'TWD', sign_date: '2024-03-01',
-        start_date: '2024-04-01', end_date: '2026-04-15',
-        milestones: [
-            { id: 'm1', name: '地基工程完成', due_date: '2024-09-01', amount: 9000000, status: 'paid' },
-            { id: 'm2', name: '結構體完成', due_date: '2025-03-01', amount: 13500000, status: 'paid' },
-            { id: 'm3', name: '外牆完成', due_date: '2025-09-01', amount: 9000000, status: 'invoiced' },
-            { id: 'm4', name: '竣工驗收', due_date: '2026-04-15', amount: 13500000, status: 'pending' },
-        ],
-        created_at: '2024-03-01T08:00:00Z',
-    },
-    {
-        id: 'CTR-2024-002', title: '竹北三代宅空間設計合約', party: '林氏私人委託',
-        entity: 'co_design', contract_type: 'design', status: 'active',
-        value: 2800000, currency: 'TWD', sign_date: '2024-06-15',
-        start_date: '2024-07-01', end_date: '2024-12-31',
-        milestones: [
-            { id: 'm1', name: '設計定案', due_date: '2024-09-30', amount: 1120000, status: 'paid' },
-            { id: 'm2', name: '施工圖交付', due_date: '2024-12-31', amount: 1680000, status: 'pending' },
-        ],
-        created_at: '2024-06-15T10:00:00Z',
-    },
-    {
-        id: 'CTR-2024-003', title: '希望協會工地空拍合約', party: '希望災難救援協會',
-        entity: 'co_drone', contract_type: 'drone_service', status: 'active',
-        value: 120000, currency: 'TWD', sign_date: '2024-11-01',
-        start_date: '2024-11-15', end_date: '2025-01-15',
-        milestones: [
-            { id: 'm1', name: '第一批次空拍', due_date: '2024-12-01', amount: 60000, status: 'paid' },
-            { id: 'm2', name: '第二批次空拍', due_date: '2025-01-15', amount: 60000, status: 'pending' },
-        ],
-        created_at: '2024-11-01T09:00:00Z',
-    },
-    {
-        id: 'CTR-2023-008', title: '信義區辦公室翻新合約', party: '永昇資產管理',
-        entity: 'co_renovation', contract_type: 'construction', status: 'completed',
-        value: 8500000, currency: 'TWD', sign_date: '2023-04-01',
-        start_date: '2023-05-01', end_date: '2023-11-30',
-        created_at: '2023-04-01T08:00:00Z',
-    },
-];
-
-const MOCK_EXPIRING: ExpiringContract[] = [
-    { id: 'CTR-2024-003', title: '希望協會工地空拍合約', end_date: '2025-01-15', days_remaining: 10, party: '希望災難救援協會', entity: 'co_drone' },
-    { id: 'CTR-2024-002', title: '竹北三代宅空間設計合約', end_date: '2024-12-31', days_remaining: 26, party: '林氏私人委託', entity: 'co_design' },
-];
-
 /* ── Main Component ── */
 export default function LexContractPage() {
-    const [contracts, setContracts] = useState<Contract[]>(MOCK_CONTRACTS);
-    const [expiring, setExpiring] = useState<ExpiringContract[]>(MOCK_EXPIRING);
+    const { getIdToken } = useAuth();
+    const [contracts, setContracts] = useState<Contract[]>([]);
+    const [expiring, setExpiring] = useState<ExpiringContract[]>([]);
     const [selected, setSelected] = useState<Contract | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<string>('all');
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [chatMsg, setChatMsg] = useState('');
     const [chatReply, setChatReply] = useState('');
     const [chatLoading, setChatLoading] = useState(false);
@@ -137,13 +88,28 @@ export default function LexContractPage() {
     const fetchContracts = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${GW}/agents/lex/contract`);
-            if (res.ok) {
-                const data = await res.json() as { contracts?: Contract[] };
-                if (data.contracts?.length) setContracts(data.contracts);
+            // Try gateway first
+            const gwRes = await fetch(`${GW}/agents/lex/contract`);
+            if (gwRes.ok) {
+                const data = await gwRes.json() as { contracts?: Contract[] };
+                if (data.contracts?.length) { setContracts(data.contracts); setLoading(false); return; }
             }
-        } catch { /* use mock */ } finally { setLoading(false); }
-    }, []);
+        } catch { /* gateway unavailable, try Firestore */ }
+
+        // Fallback: Firestore-backed API
+        try {
+            const token = await getIdToken();
+            const res = await fetch('/api/lex/contracts', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.contracts?.length) setContracts(data.contracts);
+                if (data.expiring_contracts?.length) setExpiring(data.expiring_contracts);
+            }
+        } catch { /* no data available */ }
+        setLoading(false);
+    }, [getIdToken]);
 
     const fetchExpiring = useCallback(async () => {
         try {
@@ -152,7 +118,7 @@ export default function LexContractPage() {
                 const data = await res.json() as { expiring_contracts?: ExpiringContract[] };
                 if (data.expiring_contracts?.length) setExpiring(data.expiring_contracts);
             }
-        } catch { /* use mock */ }
+        } catch { /* use Firestore data if already loaded */ }
     }, []);
 
     useEffect(() => {

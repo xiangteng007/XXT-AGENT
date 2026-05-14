@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { LoadingSkeleton } from '@/components/shared';
 import {
     Plane, Battery, User, AlertTriangle, Clock,
     Plus, Search, CheckCircle2, BarChart3, Loader2,
@@ -70,74 +72,48 @@ function daysUntil(dateStr: string): number {
     return Math.ceil(diff / 86_400_000);
 }
 
-/* ── Mock Data ── */
-const MOCK_MISSIONS: Mission[] = [
-    {
-        id: 'MSN-2024-047', title: '大直豪宅工地進度空拍', client: '鳴鑫營造',
-        location: '台北市中山區', entity: 'co_drone', mission_type: 'aerial_survey',
-        status: 'planned', pilot_id: 'PLT-001', equipment_id: 'EQP-DJI-001',
-        flight_date: '2025-04-10', duration_min: 90, fee: 35000, created_at: '2025-04-01T08:00:00Z',
-    },
-    {
-        id: 'MSN-2024-046', title: '偏鄉物資投放地形勘查', client: '希望災難救援協會',
-        location: '南投縣信義鄉', entity: 'co_drone', mission_type: 'search_rescue',
-        status: 'completed', pilot_id: 'PLT-002', equipment_id: 'EQP-DJI-001',
-        flight_date: '2025-03-28', duration_min: 120, fee: 0, notes: '公益任務，費用減免',
-        created_at: '2025-03-25T10:00:00Z',
-    },
-    {
-        id: 'MSN-2024-045', title: '太陽能板巡檢 - 台南廠區', client: '晨星能源',
-        location: '台南市善化區', entity: 'co_drone', mission_type: 'inspection',
-        status: 'completed', pilot_id: 'PLT-001', equipment_id: 'EQP-M300-001',
-        flight_date: '2025-03-15', duration_min: 180, fee: 68000, created_at: '2025-03-10T09:00:00Z',
-    },
-];
-
-const MOCK_EQUIPMENT: Equipment[] = [
-    {
-        id: 'EQP-DJI-001', model: 'DJI Mavic 3 Enterprise', serial_number: '1581F8FF0200041',
-        status: 'airworthy', total_flight_hours: 342, battery_cycles: 198, max_battery_cycles: 400,
-        last_maintenance: '2025-01-15', next_maintenance_date: '2025-07-15',
-    },
-    {
-        id: 'EQP-M300-001', model: 'DJI Matrice 300 RTK', serial_number: 'M300-XXT-2022A',
-        status: 'maintenance', total_flight_hours: 891, battery_cycles: 287, max_battery_cycles: 300,
-        last_maintenance: '2025-03-01', next_maintenance_date: '2025-04-05',
-    },
-];
-
-const MOCK_PILOTS: Pilot[] = [
-    { id: 'PLT-001', name: '張志遠', license_type: 'advanced', license_number: 'UA-ADV-20220345',
-      license_expiry: '2026-08-31', total_hours: 450, status: 'active' },
-    { id: 'PLT-002', name: '陳美玲', license_type: 'basic', license_number: 'UA-BSC-20230156',
-      license_expiry: '2025-05-15', total_hours: 180, status: 'active' },
-];
-
 /* ── Main Component ── */
 export default function ScoutMissionPage() {
-    const [missions, setMissions] = useState<Mission[]>(MOCK_MISSIONS);
-    const [equipment, setEquipment] = useState<Equipment[]>(MOCK_EQUIPMENT);
-    const [pilots, setPilots] = useState<Pilot[]>(MOCK_PILOTS);
+    const { getIdToken } = useAuth();
+    const [missions, setMissions] = useState<Mission[]>([]);
+    const [equipment, setEquipment] = useState<Equipment[]>([]);
+    const [pilots, setPilots] = useState<Pilot[]>([]);
     const [activeTab, setActiveTab] = useState<'missions' | 'equipment' | 'pilots'>('missions');
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [chatMsg, setChatMsg] = useState('');
     const [chatReply, setChatReply] = useState('');
     const [chatLoading, setChatLoading] = useState(false);
 
-    const fetchMissions = useCallback(async () => {
+    const fetchData = useCallback(async () => {
         setLoading(true);
+        // Try gateway first
         try {
             const res = await fetch(`${GW}/agents/scout/mission`);
             if (res.ok) {
                 const data = await res.json() as { missions?: Mission[] };
-                if (data.missions?.length) setMissions(data.missions);
+                if (data.missions?.length) { setMissions(data.missions); setLoading(false); return; }
             }
-        } catch { /* use mock */ } finally { setLoading(false); }
-    }, []);
+        } catch { /* gateway unavailable */ }
 
-    useEffect(() => { void fetchMissions(); }, [fetchMissions]);
+        // Fallback: Firestore-backed API
+        try {
+            const token = await getIdToken();
+            const res = await fetch('/api/scout/data', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.missions?.length) setMissions(data.missions);
+                if (data.equipment?.length) setEquipment(data.equipment);
+                if (data.pilots?.length) setPilots(data.pilots);
+            }
+        } catch { /* no data */ }
+        setLoading(false);
+    }, [getIdToken]);
+
+    useEffect(() => { void fetchData(); }, [fetchData]);
 
     const askScout = async () => {
         if (!chatMsg.trim()) return;
