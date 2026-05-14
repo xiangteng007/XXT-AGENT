@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,40 +19,141 @@ import {
     ArrowRight,
     Sparkles,
     Settings,
+    Loader2,
 } from 'lucide-react';
 
-// Mock data for overview
-const healthSummary = {
-    bmi: 28.3,
-    bmiStatus: '過重',
-    todayCalories: 1850,
-    targetCalories: 2200,
-    lastExercise: '2 天前',
-    weight: 81.8,
-};
+// ================================
+// Types for API summaries
+// ================================
 
-const vehicleSummary = {
-    name: 'Jimny JB74',
-    lastRefuel: '2026-01-28',
-    nextMaintenance: '2026-03-15',
-    totalKm: 15680,
-    avgFuelConsumption: 8.2,
-};
+interface HealthSummary {
+    weight: number | null;
+    bmi: number | null;
+    bmiStatus: string;
+    todayCalories: number;
+    todaySteps: number;
+}
 
-const financeSummary = {
-    totalBalance: 152800,
-    monthlyExpense: 45200,
-    pendingBills: 2,
-    nextBillDue: '2026-02-10',
-};
+interface VehicleSummary {
+    name: string;
+    totalKm: number;
+    avgFuelConsumption: number;
+    nextMaintenanceDate: string | null;
+}
 
-const calendarSummary = {
-    todayEvents: 3,
-    upcomingEvents: 8,
-    nextEvent: '團隊會議 - 14:00',
-};
+interface FinanceSummary {
+    totalIncome: number;
+    monthlyExpense: number;
+    netSavings: number;
+    transactionCount: number;
+}
+
+interface CalendarSummary {
+    todayEvents: number;
+    weekEvents: number;
+    nextEvent: string | null;
+    reminders: Array<{ id: string; title: string; dueDate: string }>;
+}
+
+// ================================
+// BMI classification helper
+// ================================
+function bmiStatus(bmi: number): string {
+    if (bmi < 18.5) return '過輕';
+    if (bmi < 24) return '正常';
+    if (bmi < 27) return '過重';
+    return '肥胖';
+}
+
+function daysUntil(dateStr: string | null): string {
+    if (!dateStr) return '—';
+    const diff = Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000);
+    if (diff < 0) return '已過期';
+    if (diff === 0) return '今天';
+    return `${diff} 天後`;
+}
 
 export default function ButlerDashboardPage() {
+    const { getIdToken } = useAuth();
+    const [health, setHealth] = useState<HealthSummary | null>(null);
+    const [vehicle, setVehicle] = useState<VehicleSummary | null>(null);
+    const [finance, setFinance] = useState<FinanceSummary | null>(null);
+    const [calendar, setCalendar] = useState<CalendarSummary | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    const fetchAll = useCallback(async () => {
+        setLoading(true);
+        try {
+            const token = await getIdToken();
+            const headers = { Authorization: `Bearer ${token}` };
+
+            const [healthRes, vehicleRes, financeRes, scheduleRes] = await Promise.all([
+                fetch('/api/butler/health', { headers }).catch(() => null),
+                fetch('/api/butler/vehicle', { headers }).catch(() => null),
+                fetch('/api/butler/finance', { headers }).catch(() => null),
+                fetch('/api/butler/schedule', { headers }).catch(() => null),
+            ]);
+
+            // --- Health ---
+            if (healthRes?.ok) {
+                const h = await healthRes.json();
+                const latestWeight = h.weights?.[0]?.weight ?? null;
+                const heightM = 1.70; // Can be made configurable later
+                const calculatedBmi = latestWeight ? Math.round((latestWeight / (heightM * heightM)) * 10) / 10 : null;
+                setHealth({
+                    weight: latestWeight,
+                    bmi: calculatedBmi,
+                    bmiStatus: calculatedBmi ? bmiStatus(calculatedBmi) : '—',
+                    todayCalories: h.today?.calories ?? 0,
+                    todaySteps: h.today?.steps ?? 0,
+                });
+            }
+
+            // --- Vehicle ---
+            if (vehicleRes?.ok) {
+                const v = await vehicleRes.json();
+                const nextMaint = v.maintenance?.find((m: { completed: boolean; dueDate: string }) => !m.completed);
+                setVehicle({
+                    name: v.vehicle ? `${v.vehicle.model} ${v.vehicle.variant}` : 'Jimny JB74',
+                    totalKm: v.vehicle?.currentMileage ?? 0,
+                    avgFuelConsumption: v.avgKmPerLiter ? Math.round((100 / v.avgKmPerLiter) * 10) / 10 : 0,
+                    nextMaintenanceDate: nextMaint?.dueDate ?? null,
+                });
+            }
+
+            // --- Finance ---
+            if (financeRes?.ok) {
+                const f = await financeRes.json();
+                setFinance({
+                    totalIncome: f.totalIncome ?? 0,
+                    monthlyExpense: f.totalExpense ?? 0,
+                    netSavings: f.netSavings ?? 0,
+                    transactionCount: f.transactionCount ?? 0,
+                });
+            }
+
+            // --- Calendar ---
+            if (scheduleRes?.ok) {
+                const s = await scheduleRes.json();
+                const todayEvts = s.today?.events ?? [];
+                const nextEvt = todayEvts.length > 0
+                    ? `${todayEvts[0].title}${todayEvts[0].startTime ? ` - ${todayEvts[0].startTime}` : ''}`
+                    : null;
+                setCalendar({
+                    todayEvents: todayEvts.length,
+                    weekEvents: s.week?.totalCount ?? 0,
+                    nextEvent: nextEvt,
+                    reminders: s.reminders ?? [],
+                });
+            }
+        } catch (err) {
+            console.error('Butler dashboard fetch error:', err);
+        }
+        setLoading(false);
+    }, [getIdToken]);
+
+    useEffect(() => { fetchAll(); }, [fetchAll]);
+
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -93,17 +195,25 @@ export default function ButlerDashboardPage() {
                         </div>
                     </CardHeader>
                     <CardContent className="relative">
-                        <div className="text-4xl font-bold text-foreground tracking-tight">
-                            BMI {healthSummary.bmi}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="outline" className="text-emerald-400 border-emerald-400/30">
-                                {healthSummary.bmiStatus}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">
-                                {healthSummary.weight} kg
-                            </span>
-                        </div>
+                        {loading ? (
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        ) : health?.bmi ? (
+                            <>
+                                <div className="text-4xl font-bold text-foreground tracking-tight">
+                                    BMI {health.bmi}
+                                </div>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <Badge variant="outline" className="text-emerald-400 border-emerald-400/30">
+                                        {health.bmiStatus}
+                                    </Badge>
+                                    <span className="text-xs text-muted-foreground">
+                                        {health.weight} kg
+                                    </span>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="text-sm text-muted-foreground">尚無健康數據</div>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -117,15 +227,25 @@ export default function ButlerDashboardPage() {
                         </div>
                     </CardHeader>
                     <CardContent className="relative">
-                        <div className="text-4xl font-bold text-foreground tracking-tight">
-                            {vehicleSummary.totalKm.toLocaleString()}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-blue-400">公里</span>
-                            <span className="text-xs text-muted-foreground">
-                                · 油耗 {vehicleSummary.avgFuelConsumption} L/100km
-                            </span>
-                        </div>
+                        {loading ? (
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        ) : vehicle ? (
+                            <>
+                                <div className="text-4xl font-bold text-foreground tracking-tight">
+                                    {vehicle.totalKm.toLocaleString()}
+                                </div>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-xs text-blue-400">公里</span>
+                                    {vehicle.avgFuelConsumption > 0 && (
+                                        <span className="text-xs text-muted-foreground">
+                                            · 油耗 {vehicle.avgFuelConsumption} L/100km
+                                        </span>
+                                    )}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="text-sm text-muted-foreground">尚無車輛數據</div>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -139,14 +259,25 @@ export default function ButlerDashboardPage() {
                         </div>
                     </CardHeader>
                     <CardContent className="relative">
-                        <div className="text-4xl font-bold text-foreground tracking-tight">
-                            ${financeSummary.totalBalance.toLocaleString()}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-gold">
-                                本月支出 ${financeSummary.monthlyExpense.toLocaleString()}
-                            </span>
-                        </div>
+                        {loading ? (
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        ) : finance ? (
+                            <>
+                                <div className="text-4xl font-bold text-foreground tracking-tight">
+                                    ${finance.monthlyExpense.toLocaleString()}
+                                </div>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-xs text-gold">
+                                        本月支出
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                        · {finance.transactionCount} 筆交易
+                                    </span>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="text-sm text-muted-foreground">尚無財務數據</div>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -160,15 +291,25 @@ export default function ButlerDashboardPage() {
                         </div>
                     </CardHeader>
                     <CardContent className="relative">
-                        <div className="text-4xl font-bold text-foreground tracking-tight">
-                            {calendarSummary.todayEvents}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-purple-400">個事件</span>
-                            <span className="text-xs text-muted-foreground">
-                                · 下一個: {calendarSummary.nextEvent}
-                            </span>
-                        </div>
+                        {loading ? (
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        ) : calendar ? (
+                            <>
+                                <div className="text-4xl font-bold text-foreground tracking-tight">
+                                    {calendar.todayEvents}
+                                </div>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-xs text-purple-400">個事件</span>
+                                    {calendar.nextEvent && (
+                                        <span className="text-xs text-muted-foreground">
+                                            · 下一個: {calendar.nextEvent}
+                                        </span>
+                                    )}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="text-sm text-muted-foreground">尚無行程</div>
+                        )}
                     </CardContent>
                 </Card>
             </div>
@@ -224,7 +365,7 @@ export default function ButlerDashboardPage() {
                 </Link>
             </div>
 
-            {/* Upcoming Reminders */}
+            {/* Upcoming Reminders — from real calendar API */}
             <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -234,50 +375,54 @@ export default function ButlerDashboardPage() {
                 </CardHeader>
                 <CardContent>
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 rounded-lg bg-blue-500/20">
-                                    <Car className="h-4 w-4 text-blue-400" />
+                        {/* Vehicle maintenance reminder */}
+                        {vehicle?.nextMaintenanceDate && (
+                            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-lg bg-blue-500/20">
+                                        <Car className="h-4 w-4 text-blue-400" />
+                                    </div>
+                                    <div>
+                                        <p className="font-medium">車輛保養</p>
+                                        <p className="text-sm text-muted-foreground">{vehicle.name} 定期保養</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="font-medium">車輛保養</p>
-                                    <p className="text-sm text-muted-foreground">Jimny JB74 定期保養</p>
-                                </div>
+                                <Badge variant="outline" className="text-blue-400 border-blue-400/30">
+                                    {daysUntil(vehicle.nextMaintenanceDate)}
+                                </Badge>
                             </div>
-                            <Badge variant="outline" className="text-blue-400 border-blue-400/30">
-                                38 天後
-                            </Badge>
-                        </div>
+                        )}
 
-                        <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 rounded-lg bg-gold/20">
-                                    <Wallet className="h-4 w-4 text-gold" />
+                        {/* Calendar reminders from API */}
+                        {calendar?.reminders?.map(r => (
+                            <div key={r.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-lg bg-purple-500/20">
+                                        <Bell className="h-4 w-4 text-purple-400" />
+                                    </div>
+                                    <div>
+                                        <p className="font-medium">{r.title}</p>
+                                        <p className="text-sm text-muted-foreground">{r.dueDate}</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="font-medium">信用卡帳單</p>
-                                    <p className="text-sm text-muted-foreground">中信銀行 2月帳單</p>
-                                </div>
+                                <Badge variant="outline" className="text-purple-400 border-purple-400/30">
+                                    {daysUntil(r.dueDate)}
+                                </Badge>
                             </div>
-                            <Badge variant="outline" className="text-gold border-gold/30">
-                                5 天後
-                            </Badge>
-                        </div>
+                        ))}
 
-                        <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 rounded-lg bg-emerald-500/20">
-                                    <Heart className="h-4 w-4 text-emerald-400" />
-                                </div>
-                                <div>
-                                    <p className="font-medium">健康檢查</p>
-                                    <p className="text-sm text-muted-foreground">年度健檢預約</p>
-                                </div>
+                        {/* Empty state */}
+                        {!loading && !vehicle?.nextMaintenanceDate && (!calendar?.reminders || calendar.reminders.length === 0) && (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                                目前沒有待處理的提醒
+                            </p>
+                        )}
+
+                        {loading && (
+                            <div className="flex justify-center py-4">
+                                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                             </div>
-                            <Badge variant="outline" className="text-emerald-400 border-emerald-400/30">
-                                14 天後
-                            </Badge>
-                        </div>
+                        )}
                     </div>
                 </CardContent>
             </Card>
