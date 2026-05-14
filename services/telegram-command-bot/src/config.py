@@ -26,6 +26,10 @@ class Settings(BaseModel):
     # OpenClaw Gateway
     openclaw_gateway_url: str = Field(default_factory=lambda: os.getenv("OPENCLAW_GATEWAY_URL", "http://localhost:3100"))
     internal_secret: str = Field(default_factory=lambda: os.getenv("INTERNAL_SECRET", ""))
+    # Dashboard
+    dashboard_url: str = Field(default_factory=lambda: os.getenv("DASHBOARD_URL", "https://xxt-agent-dashboard.vercel.app"))
+    # LINE Bot
+    line_bot_url: str = Field(default_factory=lambda: os.getenv("LINE_BOT_URL", ""))
 
     # Security
     admin_chat_ids: list[str] = Field(
