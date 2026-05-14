@@ -209,7 +209,6 @@ const mainNav: NavItem[] = [
             { href: '/butler/health', label: '🏃 健康追蹤' },
             { href: '/butler/vehicle', label: '🚗 車輛管理' },
             { href: '/butler/chat', label: '💬 AI 對話' },
-            { href: '/butler/admin', label: '⚙️ 管家設定' },
         ],
     },
     { href: '/portfolio', label: '投資組合', icon: <TrendingIcon /> },
@@ -271,9 +270,10 @@ const adminNav: NavItem[] = [
     { href: '/logs', label: '系統日誌', icon: <LogIcon /> },
     { href: '/metrics', label: '系統指標', icon: <ChartIcon /> },
     {
-        href: '/system', label: '系統健康', icon: <BellIcon />,
+        href: '/system', label: '運維中心', icon: <BellIcon />,
         children: [
-            { href: '/system', label: '🩺 健康總覽' },
+            { href: '/system', label: '🩺 基礎設施' },
+            { href: '/system/linebot', label: '💬 LINE Bot' },
             { href: '/system/telegram', label: '📨 Telegram Bot' },
         ],
     },

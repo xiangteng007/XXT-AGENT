@@ -48,7 +48,8 @@ const SEGMENT_LABELS: Record<string, string> = {
   jobs: '排程任務',
   logs: '系統日誌',
   metrics: '系統指標',
-  system: '系統健康',
+  system: '運維中心',
+  linebot: 'LINE Bot',
   telegram: 'Telegram Bot',
   'link-telegram': 'Telegram 綁定',
 };
