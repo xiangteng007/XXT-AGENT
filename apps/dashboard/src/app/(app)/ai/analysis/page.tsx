@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,38 +29,28 @@ import {
     Send,
 } from 'lucide-react';
 
-// Mock historical data
-const mockHistoricalData = {
-    NVDA: {
-        price: 924.50,
-        change24h: 3.16,
-        change7d: 8.5,
-        change30d: 25.2,
-        high52w: 974.00,
-        low52w: 378.00,
-        avgVolume: 45000000,
-        pe: 68.5,
-        rsi: 68,
-        macd: { value: 22.8, signal: 18.5, trend: 'bullish' },
-        sma: { sma20: 912, sma50: 875, sma200: 720 },
-        support: [900, 875, 850],
-        resistance: [950, 980, 1000],
-    },
-    AAPL: {
-        price: 185.92,
-        change24h: 1.34,
-        change7d: 2.1,
-        change30d: 5.8,
-        high52w: 199.62,
-        low52w: 164.08,
-        avgVolume: 52000000,
-        pe: 29.8,
-        rsi: 55,
-        macd: { value: 1.35, signal: 0.95, trend: 'neutral' },
-        sma: { sma20: 183, sma50: 178, sma200: 175 },
-        support: [180, 175, 170],
-        resistance: [190, 195, 200],
-    },
+interface StockData {
+    price: number;
+    change24h: number;
+    change7d: number;
+    change30d: number;
+    high52w: number;
+    low52w: number;
+    avgVolume: number;
+    pe: number;
+    rsi: number;
+    macd: { value: number; signal: number; trend: string };
+    sma: { sma20: number; sma50: number; sma200: number };
+    support: number[];
+    resistance: number[];
+}
+
+const defaultData: StockData = {
+    price: 0, change24h: 0, change7d: 0, change30d: 0,
+    high52w: 0, low52w: 0, avgVolume: 0, pe: 0, rsi: 50,
+    macd: { value: 0, signal: 0, trend: 'neutral' },
+    sma: { sma20: 0, sma50: 0, sma200: 0 },
+    support: [0, 0, 0], resistance: [0, 0, 0],
 };
 
 interface AIAnalysis {
@@ -72,13 +63,62 @@ interface AIAnalysis {
 }
 
 export default function AIAnalysisPage() {
+    const { getIdToken } = useAuth();
     const [symbol, setSymbol] = useState('NVDA');
     const [timeframe, setTimeframe] = useState('1M');
     const [isLoading, setIsLoading] = useState(false);
+    const [dataLoading, setDataLoading] = useState(true);
     const [analysis, setAnalysis] = useState<AIAnalysis | null>(null);
     const [customPrompt, setCustomPrompt] = useState('');
+    const [stockData, setStockData] = useState<Record<string, StockData>>({});
 
-    const data = mockHistoricalData[symbol as keyof typeof mockHistoricalData] || mockHistoricalData.NVDA;
+    // Fetch real market indicators data
+    const fetchMarketData = useCallback(async (sym: string) => {
+        setDataLoading(true);
+        try {
+            const token = await getIdToken();
+            const res = await fetch(`/api/market/indicators?symbol=${sym}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const apiData = await res.json();
+                const ind = apiData.indicators || apiData;
+                setStockData(prev => ({
+                    ...prev,
+                    [sym]: {
+                        price: ind.price ?? ind.close ?? 0,
+                        change24h: ind.change24h ?? ind.changePct ?? 0,
+                        change7d: ind.change7d ?? 0,
+                        change30d: ind.change30d ?? 0,
+                        high52w: ind.high52w ?? ind.yearHigh ?? 0,
+                        low52w: ind.low52w ?? ind.yearLow ?? 0,
+                        avgVolume: ind.avgVolume ?? 0,
+                        pe: ind.pe ?? 0,
+                        rsi: ind.rsi ?? ind.rsi14 ?? 50,
+                        macd: {
+                            value: ind.macd?.value ?? ind.macd ?? 0,
+                            signal: ind.macd?.signal ?? ind.macdSignal ?? 0,
+                            trend: ind.macd?.trend ?? ((ind.macd ?? 0) > (ind.macdSignal ?? 0) ? 'bullish' : 'bearish'),
+                        },
+                        sma: {
+                            sma20: ind.sma?.sma20 ?? ind.sma20 ?? 0,
+                            sma50: ind.sma?.sma50 ?? ind.sma50 ?? 0,
+                            sma200: ind.sma?.sma200 ?? ind.sma200 ?? 0,
+                        },
+                        support: ind.support ?? [0, 0, 0],
+                        resistance: ind.resistance ?? [0, 0, 0],
+                    },
+                }));
+            }
+        } catch (err) {
+            console.error('Failed to fetch market data:', err);
+        }
+        setDataLoading(false);
+    }, [getIdToken]);
+
+    useEffect(() => { fetchMarketData(symbol); }, [symbol, fetchMarketData]);
+
+    const data = stockData[symbol] || defaultData;
 
     const runAnalysis = useCallback(async () => {
         setIsLoading(true);
