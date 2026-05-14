@@ -90,43 +90,6 @@ export default function PortfolioPage() {
     const [showAddPosition, setShowAddPosition] = useState(false);
     const [editingPortfolio, setEditingPortfolio] = useState<string | null>(null);
 
-    // Sync hook data into local state
-    useEffect(() => {
-        if (apiPortfolios && apiPortfolios.length > 0) {
-            const mapped: Portfolio[] = apiPortfolios.map((p: Record<string, unknown>) => ({
-                id: p.id as string,
-                name: (p.name as string) || '',
-                description: p.description as string,
-                currency: (p.currency as string) || 'TWD',
-                benchmark: p.benchmark as string,
-                isDefault: p.isDefault as boolean ?? false,
-                createdAt: (p.createdAt as string) || '',
-                totalValue: (p.totalValue as number) || 0,
-                totalCost: (p.totalCost as number) || 0,
-                totalPnL: (p.totalPnL as number) || 0,
-                totalPnLPct: (p.totalPnLPct as number) || 0,
-                dailyPnL: (p.dailyPnL as number) || 0,
-                dailyPnLPct: (p.dailyPnLPct as number) || 0,
-                cashBalance: (p.cashBalance as number) || 0,
-                positions: (p.positions as Position[]) || [],
-                riskMetrics: (p.riskMetrics as RiskMetrics) || { sharpeRatio: 0, annualizedVolatility: 0, maxDrawdown: 0, beta: 0, var95: 0, top5Weight: 0 },
-            }));
-            setPortfolios(mapped);
-            if (!selectedId || !mapped.find(m => m.id === selectedId)) {
-                setSelectedId(mapped[0].id);
-            }
-        }
-    }, [apiPortfolios]);
-
-    if (hookLoading) {
-        return (
-            <div className="space-y-6">
-                <h1 className="text-2xl font-bold">投資組合管理</h1>
-                <LoadingSkeleton type="card" count={4} />
-            </div>
-        );
-    }
-
     // Create portfolio form state
     const [formName, setFormName] = useState('');
     const [formDescription, setFormDescription] = useState('');
@@ -139,6 +102,25 @@ export default function PortfolioPage() {
     const [posName, setPosName] = useState('');
     const [posQuantity, setPosQuantity] = useState('');
     const [posCost, setPosCost] = useState('');
+
+    // Sync hook data into local state
+    useEffect(() => {
+        if (apiPortfolios && apiPortfolios.length > 0) {
+            setPortfolios(apiPortfolios as unknown as Portfolio[]);
+            if (!selectedId || !(apiPortfolios as unknown as Portfolio[]).find(m => m.id === selectedId)) {
+                setSelectedId((apiPortfolios as unknown as Portfolio[])[0].id);
+            }
+        }
+    }, [apiPortfolios]);
+
+    if (hookLoading) {
+        return (
+            <div className="space-y-6">
+                <h1 className="text-2xl font-bold">投資組合管理</h1>
+                <LoadingSkeleton type="card" count={4} />
+            </div>
+        );
+    }
 
     const activePortfolio = portfolios.find(p => p.id === selectedId) || portfolios[0];
 
