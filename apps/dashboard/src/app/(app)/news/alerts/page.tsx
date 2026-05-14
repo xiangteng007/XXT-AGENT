@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { LoadingSkeleton } from '@/components/shared';
 import {
     Select,
     SelectContent,
@@ -36,45 +38,10 @@ interface NewsAlertRule {
     triggerCount: number;
 }
 
-// Mock data
-const mockAlerts: NewsAlertRule[] = [
-    {
-        id: '1',
-        name: '重大財報警報',
-        enabled: true,
-        keywords: ['財報', '營收', '獲利'],
-        symbols: ['AAPL', 'TSLA', 'NVDA'],
-        minSeverity: 70,
-        channels: { telegram: true, line: true, email: false },
-        cooldownMinutes: 30,
-        triggerCount: 15,
-    },
-    {
-        id: '2',
-        name: '監管政策追蹤',
-        enabled: true,
-        keywords: ['SEC', 'Fed', '升息', '降息'],
-        symbols: [],
-        minSeverity: 60,
-        channels: { telegram: true, line: false, email: true },
-        cooldownMinutes: 60,
-        triggerCount: 8,
-    },
-    {
-        id: '3',
-        name: '加密貨幣新聞',
-        enabled: false,
-        keywords: ['Bitcoin', 'ETH', '加密貨幣'],
-        symbols: ['BTC-USD', 'ETH-USD'],
-        minSeverity: 50,
-        channels: { telegram: true, line: false, email: false },
-        cooldownMinutes: 15,
-        triggerCount: 42,
-    },
-];
-
 export default function NewsAlertsPage() {
-    const [alerts, setAlerts] = useState<NewsAlertRule[]>(mockAlerts);
+    const { getIdToken } = useAuth();
+    const [alerts, setAlerts] = useState<NewsAlertRule[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -86,6 +53,35 @@ export default function NewsAlertsPage() {
     const [formChannels, setFormChannels] = useState({ telegram: true, line: false, email: false });
     const [formCooldown, setFormCooldown] = useState('30');
 
+    const fetchAlerts = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const token = await getIdToken();
+            const res = await fetch('/api/news/alerts', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setAlerts((data.rules || []).map((r: Record<string, unknown>) => ({
+                    id: r.id as string,
+                    name: (r.name as string) || '',
+                    enabled: r.enabled as boolean ?? true,
+                    keywords: (r.keywords as string[]) || [],
+                    symbols: (r.symbols as string[]) || [],
+                    minSeverity: (r.minSeverity as number) || 50,
+                    channels: (r.channels as NewsAlertRule['channels']) || { telegram: true, line: false, email: false },
+                    cooldownMinutes: (r.cooldownMinutes as number) || 30,
+                    triggerCount: (r.triggerCount as number) || 0,
+                })));
+            }
+        } catch (err) {
+            console.error('Failed to load news alerts:', err);
+        }
+        setIsLoading(false);
+    }, [getIdToken]);
+
+    useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
+
     const handleToggle = (id: string) => {
         setAlerts(prev => prev.map(a =>
             a.id === id ? { ...a, enabled: !a.enabled } : a
@@ -96,23 +92,31 @@ export default function NewsAlertsPage() {
         setAlerts(prev => prev.filter(a => a.id !== id));
     };
 
-    const handleSave = () => {
-        const newAlert: NewsAlertRule = {
-            id: editingId || Date.now().toString(),
+    const handleSave = async () => {
+        const rule = {
             name: formName,
-            enabled: true,
             keywords: formKeywords.split(',').map(k => k.trim()).filter(Boolean),
             symbols: formSymbols.split(',').map(s => s.trim().toUpperCase()).filter(Boolean),
             minSeverity: parseInt(formSeverity),
             channels: formChannels,
             cooldownMinutes: parseInt(formCooldown),
-            triggerCount: 0,
         };
 
-        if (editingId) {
-            setAlerts(prev => prev.map(a => a.id === editingId ? newAlert : a));
-        } else {
-            setAlerts(prev => [...prev, newAlert]);
+        try {
+            const token = await getIdToken();
+            const res = await fetch('/api/news/alerts', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(rule),
+            });
+            if (res.ok) {
+                await fetchAlerts();
+            }
+        } catch (err) {
+            console.error('Failed to save news alert:', err);
         }
 
         resetForm();

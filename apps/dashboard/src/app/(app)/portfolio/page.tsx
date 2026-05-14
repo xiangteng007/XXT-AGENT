@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import { exportCSV } from '@/lib/export';
 import { usePortfolios, usePortfolio } from '@/lib/hooks/usePortfolio';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -80,48 +81,51 @@ interface RiskMetrics {
     top5Weight: number;
 }
 
-// Mock portfolios
-const mockPortfolios: Portfolio[] = [
-    {
-        id: '1', name: '主要投資組合', description: '長期價值投資', currency: 'TWD', benchmark: 'TAIEX', isDefault: true,
-        createdAt: '2024-01-15', totalValue: 5250000, totalCost: 4800000, totalPnL: 450000, totalPnLPct: 9.38,
-        dailyPnL: 32500, dailyPnLPct: 0.62, cashBalance: 450000,
-        positions: [
-            { id: '1', symbol: '2330', name: '台積電', quantity: 5000, avgCost: 580, currentPrice: 620, marketValue: 3100000, unrealizedPnL: 200000, unrealizedPnLPct: 6.9, weight: 59.0 },
-            { id: '2', symbol: '2317', name: '鴻海', quantity: 10000, avgCost: 105, currentPrice: 115, marketValue: 1150000, unrealizedPnL: 100000, unrealizedPnLPct: 9.5, weight: 21.9 },
-            { id: '3', symbol: '2454', name: '聯發科', quantity: 500, avgCost: 980, currentPrice: 1100, marketValue: 550000, unrealizedPnL: 60000, unrealizedPnLPct: 12.2, weight: 10.5 },
-        ],
-        riskMetrics: { sharpeRatio: 1.85, annualizedVolatility: 0.18, maxDrawdown: -0.12, beta: 1.15, var95: -125000, top5Weight: 0.91 },
-    },
-    {
-        id: '2', name: '美股投資組合', description: '科技股為主', currency: 'USD', benchmark: 'SPX', isDefault: false,
-        createdAt: '2024-06-01', totalValue: 85000, totalCost: 72000, totalPnL: 13000, totalPnLPct: 18.06,
-        dailyPnL: 1250, dailyPnLPct: 1.49, cashBalance: 5000,
-        positions: [
-            { id: '4', symbol: 'AAPL', name: 'Apple Inc.', quantity: 100, avgCost: 165, currentPrice: 186, marketValue: 18600, unrealizedPnL: 2100, unrealizedPnLPct: 12.7, weight: 21.9 },
-            { id: '5', symbol: 'NVDA', name: 'NVIDIA', quantity: 50, avgCost: 480, currentPrice: 925, marketValue: 46250, unrealizedPnL: 22250, unrealizedPnLPct: 92.7, weight: 54.4 },
-            { id: '6', symbol: 'MSFT', name: 'Microsoft', quantity: 40, avgCost: 320, currentPrice: 425, marketValue: 17000, unrealizedPnL: 4200, unrealizedPnLPct: 32.8, weight: 20.0 },
-        ],
-        riskMetrics: { sharpeRatio: 2.35, annualizedVolatility: 0.25, maxDrawdown: -0.18, beta: 1.35, var95: -8500, top5Weight: 0.96 },
-    },
-    {
-        id: '3', name: '加密貨幣', description: '高風險配置', currency: 'USD', benchmark: 'BTC', isDefault: false,
-        createdAt: '2024-09-01', totalValue: 25000, totalCost: 20000, totalPnL: 5000, totalPnLPct: 25.00,
-        dailyPnL: 850, dailyPnLPct: 3.52, cashBalance: 2000,
-        positions: [
-            { id: '7', symbol: 'BTC', name: 'Bitcoin', quantity: 0.15, avgCost: 65000, currentPrice: 98500, marketValue: 14775, unrealizedPnL: 5025, unrealizedPnLPct: 51.5, weight: 59.1 },
-            { id: '8', symbol: 'ETH', name: 'Ethereum', quantity: 2.5, avgCost: 2800, currentPrice: 3500, marketValue: 8750, unrealizedPnL: 1750, unrealizedPnLPct: 25.0, weight: 35.0 },
-        ],
-        riskMetrics: { sharpeRatio: 1.20, annualizedVolatility: 0.65, maxDrawdown: -0.35, beta: 2.10, var95: -6250, top5Weight: 0.94 },
-    },
-];
-
 export default function PortfolioPage() {
-    const [portfolios, setPortfolios] = useState<Portfolio[]>(mockPortfolios);
-    const [selectedId, setSelectedId] = useState<string>(mockPortfolios[0].id);
+    const { getIdToken } = useAuth();
+    const { portfolios: apiPortfolios, isLoading: hookLoading, mutate: refreshPortfolios } = usePortfolios();
+    const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
+    const [selectedId, setSelectedId] = useState<string>('');
     const [showCreateForm, setShowCreateForm] = useState(false);
     const [showAddPosition, setShowAddPosition] = useState(false);
     const [editingPortfolio, setEditingPortfolio] = useState<string | null>(null);
+
+    // Sync hook data into local state
+    useEffect(() => {
+        if (apiPortfolios && apiPortfolios.length > 0) {
+            const mapped: Portfolio[] = apiPortfolios.map((p: Record<string, unknown>) => ({
+                id: p.id as string,
+                name: (p.name as string) || '',
+                description: p.description as string,
+                currency: (p.currency as string) || 'TWD',
+                benchmark: p.benchmark as string,
+                isDefault: p.isDefault as boolean ?? false,
+                createdAt: (p.createdAt as string) || '',
+                totalValue: (p.totalValue as number) || 0,
+                totalCost: (p.totalCost as number) || 0,
+                totalPnL: (p.totalPnL as number) || 0,
+                totalPnLPct: (p.totalPnLPct as number) || 0,
+                dailyPnL: (p.dailyPnL as number) || 0,
+                dailyPnLPct: (p.dailyPnLPct as number) || 0,
+                cashBalance: (p.cashBalance as number) || 0,
+                positions: (p.positions as Position[]) || [],
+                riskMetrics: (p.riskMetrics as RiskMetrics) || { sharpeRatio: 0, annualizedVolatility: 0, maxDrawdown: 0, beta: 0, var95: 0, top5Weight: 0 },
+            }));
+            setPortfolios(mapped);
+            if (!selectedId || !mapped.find(m => m.id === selectedId)) {
+                setSelectedId(mapped[0].id);
+            }
+        }
+    }, [apiPortfolios]);
+
+    if (hookLoading) {
+        return (
+            <div className="space-y-6">
+                <h1 className="text-2xl font-bold">投資組合管理</h1>
+                <LoadingSkeleton type="card" count={4} />
+            </div>
+        );
+    }
 
     // Create portfolio form state
     const [formName, setFormName] = useState('');
@@ -152,27 +156,31 @@ export default function PortfolioPage() {
         return `${sign}${value.toFixed(2)}%`;
     };
 
-    const handleCreatePortfolio = () => {
-        const newPortfolio: Portfolio = {
-            id: Date.now().toString(),
-            name: formName,
-            description: formDescription,
-            currency: formCurrency,
-            benchmark: formBenchmark,
-            isDefault: portfolios.length === 0,
-            createdAt: new Date().toISOString().split('T')[0],
-            totalValue: parseFloat(formCash) || 0,
-            totalCost: 0,
-            totalPnL: 0,
-            totalPnLPct: 0,
-            dailyPnL: 0,
-            dailyPnLPct: 0,
-            cashBalance: parseFloat(formCash) || 0,
-            positions: [],
-            riskMetrics: { sharpeRatio: 0, annualizedVolatility: 0, maxDrawdown: 0, beta: 0, var95: 0, top5Weight: 0 },
-        };
-        setPortfolios(prev => [...prev, newPortfolio]);
-        setSelectedId(newPortfolio.id);
+    const handleCreatePortfolio = async () => {
+        try {
+            const token = await getIdToken();
+            const res = await fetch('/api/portfolios', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    name: formName,
+                    description: formDescription,
+                    currency: formCurrency,
+                    benchmark: formBenchmark,
+                    cashBalance: parseFloat(formCash) || 0,
+                }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setSelectedId(data.portfolio.id);
+                refreshPortfolios(); // Re-fetch from server
+            }
+        } catch (err) {
+            console.error('Failed to create portfolio:', err);
+        }
         resetCreateForm();
     };
 
@@ -211,11 +219,20 @@ export default function PortfolioPage() {
         resetAddPositionForm();
     };
 
-    const handleDeletePortfolio = (id: string) => {
+    const handleDeletePortfolio = async (id: string) => {
         if (portfolios.length <= 1) return;
-        setPortfolios(prev => prev.filter(p => p.id !== id));
-        if (selectedId === id) {
-            setSelectedId(portfolios.find(p => p.id !== id)?.id || '');
+        try {
+            const token = await getIdToken();
+            await fetch(`/api/portfolio/${id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            refreshPortfolios();
+            if (selectedId === id) {
+                setSelectedId(portfolios.find(p => p.id !== id)?.id || '');
+            }
+        } catch (err) {
+            console.error('Failed to delete portfolio:', err);
         }
     };
 

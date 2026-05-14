@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { LoadingSkeleton } from '@/components/shared';
 import {
     FileText,
     Download,
@@ -14,6 +16,7 @@ import {
     RefreshCw,
     Eye,
     Share2,
+    Loader2,
 } from 'lucide-react';
 
 interface Report {
@@ -32,36 +35,6 @@ interface Report {
     downloadUrls?: { pdf?: string; excel?: string };
 }
 
-// Mock data
-const mockReports: Report[] = [
-    {
-        id: '1', name: '每日社群監控報告', type: 'daily', status: 'completed',
-        generatedAt: new Date().toISOString(),
-        period: { start: '2026-01-16', end: '2026-01-16' },
-        metrics: { totalPosts: 1250, avgSentiment: 0.65, topAccounts: 15, alerts: 3 },
-        downloadUrls: { pdf: '#', excel: '#' },
-    },
-    {
-        id: '2', name: '每週社群趨勢報告', type: 'weekly', status: 'completed',
-        generatedAt: new Date(Date.now() - 86400000).toISOString(),
-        period: { start: '2026-01-10', end: '2026-01-16' },
-        metrics: { totalPosts: 8750, avgSentiment: 0.58, topAccounts: 42, alerts: 12 },
-        downloadUrls: { pdf: '#', excel: '#' },
-    },
-    {
-        id: '3', name: '每月綜合分析報告', type: 'monthly', status: 'processing',
-        generatedAt: new Date(Date.now() - 172800000).toISOString(),
-        period: { start: '2025-12-01', end: '2025-12-31' },
-        metrics: { totalPosts: 35200, avgSentiment: 0.62, topAccounts: 128, alerts: 45 },
-    },
-    {
-        id: '4', name: '自訂期間報告', type: 'custom', status: 'failed',
-        generatedAt: new Date(Date.now() - 259200000).toISOString(),
-        period: { start: '2026-01-01', end: '2026-01-15' },
-        metrics: { totalPosts: 0, avgSentiment: 0, topAccounts: 0, alerts: 0 },
-    },
-];
-
 const typeLabels: Record<string, { label: string; color: string }> = {
     daily: { label: '每日', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
     weekly: { label: '每週', color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' },
@@ -76,7 +49,46 @@ const statusIcons: Record<string, { icon: React.ReactNode; color: string }> = {
 };
 
 export default function SocialReportsPage() {
-    const [reports] = useState<Report[]>(mockReports);
+    const { getIdToken } = useAuth();
+    const [reports, setReports] = useState<Report[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    const fetchReports = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const token = await getIdToken();
+            const res = await fetch('/api/social/reports', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setReports((data.reports || []).map((r: Record<string, unknown>) => ({
+                    id: r.id as string,
+                    name: (r.name as string) || '',
+                    type: (r.type as Report['type']) || 'daily',
+                    status: (r.status as Report['status']) || 'completed',
+                    generatedAt: (r.generatedAt as string) || '',
+                    period: (r.period as Report['period']) || { start: '', end: '' },
+                    metrics: (r.metrics as Report['metrics']) || { totalPosts: 0, avgSentiment: 0, topAccounts: 0, alerts: 0 },
+                    downloadUrls: r.downloadUrls as Report['downloadUrls'],
+                })));
+            }
+        } catch (err) {
+            console.error('Failed to load reports:', err);
+        }
+        setIsLoading(false);
+    }, [getIdToken]);
+
+    useEffect(() => { fetchReports(); }, [fetchReports]);
+
+    if (isLoading) {
+        return (
+            <div className="space-y-6">
+                <h1 className="text-2xl font-bold">排程報告</h1>
+                <LoadingSkeleton type="card" count={4} />
+            </div>
+        );
+    }
 
     const formatDate = (dateStr: string) => {
         return new Date(dateStr).toLocaleDateString('zh-TW', {
