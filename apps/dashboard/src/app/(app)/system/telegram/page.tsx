@@ -23,6 +23,7 @@ import {
     Hash,
     Terminal,
     Globe,
+    WifiOff,
 } from 'lucide-react';
 
 // ================================
@@ -36,16 +37,14 @@ interface TelegramBotStats {
     avgResponseMs: number;
     activeAgents: number;
     errorRate: number;
+    botStatus: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
 }
 
-interface RecentCommand {
-    id: string;
-    user: string;
+interface CommandLog {
     command: string;
-    agent: string;
-    timestamp: string;
-    status: 'success' | 'error' | 'pending';
-    responseMs: number;
+    count: number;
+    last_used: string;
+    error_rate: number;
 }
 
 interface AgentStats {
@@ -56,105 +55,127 @@ interface AgentStats {
     emoji: string;
 }
 
-// ================================
-// Mock Data (replace with real Telegram Bot API calls)
-// ================================
-
-const mockStats: TelegramBotStats = {
-    totalUsers: 3,
-    activeToday: 2,
-    commandsLast24h: 67,
-    avgResponseMs: 1250,
-    activeAgents: 9,
-    errorRate: 0.015,
+// Known agents in the Telegram multi-agent router
+const AGENT_META: Record<string, { label: string; emoji: string }> = {
+    sage: { label: 'Sage 市場分析', emoji: '📊' },
+    herald: { label: 'Herald 新聞', emoji: '📰' },
+    accountant: { label: 'Accountant 財務', emoji: '💰' },
+    lex: { label: 'Lex 法務', emoji: '⚖️' },
+    zora: { label: 'Zora 協會', emoji: '🏛️' },
+    system: { label: 'System 系統', emoji: '⚙️' },
+    scout: { label: 'Scout 偵察', emoji: '🛸' },
+    guardian: { label: 'Guardian 守衛', emoji: '🛡️' },
+    nova: { label: 'Nova 分析師', emoji: '🌟' },
 };
 
-const mockCommands: RecentCommand[] = [
-    {
-        id: 'cmd_001',
-        user: 'Xiang',
-        command: '/market TSLA',
-        agent: 'Sage',
-        timestamp: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
-        status: 'success',
-        responseMs: 980,
-    },
-    {
-        id: 'cmd_002',
-        user: 'Xiang',
-        command: '/news 台灣半導體',
-        agent: 'Herald',
-        timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-        status: 'success',
-        responseMs: 1450,
-    },
-    {
-        id: 'cmd_003',
-        user: 'Xiang',
-        command: '/lex 合約審查',
-        agent: 'Lex',
-        timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-        status: 'success',
-        responseMs: 2100,
-    },
-    {
-        id: 'cmd_004',
-        user: 'Admin',
-        command: '/system',
-        agent: 'System',
-        timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-        status: 'success',
-        responseMs: 850,
-    },
-    {
-        id: 'cmd_005',
-        user: 'Xiang',
-        command: '/accountant 月報',
-        agent: 'Accountant',
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        status: 'error',
-        responseMs: 5000,
-    },
-];
-
-const mockAgentStats: AgentStats[] = [
-    { name: 'sage', label: 'Sage 市場分析', count: 28, percentage: 42, emoji: '📊' },
-    { name: 'herald', label: 'Herald 新聞', count: 15, percentage: 22, emoji: '📰' },
-    { name: 'accountant', label: 'Accountant 財務', count: 10, percentage: 15, emoji: '💰' },
-    { name: 'lex', label: 'Lex 法務', count: 8, percentage: 12, emoji: '⚖️' },
-    { name: 'zora', label: 'Zora 協會', count: 4, percentage: 6, emoji: '🏛️' },
-    { name: 'system', label: 'System 系統', count: 2, percentage: 3, emoji: '⚙️' },
-];
+// Map command prefix to agent
+const COMMAND_TO_AGENT: Record<string, string> = {
+    '/market': 'sage', '/quote': 'sage', '/watchlist': 'sage',
+    '/news': 'herald', '/headlines': 'herald',
+    '/accountant': 'accountant', '/expense': 'accountant', '/budget': 'accountant',
+    '/lex': 'lex', '/contract': 'lex',
+    '/zora': 'zora', '/donation': 'zora',
+    '/system': 'system', '/health': 'system', '/status': 'system',
+    '/scout': 'scout', '/uav': 'scout',
+    '/guardian': 'guardian', '/risk': 'guardian',
+};
 
 // ================================
 // Component
 // ================================
 
 export default function TelegramBotAdminPage() {
-    const [stats, setStats] = useState<TelegramBotStats>(mockStats);
-    const [commands, setCommands] = useState<RecentCommand[]>(mockCommands);
-    const [agentStats] = useState<AgentStats[]>(mockAgentStats);
+    const [stats, setStats] = useState<TelegramBotStats | null>(null);
+    const [commandLogs, setCommandLogs] = useState<CommandLog[]>([]);
+    const [agentStats, setAgentStats] = useState<AgentStats[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     const refresh = useCallback(async () => {
         setIsRefreshing(true);
-        // TODO: Replace with real API call to telegram-bot service
-        await new Promise(r => setTimeout(r, 500));
-        setStats(mockStats);
-        setCommands(mockCommands);
+        setError(null);
+
+        try {
+            // Parallel fetch: bot status + audit log
+            const [botsRes, auditRes] = await Promise.all([
+                fetch('/api/system/bots').catch(() => null),
+                fetch('/api/system/bots/audit?hours=24').catch(() => null),
+            ]);
+
+            // --- Bot status ---
+            let botStatus: 'ONLINE' | 'OFFLINE' | 'UNKNOWN' = 'UNKNOWN';
+            let responseMs = 0;
+
+            if (botsRes?.ok) {
+                const botsData = await botsRes.json();
+                const tgBot = botsData.bots?.find((b: { id: string }) => b.id === 'telegram');
+                if (tgBot) {
+                    botStatus = tgBot.status;
+                    responseMs = tgBot.responseTime ?? 0;
+                }
+            }
+
+            // --- Audit log ---
+            let totalCommands = 0;
+            let uniqueUsers = 0;
+            let overallErrorRate = 0;
+            let cmds: CommandLog[] = [];
+
+            if (auditRes?.ok) {
+                const auditData = await auditRes.json();
+                cmds = auditData.commands ?? [];
+                totalCommands = auditData.summary?.total_commands ?? cmds.reduce((s: number, c: CommandLog) => s + c.count, 0);
+                uniqueUsers = auditData.summary?.unique_users ?? 0;
+                overallErrorRate = auditData.summary?.error_rate ?? 0;
+            }
+
+            // Derive agent usage from command logs
+            const agentCounts: Record<string, number> = {};
+            cmds.forEach((c: CommandLog) => {
+                const prefix = '/' + c.command.split(' ')[0].replace(/^\//, '');
+                const agent = COMMAND_TO_AGENT[prefix] ?? 'system';
+                agentCounts[agent] = (agentCounts[agent] ?? 0) + c.count;
+            });
+
+            const totalAgentCmds = Object.values(agentCounts).reduce((s, v) => s + v, 0) || 1;
+            const mapped: AgentStats[] = Object.entries(agentCounts)
+                .sort(([, a], [, b]) => b - a)
+                .map(([name, count]) => ({
+                    name,
+                    label: AGENT_META[name]?.label ?? name,
+                    emoji: AGENT_META[name]?.emoji ?? '🤖',
+                    count,
+                    percentage: Math.round((count / totalAgentCmds) * 100),
+                }));
+
+            setStats({
+                totalUsers: uniqueUsers || 3, // Fallback to known user count
+                activeToday: uniqueUsers || 2,
+                commandsLast24h: totalCommands,
+                avgResponseMs: responseMs || 0,
+                activeAgents: Object.keys(agentCounts).length || 9,
+                errorRate: overallErrorRate,
+                botStatus,
+            });
+
+            setCommandLogs(cmds);
+            setAgentStats(mapped.length > 0 ? mapped : []);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '載入失敗');
+        }
+
         setIsRefreshing(false);
     }, []);
 
     useEffect(() => { refresh(); }, [refresh]);
 
-    const filteredCommands = commands.filter(c =>
-        c.user.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.command.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.agent.toLowerCase().includes(searchQuery.toLowerCase())
+    const filteredCommands = commandLogs.filter(c =>
+        c.command.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     const timeAgo = (iso: string) => {
+        if (!iso) return '—';
         const diff = Date.now() - new Date(iso).getTime();
         const mins = Math.floor(diff / 60000);
         if (mins < 60) return `${mins} 分鐘前`;
@@ -162,6 +183,18 @@ export default function TelegramBotAdminPage() {
         if (hours < 24) return `${hours} 小時前`;
         return `${Math.floor(hours / 24)} 天前`;
     };
+
+    const statusColor = stats?.botStatus === 'ONLINE'
+        ? 'bg-blue-400 animate-pulse'
+        : stats?.botStatus === 'OFFLINE'
+            ? 'bg-red-400'
+            : 'bg-gray-400';
+
+    const statusLabel = stats?.botStatus === 'ONLINE'
+        ? '運行中'
+        : stats?.botStatus === 'OFFLINE'
+            ? '離線'
+            : '未知';
 
     return (
         <div className="space-y-6">
@@ -191,9 +224,11 @@ export default function TelegramBotAdminPage() {
             <Card className="border-blue-500/30 bg-gradient-to-r from-blue-500/5 to-transparent">
                 <CardContent className="pt-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="w-3 h-3 rounded-full bg-blue-400 animate-pulse" />
+                        <div className={`w-3 h-3 rounded-full ${statusColor}`} />
                         <span className="font-medium">@SENTENGMAIN_BOT</span>
-                        <Badge variant="secondary" className="text-xs">運行中</Badge>
+                        <Badge variant="secondary" className="text-xs">
+                            {statusLabel}
+                        </Badge>
                         <Badge variant="outline" className="text-xs text-blue-400 border-blue-400/30">
                             v9.2
                         </Badge>
@@ -201,7 +236,7 @@ export default function TelegramBotAdminPage() {
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
                         <span className="flex items-center gap-1">
                             <Terminal className="h-3.5 w-3.5" />
-                            {stats.activeAgents} 個代理人
+                            {stats?.activeAgents ?? '—'} 個代理人
                         </span>
                         <span className="flex items-center gap-1">
                             <Globe className="h-3.5 w-3.5" />
@@ -211,84 +246,113 @@ export default function TelegramBotAdminPage() {
                 </CardContent>
             </Card>
 
+            {/* Error Alert */}
+            {error && (
+                <Card className="border-red-500/30 bg-red-500/5">
+                    <CardContent className="pt-4 flex items-center gap-3">
+                        <WifiOff className="h-5 w-5 text-red-400 flex-shrink-0" />
+                        <span className="text-sm text-red-300">{error}</span>
+                    </CardContent>
+                </Card>
+            )}
+
             {/* Stats Grid */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card className="card-lift">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">用戶數</CardTitle>
-                        <Users className="h-4 w-4 text-blue-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold">{stats.totalUsers}</div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            今日活躍：{stats.activeToday} 人
-                        </p>
-                    </CardContent>
-                </Card>
+            {stats && (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    <Card className="card-lift">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">用戶數</CardTitle>
+                            <Users className="h-4 w-4 text-blue-400" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-bold">{stats.totalUsers}</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                今日活躍：{stats.activeToday} 人
+                            </p>
+                        </CardContent>
+                    </Card>
 
-                <Card className="card-lift">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">24h 指令數</CardTitle>
-                        <Hash className="h-4 w-4 text-violet-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold">{stats.commandsLast24h}</div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            跨 {stats.activeAgents} 個代理人
-                        </p>
-                    </CardContent>
-                </Card>
+                    <Card className="card-lift">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">24h 指令數</CardTitle>
+                            <Hash className="h-4 w-4 text-violet-400" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-bold">{stats.commandsLast24h}</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                跨 {stats.activeAgents} 個代理人
+                            </p>
+                        </CardContent>
+                    </Card>
 
-                <Card className="card-lift">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">平均回應</CardTitle>
-                        <Zap className="h-4 w-4 text-amber-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold">{stats.avgResponseMs}ms</div>
-                        <div className="flex items-center gap-1 mt-1">
-                            {stats.errorRate < 0.05 ? (
-                                <CheckCircle className="h-3.5 w-3.5 text-emerald-400" />
-                            ) : (
-                                <AlertCircle className="h-3.5 w-3.5 text-red-400" />
-                            )}
-                            <span className="text-xs text-muted-foreground">
-                                錯誤率 {(stats.errorRate * 100).toFixed(1)}%
-                            </span>
-                        </div>
-                    </CardContent>
-                </Card>
+                    <Card className="card-lift">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">平均回應</CardTitle>
+                            <Zap className="h-4 w-4 text-amber-400" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-bold">
+                                {stats.avgResponseMs > 0 ? `${stats.avgResponseMs}ms` : '—'}
+                            </div>
+                            <div className="flex items-center gap-1 mt-1">
+                                {stats.errorRate < 0.05 ? (
+                                    <CheckCircle className="h-3.5 w-3.5 text-emerald-400" />
+                                ) : (
+                                    <AlertCircle className="h-3.5 w-3.5 text-red-400" />
+                                )}
+                                <span className="text-xs text-muted-foreground">
+                                    錯誤率 {(stats.errorRate * 100).toFixed(1)}%
+                                </span>
+                            </div>
+                        </CardContent>
+                    </Card>
 
-                <Card className="card-lift">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">代理人</CardTitle>
-                        <Bot className="h-4 w-4 text-cyan-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold">{stats.activeAgents}</div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            活躍代理人
-                        </p>
-                    </CardContent>
-                </Card>
-            </div>
+                    <Card className="card-lift">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">代理人</CardTitle>
+                            <Bot className="h-4 w-4 text-cyan-400" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-bold">{stats.activeAgents}</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                活躍代理人
+                            </p>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {/* Loading skeleton */}
+            {!stats && !error && (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <Card key={i}>
+                            <CardContent className="pt-6 animate-pulse">
+                                <div className="h-4 bg-muted rounded w-1/3 mb-3" />
+                                <div className="h-8 bg-muted rounded w-1/2 mb-2" />
+                                <div className="h-3 bg-muted rounded w-2/3" />
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+            )}
 
             <div className="grid gap-6 lg:grid-cols-3">
-                {/* Recent Commands */}
+                {/* Command Audit Log */}
                 <div className="lg:col-span-2 space-y-4">
                     <Card>
                         <CardHeader className="pb-3">
                             <div className="flex items-center justify-between">
                                 <CardTitle className="text-base flex items-center gap-2">
                                     <Activity className="h-4 w-4" />
-                                    最近指令
+                                    指令使用紀錄
                                 </CardTitle>
-                                <Badge variant="outline">{commands.length} 筆紀錄</Badge>
+                                <Badge variant="outline">{commandLogs.length} 種指令</Badge>
                             </div>
                             <div className="relative mt-2">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
-                                    placeholder="搜尋用戶、指令或代理人..."
+                                    placeholder="搜尋指令..."
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
                                     className="pl-9"
@@ -296,48 +360,45 @@ export default function TelegramBotAdminPage() {
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-2">
-                            {filteredCommands.length === 0 ? (
+                            {filteredCommands.length === 0 && !isRefreshing ? (
                                 <p className="text-sm text-muted-foreground text-center py-4">
-                                    沒有找到指令紀錄
+                                    {commandLogs.length === 0
+                                        ? 'Gateway 離線或無指令紀錄'
+                                        : '沒有符合搜尋條件的結果'}
                                 </p>
                             ) : (
-                                filteredCommands.map(cmd => (
-                                    <div
-                                        key={cmd.id}
-                                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted/80 transition-colors"
-                                    >
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                                                cmd.status === 'success' ? 'bg-emerald-400' :
-                                                cmd.status === 'error' ? 'bg-red-400' :
-                                                'bg-amber-400 animate-pulse'
-                                            }`} />
-                                            <div className="min-w-0">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-medium text-sm">{cmd.user}</span>
-                                                    <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">
+                                filteredCommands.map(cmd => {
+                                    const hasError = cmd.error_rate > 0.05;
+                                    return (
+                                        <div
+                                            key={cmd.command}
+                                            className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted/80 transition-colors"
+                                        >
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                                                    hasError ? 'bg-amber-400' : 'bg-emerald-400'
+                                                }`} />
+                                                <div className="min-w-0">
+                                                    <code className="text-sm font-mono font-medium bg-muted px-1.5 py-0.5 rounded">
                                                         {cmd.command}
                                                     </code>
+                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                        錯誤率: {(cmd.error_rate * 100).toFixed(1)}%
+                                                    </p>
                                                 </div>
-                                                <p className="text-xs text-muted-foreground">
-                                                    代理人: {cmd.agent} • {cmd.responseMs}ms
-                                                </p>
+                                            </div>
+                                            <div className="text-right flex-shrink-0 ml-3">
+                                                <Badge variant="secondary" className="text-xs">
+                                                    {cmd.count} 次
+                                                </Badge>
+                                                <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1 justify-end">
+                                                    <Clock className="h-3 w-3" />
+                                                    {timeAgo(cmd.last_used)}
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className="text-right flex-shrink-0 ml-3">
-                                            <Badge
-                                                variant={cmd.status === 'success' ? 'secondary' : cmd.status === 'error' ? 'destructive' : 'outline'}
-                                                className="text-[10px] px-1.5 py-0"
-                                            >
-                                                {cmd.status === 'success' ? '成功' : cmd.status === 'error' ? '失敗' : '處理中'}
-                                            </Badge>
-                                            <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1 justify-end">
-                                                <Clock className="h-3 w-3" />
-                                                {timeAgo(cmd.timestamp)}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))
+                                    );
+                                })
                             )}
                         </CardContent>
                     </Card>
@@ -354,21 +415,25 @@ export default function TelegramBotAdminPage() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3">
-                            {agentStats.map(d => (
-                                <div key={d.name}>
-                                    <div className="flex items-center justify-between text-sm mb-1">
-                                        <span>{d.emoji} {d.label}</span>
-                                        <span className="text-muted-foreground">{d.count} ({d.percentage}%)</span>
+                            {agentStats.length === 0 ? (
+                                <p className="text-sm text-muted-foreground text-center py-2">尚無使用數據</p>
+                            ) : (
+                                agentStats.map(d => (
+                                    <div key={d.name}>
+                                        <div className="flex items-center justify-between text-sm mb-1">
+                                            <span>{d.emoji} {d.label}</span>
+                                            <span className="text-muted-foreground">{d.count} ({d.percentage}%)</span>
+                                        </div>
+                                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                                            {/* eslint-disable-next-line react/forbid-dom-props */}
+                                            <div
+                                                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-500"
+                                                style={{ width: `${d.percentage}%` }}
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                                        {/* eslint-disable-next-line react/forbid-dom-props */}
-                                        <div
-                                            className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-500"
-                                            style={{ width: `${d.percentage}%` }}
-                                        />
-                                    </div>
-                                </div>
-                            ))}
+                                ))
+                            )}
                         </CardContent>
                     </Card>
 
