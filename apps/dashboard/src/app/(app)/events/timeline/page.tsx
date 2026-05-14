@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import Link from 'next/link';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ import {
     CheckCircle,
     Filter,
     RefreshCw,
+    Loader2,
 } from 'lucide-react';
 
 type EventType = 'news' | 'social' | 'market' | 'alert';
@@ -42,17 +43,16 @@ interface TimelineEvent {
     link?: string;
 }
 
-// Mock data - cross-system events
-const mockEvents: TimelineEvent[] = [
-    { id: '1', type: 'news', title: 'NVDA 發布最新 AI 晶片', description: 'NVIDIA 宣布新一代 Blackwell 架構 GPU，效能提升 3 倍', timestamp: new Date(Date.now() - 300000).toISOString(), severity: 'high', source: 'Bloomberg', symbols: ['NVDA'], sentiment: 'bullish' },
-    { id: '2', type: 'market', title: 'NVDA 股價突破 900', description: '受新品發布影響，盤中漲幅達 4.2%', timestamp: new Date(Date.now() - 600000).toISOString(), severity: 'high', source: 'Market', symbols: ['NVDA'], sentiment: 'bullish' },
-    { id: '3', type: 'social', title: '@elonmusk 提及 AI', description: 'Elon Musk 在 X 上發文討論 AI 發展趨勢', timestamp: new Date(Date.now() - 900000).toISOString(), severity: 'medium', source: 'Twitter', symbols: ['TSLA'], sentiment: 'neutral' },
-    { id: '4', type: 'alert', title: 'AAPL RSI 超買警報', description: 'RSI(14) 達到 72.5，進入超買區間', timestamp: new Date(Date.now() - 1200000).toISOString(), severity: 'medium', source: 'System', symbols: ['AAPL'], sentiment: 'bearish' },
-    { id: '5', type: 'news', title: 'Fed 維持利率不變', description: '聯準會宣布維持基準利率在 5.25%-5.50%', timestamp: new Date(Date.now() - 1800000).toISOString(), severity: 'critical', source: 'Reuters', symbols: [], sentiment: 'neutral' },
-    { id: '6', type: 'market', title: 'BTC 成交量異常', description: '24H 成交量較均量增加 180%', timestamp: new Date(Date.now() - 2400000).toISOString(), severity: 'high', source: 'Market', symbols: ['BTC-USD'], sentiment: 'bullish' },
-    { id: '7', type: 'social', title: '加密貨幣社群熱議', description: '多個 KOL 同時發布看多觀點', timestamp: new Date(Date.now() - 3000000).toISOString(), severity: 'medium', source: 'Multiple', symbols: ['BTC-USD', 'ETH-USD'], sentiment: 'bullish' },
-    { id: '8', type: 'alert', title: 'TSLA 跌破支撐位', description: '價格跌破 240 支撐位，觸發價格警報', timestamp: new Date(Date.now() - 3600000).toISOString(), severity: 'high', source: 'System', symbols: ['TSLA'], sentiment: 'bearish' },
-];
+// Domain mapping: fused_events.domain → EventType
+const DOMAIN_TO_TYPE: Record<string, EventType> = {
+    news: 'news',
+    social: 'social',
+    market: 'market',
+    alert: 'alert',
+    finance: 'market',
+    regulation: 'news',
+    system: 'alert',
+};
 
 const typeConfig: Record<EventType, { icon: React.ReactNode; color: string; bg: string; label: string }> = {
     news: { icon: <Newspaper className="h-4 w-4" />, color: 'text-blue-500', bg: 'bg-blue-100 dark:bg-blue-900', label: '新聞' },
@@ -75,10 +75,43 @@ const sentimentIcons: Record<string, { icon: React.ReactNode; color: string }> =
 };
 
 export default function EventsTimelinePage() {
-    const [events] = useState<TimelineEvent[]>(mockEvents);
+    const { getIdToken } = useAuth();
+    const [events, setEvents] = useState<TimelineEvent[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [typeFilter, setTypeFilter] = useState<string>('all');
     const [severityFilter, setSeverityFilter] = useState<string>('all');
     const [search, setSearch] = useState('');
+
+    const fetchEvents = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const token = await getIdToken();
+            const res = await fetch('/api/admin/fused-events?limit=50', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const mapped: TimelineEvent[] = (data.events || []).map((e: Record<string, unknown>) => ({
+                    id: e.id as string,
+                    type: DOMAIN_TO_TYPE[(e.domain as string) || ''] || 'alert',
+                    title: (e.title as string) || (e.headline as string) || '事件',
+                    description: (e.summary as string) || (e.description as string) || '',
+                    timestamp: (e.ts as string) || new Date().toISOString(),
+                    severity: (e.severity as Severity) || 'medium',
+                    source: (e.source as string) || (e.domain as string) || 'System',
+                    symbols: (e.symbols as string[]) || [],
+                    sentiment: (e.sentiment as TimelineEvent['sentiment']) || 'neutral',
+                    link: e.link as string | undefined,
+                }));
+                setEvents(mapped);
+            }
+        } catch (err) {
+            console.error('Failed to fetch events:', err);
+        }
+        setIsLoading(false);
+    }, [getIdToken]);
+
+    useEffect(() => { fetchEvents(); }, [fetchEvents]);
 
     const filteredEvents = useMemo(() => {
         return events.filter(e => {
@@ -131,8 +164,8 @@ export default function EventsTimelinePage() {
                         整合新聞、社群、市場、警報的統一事件流
                     </p>
                 </div>
-                <Button variant="outline">
-                    <RefreshCw className="h-4 w-4 mr-2" />
+                <Button variant="outline" onClick={fetchEvents} disabled={isLoading}>
+                    <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
                     刷新
                 </Button>
             </div>
