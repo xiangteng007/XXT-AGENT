@@ -19,48 +19,7 @@ import {
     CheckCircle,
 } from 'lucide-react';
 
-// Mock data
-const mockIndicators: Record<string, TechnicalIndicators> = {
-    'AAPL': {
-        symbol: 'AAPL', timestamp: new Date().toISOString(),
-        sma20: 182.50, sma50: 178.30, sma200: 170.20,
-        ema12: 184.10, ema26: 181.50,
-        rsi14: 58.5,
-        macd: { macd: 2.60, signal: 2.10, histogram: 0.50 },
-        stochastic: { k: 65.2, d: 60.8 },
-        bollingerBands: { upper: 192.50, middle: 182.50, lower: 172.50 },
-        atr14: 3.25,
-        vwap: 185.20, obv: 125000000,
-        adx: 28.5, trend: 'up',
-        support: [180.00, 175.00, 170.00], resistance: [190.00, 195.00, 200.00],
-    },
-    'NVDA': {
-        symbol: 'NVDA', timestamp: new Date().toISOString(),
-        sma20: 850.00, sma50: 820.00, sma200: 650.00,
-        ema12: 865.00, ema26: 840.00,
-        rsi14: 72.3,
-        macd: { macd: 25.00, signal: 18.00, histogram: 7.00 },
-        stochastic: { k: 82.5, d: 78.2 },
-        bollingerBands: { upper: 920.00, middle: 850.00, lower: 780.00 },
-        atr14: 22.50,
-        vwap: 875.00, obv: 350000000,
-        adx: 42.5, trend: 'up',
-        support: [840.00, 800.00, 750.00], resistance: [900.00, 950.00, 1000.00],
-    },
-    'TSLA': {
-        symbol: 'TSLA', timestamp: new Date().toISOString(),
-        sma20: 255.00, sma50: 260.00, sma200: 230.00,
-        ema12: 250.00, ema26: 258.00,
-        rsi14: 42.1,
-        macd: { macd: -8.00, signal: -5.00, histogram: -3.00 },
-        stochastic: { k: 35.5, d: 40.2 },
-        bollingerBands: { upper: 280.00, middle: 255.00, lower: 230.00 },
-        atr14: 8.50,
-        vwap: 248.50, obv: 280000000,
-        adx: 22.0, trend: 'down',
-        support: [240.00, 220.00, 200.00], resistance: [260.00, 280.00, 300.00],
-    },
-};
+// Mock data removed — using real API data via useTechnicalIndicators hook
 
 const defaultSymbols = ['AAPL', 'NVDA', 'TSLA', 'META', 'GOOG'];
 
@@ -70,7 +29,7 @@ export default function MarketIndicatorsPage() {
     const [searchSymbol, setSearchSymbol] = useState('');
 
     const { indicators: apiIndicators, isLoading } = useTechnicalIndicators(selectedSymbol);
-    const indicators = apiIndicators || mockIndicators[selectedSymbol];
+    const indicators = apiIndicators || null;
 
     const handleSearch = () => {
         if (searchSymbol) {

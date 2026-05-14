@@ -24,15 +24,7 @@ const sourceIcons: Record<string, string> = {
     yahoo: '🔮', google: '🔍', local: '🏠', other: '📋',
 };
 
-// Mock data
-const mockSources: NewsSourceConfig[] = [
-    { id: '1', name: 'Reuters', source: 'reuters', url: 'https://reuters.com', reliability: 95, bias: 'center', enabled: true, priority: 'high', refreshInterval: 300, articleCount: 1250, lastFetchedAt: new Date().toISOString() },
-    { id: '2', name: 'Bloomberg', source: 'bloomberg', url: 'https://bloomberg.com', reliability: 92, bias: 'center', enabled: true, priority: 'high', refreshInterval: 300, articleCount: 980, lastFetchedAt: new Date().toISOString() },
-    { id: '3', name: 'Wall Street Journal', source: 'wsj', url: 'https://wsj.com', reliability: 88, bias: 'right', enabled: true, priority: 'medium', refreshInterval: 600, articleCount: 756, lastFetchedAt: new Date().toISOString() },
-    { id: '4', name: 'CNBC', source: 'cnbc', url: 'https://cnbc.com', reliability: 82, bias: 'center', enabled: true, priority: 'medium', refreshInterval: 600, articleCount: 543, lastFetchedAt: new Date().toISOString() },
-    { id: '5', name: 'Yahoo Finance', source: 'yahoo', url: 'https://finance.yahoo.com', reliability: 75, bias: 'center', enabled: false, priority: 'low', refreshInterval: 900, articleCount: 420, lastFetchedAt: new Date().toISOString() },
-    { id: '6', name: 'Google News', source: 'google', url: 'https://news.google.com', reliability: 70, bias: 'unknown', enabled: true, priority: 'low', refreshInterval: 900, articleCount: 890, lastFetchedAt: new Date().toISOString() },
-];
+// Mock data removed — using real API data via useNewsSources hook
 
 const priorityColors: Record<string, string> = {
     high: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
@@ -46,7 +38,7 @@ const biasLabels: Record<string, string> = {
 
 export default function NewsSourcesPage() {
     const { sources: apiSources, isLoading, refresh } = useNewsSources();
-    const sources = apiSources.length > 0 ? apiSources : mockSources;
+    const sources = apiSources;
 
     const [localSources, setLocalSources] = useState<NewsSourceConfig[]>(sources);
     const [search, setSearch] = useState('');

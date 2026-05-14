@@ -73,21 +73,8 @@ const assetTypeLabels: Record<string, { label: string; color: string }> = {
     forex: { label: '外匯', color: 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300' },
 };
 
-// Mock symbols for demo
+// Default symbols for quote tracking
 const defaultSymbols = ['AAPL', 'MSFT', 'GOOG', 'NVDA', 'TSLA', 'AMZN', 'META', 'BTC-USD', 'ETH-USD'];
-
-// Mock quote data
-const mockQuotes: Quote[] = [
-    { symbol: 'AAPL', name: 'Apple Inc.', type: 'stock', exchange: 'NASDAQ', currency: 'USD', lastPrice: 185.92, previousClose: 183.58, open: 184.20, high: 186.50, low: 183.80, change: 2.34, changePct: 1.27, volume: 52000000, avgVolume: 48000000, volumeRatio: 1.08, high52w: 199.62, low52w: 140.00, lastTradeTime: new Date().toISOString(), marketStatus: 'open' },
-    { symbol: 'MSFT', name: 'Microsoft Corp.', type: 'stock', exchange: 'NASDAQ', currency: 'USD', lastPrice: 425.13, previousClose: 422.50, open: 423.00, high: 426.00, low: 421.80, change: 2.63, changePct: 0.62, volume: 18000000, avgVolume: 20000000, volumeRatio: 0.9, high52w: 430.82, low52w: 310.00, lastTradeTime: new Date().toISOString(), marketStatus: 'open' },
-    { symbol: 'GOOG', name: 'Alphabet Inc.', type: 'stock', exchange: 'NASDAQ', currency: 'USD', lastPrice: 175.25, previousClose: 174.10, open: 174.50, high: 176.00, low: 173.80, change: 1.15, changePct: 0.66, volume: 15000000, avgVolume: 14000000, volumeRatio: 1.07, high52w: 180.00, low52w: 118.00, lastTradeTime: new Date().toISOString(), marketStatus: 'open' },
-    { symbol: 'NVDA', name: 'NVIDIA Corp.', type: 'stock', exchange: 'NASDAQ', currency: 'USD', lastPrice: 878.35, previousClose: 850.00, open: 855.00, high: 885.00, low: 852.00, change: 28.35, changePct: 3.34, volume: 42000000, avgVolume: 35000000, volumeRatio: 1.2, high52w: 974.00, low52w: 222.00, lastTradeTime: new Date().toISOString(), marketStatus: 'open' },
-    { symbol: 'TSLA', name: 'Tesla Inc.', type: 'stock', exchange: 'NASDAQ', currency: 'USD', lastPrice: 248.50, previousClose: 252.30, open: 251.00, high: 254.00, low: 246.00, change: -3.80, changePct: -1.51, volume: 68000000, avgVolume: 55000000, volumeRatio: 1.24, high52w: 299.29, low52w: 101.81, lastTradeTime: new Date().toISOString(), marketStatus: 'open' },
-    { symbol: 'AMZN', name: 'Amazon.com Inc.', type: 'stock', exchange: 'NASDAQ', currency: 'USD', lastPrice: 186.20, previousClose: 184.70, open: 185.00, high: 187.50, low: 184.20, change: 1.50, changePct: 0.81, volume: 28000000, avgVolume: 30000000, volumeRatio: 0.93, high52w: 191.70, low52w: 118.35, lastTradeTime: new Date().toISOString(), marketStatus: 'open' },
-    { symbol: 'META', name: 'Meta Platforms Inc.', type: 'stock', exchange: 'NASDAQ', currency: 'USD', lastPrice: 505.80, previousClose: 508.20, open: 507.00, high: 510.00, low: 503.00, change: -2.40, changePct: -0.47, volume: 12000000, avgVolume: 13000000, volumeRatio: 0.92, high52w: 542.81, low52w: 274.38, lastTradeTime: new Date().toISOString(), marketStatus: 'open' },
-    { symbol: 'BTC-USD', name: 'Bitcoin USD', type: 'crypto', exchange: 'Crypto', currency: 'USD', lastPrice: 96850.00, previousClose: 95200.00, open: 95500.00, high: 97500.00, low: 94800.00, change: 1650.00, changePct: 1.73, volume: 25000000000, avgVolume: 22000000000, volumeRatio: 1.14, high52w: 109000.00, low52w: 38500.00, lastTradeTime: new Date().toISOString(), marketStatus: 'open' },
-    { symbol: 'ETH-USD', name: 'Ethereum USD', type: 'crypto', exchange: 'Crypto', currency: 'USD', lastPrice: 3420.50, previousClose: 3380.00, open: 3390.00, high: 3450.00, low: 3350.00, change: 40.50, changePct: 1.20, volume: 12000000000, avgVolume: 10000000000, volumeRatio: 1.2, high52w: 4090.00, low52w: 1520.00, lastTradeTime: new Date().toISOString(), marketStatus: 'open' },
-];
 
 type SortField = 'symbol' | 'lastPrice' | 'changePct' | 'volume';
 
@@ -113,7 +100,7 @@ export default function QuotesPage() {
 
     const { quotes: apiQuotes, isLoading, refresh } = useQuotes(defaultSymbols);
 
-    const quotes = apiQuotes.length > 0 ? apiQuotes : mockQuotes;
+    const quotes = apiQuotes;
 
     const [filters, setFilters] = useState<Record<string, string | string[]>>({});
     const [sortField, setSortField] = useState<SortField>('symbol');
