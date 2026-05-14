@@ -29,43 +29,8 @@ const getHeatmapColor = (changePct: number): string => {
     return 'bg-red-600 text-white';
 };
 
-// Mock data for demo
-const mockSectors = [
-    {
-        id: 'tech', name: '科技', changePct: 1.5, marketCap: 5e12, volume: 1e9,
-        stocks: [
-            { symbol: 'AAPL', name: 'Apple', sector: 'tech', industry: 'Hardware', marketCap: 3e12, weight: 0.3, changePct: 2.1, volume: 5e8, color: '' },
-            { symbol: 'MSFT', name: 'Microsoft', sector: 'tech', industry: 'Software', marketCap: 2.8e12, weight: 0.28, changePct: 1.3, volume: 3e8, color: '' },
-            { symbol: 'GOOG', name: 'Alphabet', sector: 'tech', industry: 'Internet', marketCap: 1.8e12, weight: 0.18, changePct: 0.8, volume: 2e8, color: '' },
-            { symbol: 'NVDA', name: 'NVIDIA', sector: 'tech', industry: 'Semiconductors', marketCap: 1.2e12, weight: 0.12, changePct: 3.5, volume: 4e8, color: '' },
-            { symbol: 'META', name: 'Meta', sector: 'tech', industry: 'Social Media', marketCap: 1e12, weight: 0.1, changePct: -0.5, volume: 2e8, color: '' },
-        ]
-    },
-    {
-        id: 'finance', name: '金融', changePct: -0.8, marketCap: 3e12, volume: 8e8,
-        stocks: [
-            { symbol: 'JPM', name: 'JPMorgan', sector: 'finance', industry: 'Banking', marketCap: 5e11, weight: 0.25, changePct: -1.2, volume: 1e8, color: '' },
-            { symbol: 'BAC', name: 'Bank of America', sector: 'finance', industry: 'Banking', marketCap: 3e11, weight: 0.15, changePct: -0.8, volume: 1e8, color: '' },
-            { symbol: 'GS', name: 'Goldman Sachs', sector: 'finance', industry: 'Investment', marketCap: 1.5e11, weight: 0.12, changePct: -1.5, volume: 5e7, color: '' },
-            { symbol: 'V', name: 'Visa', sector: 'finance', industry: 'Payments', marketCap: 5e11, weight: 0.25, changePct: 0.3, volume: 8e7, color: '' },
-        ]
-    },
-    {
-        id: 'healthcare', name: '醫療', changePct: 0.5, marketCap: 2e12, volume: 6e8,
-        stocks: [
-            { symbol: 'JNJ', name: 'Johnson & Johnson', sector: 'healthcare', industry: 'Pharma', marketCap: 4e11, weight: 0.2, changePct: 0.8, volume: 5e7, color: '' },
-            { symbol: 'UNH', name: 'UnitedHealth', sector: 'healthcare', industry: 'Insurance', marketCap: 5e11, weight: 0.25, changePct: 0.3, volume: 4e7, color: '' },
-            { symbol: 'PFE', name: 'Pfizer', sector: 'healthcare', industry: 'Pharma', marketCap: 2e11, weight: 0.1, changePct: -0.2, volume: 6e7, color: '' },
-        ]
-    },
-    {
-        id: 'energy', name: '能源', changePct: 2.2, marketCap: 1.5e12, volume: 5e8,
-        stocks: [
-            { symbol: 'XOM', name: 'ExxonMobil', sector: 'energy', industry: 'Oil & Gas', marketCap: 4e11, weight: 0.27, changePct: 2.5, volume: 2e8, color: '' },
-            { symbol: 'CVX', name: 'Chevron', sector: 'energy', industry: 'Oil & Gas', marketCap: 3e11, weight: 0.2, changePct: 1.8, volume: 1e8, color: '' },
-        ]
-    },
-];
+
+
 
 export default function MarketHeatmapPage() {
     const { sectors: apiSectors, isLoading: apiLoading, refresh } = useSectorHeatmap();

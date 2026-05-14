@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,8 @@ import {
     Activity,
     MessageCircle,
     Mail,
+    Loader2,
+    RefreshCw,
 } from 'lucide-react';
 
 type AlertType = 'price_above' | 'price_below' | 'change_pct' | 'volume_spike' | 'rsi';
@@ -40,15 +43,6 @@ interface MarketAlertRule {
     lastTriggered?: string;
 }
 
-// Mock data
-const mockAlerts: MarketAlertRule[] = [
-    { id: '1', name: 'AAPL 突破 200', symbol: 'AAPL', type: 'price_above', value: 200, enabled: true, channels: { telegram: true, line: false, email: false }, triggerCount: 3 },
-    { id: '2', name: 'TSLA 跌破 200', symbol: 'TSLA', type: 'price_below', value: 200, enabled: true, channels: { telegram: true, line: true, email: false }, triggerCount: 1 },
-    { id: '3', name: 'NVDA 漲幅超 5%', symbol: 'NVDA', type: 'change_pct', value: 5, enabled: true, channels: { telegram: true, line: false, email: true }, triggerCount: 8 },
-    { id: '4', name: 'BTC 成交量異常', symbol: 'BTC-USD', type: 'volume_spike', value: 2, enabled: false, channels: { telegram: true, line: false, email: false }, triggerCount: 15 },
-    { id: '5', name: 'META RSI 超買', symbol: 'META', type: 'rsi', value: 70, enabled: true, channels: { telegram: false, line: true, email: false }, triggerCount: 2 },
-];
-
 const alertTypeLabels: Record<AlertType, { label: string; icon: React.ReactNode; unit: string }> = {
     price_above: { label: '價格突破', icon: <TrendingUp className="h-4 w-4 text-green-500" />, unit: 'USD' },
     price_below: { label: '價格跌破', icon: <TrendingDown className="h-4 w-4 text-red-500" />, unit: 'USD' },
@@ -58,7 +52,9 @@ const alertTypeLabels: Record<AlertType, { label: string; icon: React.ReactNode;
 };
 
 export default function MarketAlertsPage() {
-    const [alerts, setAlerts] = useState<MarketAlertRule[]>(mockAlerts);
+    const { getIdToken } = useAuth();
+    const [alerts, setAlerts] = useState<MarketAlertRule[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -68,6 +64,40 @@ export default function MarketAlertsPage() {
     const [formType, setFormType] = useState<AlertType>('price_above');
     const [formValue, setFormValue] = useState('');
     const [formChannels, setFormChannels] = useState({ telegram: true, line: false, email: false });
+
+    const fetchAlerts = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const token = await getIdToken();
+            const res = await fetch('/api/market/alerts', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const mapped = (data.rules || []).map((r: Record<string, unknown>) => ({
+                    id: r.id as string,
+                    name: r.name as string || '',
+                    symbol: r.symbol as string || '',
+                    type: (r.type as AlertType) || 'price_above',
+                    value: (r.condition as Record<string, unknown>)?.value as number || 0,
+                    enabled: r.enabled as boolean ?? true,
+                    channels: {
+                        telegram: r.notifyTelegram as boolean ?? false,
+                        line: r.notifyLine as boolean ?? false,
+                        email: false,
+                    },
+                    triggerCount: r.triggerCount as number || 0,
+                    lastTriggered: r.lastTriggered as string | undefined,
+                }));
+                setAlerts(mapped);
+            }
+        } catch (err) {
+            console.error('Failed to load alerts:', err);
+        }
+        setIsLoading(false);
+    }, [getIdToken]);
+
+    useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
 
     const handleToggle = (id: string) => {
         setAlerts(prev => prev.map(a =>
@@ -79,21 +109,42 @@ export default function MarketAlertsPage() {
         setAlerts(prev => prev.filter(a => a.id !== id));
     };
 
-    const handleSave = () => {
-        const newAlert: MarketAlertRule = {
-            id: editingId || Date.now().toString(),
+    const handleSave = async () => {
+        const rule = {
             name: formName || `${formSymbol} ${alertTypeLabels[formType].label}`,
             symbol: formSymbol.toUpperCase(),
             type: formType,
-            value: parseFloat(formValue),
-            enabled: true,
-            channels: formChannels,
-            triggerCount: 0,
+            condition: { value: parseFloat(formValue) },
+            notifyTelegram: formChannels.telegram,
+            notifyLine: formChannels.line,
         };
 
-        if (editingId) {
-            setAlerts(prev => prev.map(a => a.id === editingId ? newAlert : a));
-        } else {
+        try {
+            const token = await getIdToken();
+            const res = await fetch('/api/market/alerts', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(rule),
+            });
+            if (res.ok) {
+                await fetchAlerts(); // Reload from server
+            }
+        } catch (err) {
+            console.error('Failed to save alert:', err);
+            // Fallback: add locally
+            const newAlert: MarketAlertRule = {
+                id: Date.now().toString(),
+                name: rule.name,
+                symbol: rule.symbol,
+                type: formType,
+                value: parseFloat(formValue),
+                enabled: true,
+                channels: formChannels,
+                triggerCount: 0,
+            };
             setAlerts(prev => [...prev, newAlert]);
         }
 
