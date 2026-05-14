@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,7 +25,7 @@ import {
 } from 'lucide-react';
 
 // ================================
-// Types
+// Types (mapped from /api/butler/admin/stats response)
 // ================================
 
 interface BotStats {
@@ -36,14 +37,13 @@ interface BotStats {
     errorRate: number;
 }
 
-interface ConversationSessionInfo {
+interface ConversationSession {
     userId: string;
     displayName: string;
     messageCount: number;
     lastActiveAt: string;
-    sessionId: string;
+    domain: string;
     isExpired: boolean;
-    lastMessage: string;
 }
 
 interface DomainStats {
@@ -54,85 +54,114 @@ interface DomainStats {
     emoji: string;
 }
 
-// ================================
-// Mock Data (replace with real API calls)
-// ================================
+interface BotConfig {
+    richMenu: boolean;
+    flexMessage: boolean;
+    multiTurn: boolean;
+    model: string;
+    sessionTTL: string;
+    historySize: number;
+}
 
-const mockStats: BotStats = {
-    totalUsers: 12,
-    activeToday: 5,
-    messagesLast24h: 48,
-    avgResponseMs: 820,
-    flexCardsServed: 15,
-    errorRate: 0.02,
+const DOMAIN_LABELS: Record<string, { label: string; emoji: string }> = {
+    general: { label: '一般對話', emoji: '💬' },
+    finance: { label: '財務查詢', emoji: '💰' },
+    schedule: { label: '行程安排', emoji: '📅' },
+    health: { label: '健康記錄', emoji: '🏃' },
+    vehicle: { label: '車輛管理', emoji: '🚗' },
 };
-
-const mockSessions: ConversationSessionInfo[] = [
-    {
-        userId: 'U1a2b3c4d',
-        displayName: 'Xiang',
-        messageCount: 24,
-        lastActiveAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-        sessionId: 'sess_001',
-        isExpired: false,
-        lastMessage: '今天行程有什麼？',
-    },
-    {
-        userId: 'U5e6f7g8h',
-        displayName: '使用者 A',
-        messageCount: 8,
-        lastActiveAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-        sessionId: 'sess_002',
-        isExpired: true,
-        lastMessage: '這個月支出多少',
-    },
-    {
-        userId: 'U9i0j1k2l',
-        displayName: '使用者 B',
-        messageCount: 3,
-        lastActiveAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        sessionId: 'sess_003',
-        isExpired: true,
-        lastMessage: '查詢車輛保養',
-    },
-];
-
-const mockDomainStats: DomainStats[] = [
-    { domain: 'general', label: '一般對話', count: 22, percentage: 45, emoji: '💬' },
-    { domain: 'finance', label: '財務查詢', count: 10, percentage: 21, emoji: '💰' },
-    { domain: 'schedule', label: '行程安排', count: 8, percentage: 17, emoji: '📅' },
-    { domain: 'health', label: '健康記錄', count: 5, percentage: 10, emoji: '🏃' },
-    { domain: 'vehicle', label: '車輛管理', count: 3, percentage: 7, emoji: '🚗' },
-];
 
 // ================================
 // Component
 // ================================
 
 export default function LineBotAdminPage() {
-    const [stats, setStats] = useState<BotStats>(mockStats);
-    const [sessions, setSessions] = useState<ConversationSessionInfo[]>(mockSessions);
-    const [domainStats] = useState<DomainStats[]>(mockDomainStats);
+    const { getIdToken } = useAuth();
+    const [stats, setStats] = useState<BotStats | null>(null);
+    const [sessions, setSessions] = useState<ConversationSession[]>([]);
+    const [domainStats, setDomainStats] = useState<DomainStats[]>([]);
+    const [botConfig, setBotConfig] = useState<BotConfig | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     const refresh = useCallback(async () => {
         setIsRefreshing(true);
-        // TODO: Replace with real API call
-        await new Promise(r => setTimeout(r, 500));
-        setStats(mockStats);
-        setSessions(mockSessions);
+        setError(null);
+        try {
+            const token = await getIdToken();
+            const res = await fetch('/api/butler/admin/stats', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+
+            if (!res.ok) {
+                throw new Error(`API 回應異常: HTTP ${res.status}`);
+            }
+
+            const data = await res.json();
+
+            // Map API response → stats
+            setStats({
+                totalUsers: data.totalUsers ?? 0,
+                activeToday: data.activeSessions ?? 0,
+                messagesLast24h: data.messageVolume24h ?? 0,
+                avgResponseMs: Math.round((data.avgResponseTime ?? 0) * 1000),
+                flexCardsServed: 0, // Not tracked yet
+                errorRate: 0, // Not tracked yet
+            });
+
+            // Map conversations → sessions
+            const convs: ConversationSession[] = (data.conversations ?? []).map(
+                (c: { userId: string; lastActivity: string; messageCount: number; domain: string; status: string }) => ({
+                    userId: c.userId,
+                    displayName: c.userId.substring(0, 8) + '…',
+                    messageCount: c.messageCount,
+                    lastActiveAt: c.lastActivity ?? new Date().toISOString(),
+                    domain: c.domain,
+                    isExpired: c.status === 'expired',
+                })
+            );
+            setSessions(convs);
+
+            // Map domainDistribution → domainStats
+            const dist = data.domainDistribution ?? {};
+            const totalDomainCount = Object.values(dist).reduce(
+                (s: number, v) => s + (v as number), 0
+            ) as number;
+            const mapped: DomainStats[] = Object.entries(dist)
+                .filter(([, v]) => (v as number) > 0)
+                .sort(([, a], [, b]) => (b as number) - (a as number))
+                .map(([key, value]) => ({
+                    domain: key,
+                    label: DOMAIN_LABELS[key]?.label ?? key,
+                    emoji: DOMAIN_LABELS[key]?.emoji ?? '📋',
+                    count: value as number,
+                    percentage: totalDomainCount > 0
+                        ? Math.round(((value as number) / totalDomainCount) * 100)
+                        : 0,
+                }));
+            setDomainStats(mapped);
+
+            // Bot config
+            if (data.botConfig) {
+                setBotConfig(data.botConfig);
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '載入失敗');
+        }
         setIsRefreshing(false);
-    }, []);
+    }, [getIdToken]);
 
     useEffect(() => { refresh(); }, [refresh]);
 
     const filteredSessions = sessions.filter(s =>
         s.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
+        s.domain.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.userId.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     const timeAgo = (iso: string) => {
+        if (!iso) return '—';
         const diff = Date.now() - new Date(iso).getTime();
         const mins = Math.floor(diff / 60000);
         if (mins < 60) return `${mins} 分鐘前`;
@@ -169,9 +198,11 @@ export default function LineBotAdminPage() {
             <Card className="border-emerald-500/30 bg-gradient-to-r from-emerald-500/5 to-transparent">
                 <CardContent className="pt-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
+                        <div className={`w-3 h-3 rounded-full ${error ? 'bg-red-400' : 'bg-emerald-400 animate-pulse'}`} />
                         <span className="font-medium">小秘書 LINE Bot</span>
-                        <Badge variant="secondary" className="text-xs">運行中</Badge>
+                        <Badge variant="secondary" className="text-xs">
+                            {error ? '連線異常' : '運行中'}
+                        </Badge>
                     </div>
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
                         <span className="flex items-center gap-1">
@@ -180,60 +211,83 @@ export default function LineBotAdminPage() {
                         </span>
                         <span className="flex items-center gap-1">
                             <Globe className="h-3.5 w-3.5" />
-                            Webhook 正常
+                            Webhook
                         </span>
                     </div>
                 </CardContent>
             </Card>
 
+            {/* Error Alert */}
+            {error && (
+                <Card className="border-red-500/30 bg-red-500/5">
+                    <CardContent className="pt-4 flex items-center gap-3">
+                        <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+                        <span className="text-sm text-red-300">{error}</span>
+                    </CardContent>
+                </Card>
+            )}
+
             {/* Stats Grid */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <Card className="card-lift">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">總用戶數</CardTitle>
-                        <Users className="h-4 w-4 text-blue-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold">{stats.totalUsers}</div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            今日活躍：{stats.activeToday} 人
-                        </p>
-                    </CardContent>
-                </Card>
+            {stats && (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <Card className="card-lift">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">總用戶數</CardTitle>
+                            <Users className="h-4 w-4 text-blue-400" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-bold">{stats.totalUsers}</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                活躍工作階段：{stats.activeToday} 個
+                            </p>
+                        </CardContent>
+                    </Card>
 
-                <Card className="card-lift">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">24h 訊息量</CardTitle>
-                        <MessageSquare className="h-4 w-4 text-violet-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold">{stats.messagesLast24h}</div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Flex 卡片：{stats.flexCardsServed} 張
-                        </p>
-                    </CardContent>
-                </Card>
+                    <Card className="card-lift">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">24h 訊息量</CardTitle>
+                            <MessageSquare className="h-4 w-4 text-violet-400" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-bold">{stats.messagesLast24h}</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                過去 24 小時
+                            </p>
+                        </CardContent>
+                    </Card>
 
-                <Card className="card-lift">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">平均回應</CardTitle>
-                        <Zap className="h-4 w-4 text-amber-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold">{stats.avgResponseMs}ms</div>
-                        <div className="flex items-center gap-1 mt-1">
-                            {stats.errorRate < 0.05 ? (
+                    <Card className="card-lift">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">平均回應</CardTitle>
+                            <Zap className="h-4 w-4 text-amber-400" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-bold">{stats.avgResponseMs}ms</div>
+                            <div className="flex items-center gap-1 mt-1">
                                 <CheckCircle className="h-3.5 w-3.5 text-emerald-400" />
-                            ) : (
-                                <AlertCircle className="h-3.5 w-3.5 text-red-400" />
-                            )}
-                            <span className="text-xs text-muted-foreground">
-                                錯誤率 {(stats.errorRate * 100).toFixed(1)}%
-                            </span>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
+                                <span className="text-xs text-muted-foreground">
+                                    Gemini 2.0 驅動
+                                </span>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {/* Loading skeleton */}
+            {!stats && !error && (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <Card key={i}>
+                            <CardContent className="pt-6 animate-pulse">
+                                <div className="h-4 bg-muted rounded w-1/3 mb-3" />
+                                <div className="h-8 bg-muted rounded w-1/2 mb-2" />
+                                <div className="h-3 bg-muted rounded w-2/3" />
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+            )}
 
             <div className="grid gap-6 lg:grid-cols-3">
                 {/* Active Sessions */}
@@ -250,7 +304,7 @@ export default function LineBotAdminPage() {
                             <div className="relative mt-2">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
-                                    placeholder="搜尋用戶或訊息..."
+                                    placeholder="搜尋用戶或領域..."
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
                                     className="pl-9"
@@ -258,14 +312,14 @@ export default function LineBotAdminPage() {
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-2">
-                            {filteredSessions.length === 0 ? (
+                            {filteredSessions.length === 0 && !isRefreshing ? (
                                 <p className="text-sm text-muted-foreground text-center py-4">
-                                    沒有找到對話工作階段
+                                    {sessions.length === 0 ? '尚無對話紀錄' : '沒有符合搜尋條件的結果'}
                                 </p>
                             ) : (
                                 filteredSessions.map(session => (
                                     <div
-                                        key={session.sessionId}
+                                        key={session.userId + session.lastActiveAt}
                                         className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted/80 transition-colors"
                                     >
                                         <div className="flex items-center gap-3 min-w-0">
@@ -274,7 +328,7 @@ export default function LineBotAdminPage() {
                                             }`} />
                                             <div className="min-w-0">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="font-medium text-sm">{session.displayName}</span>
+                                                    <span className="font-medium text-sm font-mono">{session.displayName}</span>
                                                     <Badge
                                                         variant={session.isExpired ? 'secondary' : 'default'}
                                                         className="text-[10px] px-1.5 py-0"
@@ -282,8 +336,8 @@ export default function LineBotAdminPage() {
                                                         {session.isExpired ? '已過期' : '活躍'}
                                                     </Badge>
                                                 </div>
-                                                <p className="text-xs text-muted-foreground truncate">
-                                                    {session.lastMessage}
+                                                <p className="text-xs text-muted-foreground">
+                                                    {DOMAIN_LABELS[session.domain]?.emoji ?? '📋'} {DOMAIN_LABELS[session.domain]?.label ?? session.domain}
                                                 </p>
                                             </div>
                                         </div>
@@ -315,21 +369,25 @@ export default function LineBotAdminPage() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3">
-                            {domainStats.map(d => (
-                                <div key={d.domain}>
-                                    <div className="flex items-center justify-between text-sm mb-1">
-                                        <span>{d.emoji} {d.label}</span>
-                                        <span className="text-muted-foreground">{d.count} ({d.percentage}%)</span>
+                            {domainStats.length === 0 ? (
+                                <p className="text-sm text-muted-foreground text-center py-2">尚無數據</p>
+                            ) : (
+                                domainStats.map(d => (
+                                    <div key={d.domain}>
+                                        <div className="flex items-center justify-between text-sm mb-1">
+                                            <span>{d.emoji} {d.label}</span>
+                                            <span className="text-muted-foreground">{d.count} ({d.percentage}%)</span>
+                                        </div>
+                                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                                            {/* eslint-disable-next-line react/forbid-dom-props */}
+                                            <div
+                                                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500"
+                                                style={{ width: `${d.percentage}%` }}
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                                        {/* eslint-disable-next-line react/forbid-dom-props */}
-                                        <div
-                                            className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500"
-                                            style={{ width: `${d.percentage}%` }}
-                                        />
-                                    </div>
-                                </div>
-                            ))}
+                                ))
+                            )}
                         </CardContent>
                     </Card>
 
@@ -344,33 +402,33 @@ export default function LineBotAdminPage() {
                         <CardContent className="space-y-3 text-sm">
                             <div className="flex justify-between">
                                 <span className="text-muted-foreground">Rich Menu</span>
-                                <Badge variant="outline" className="text-emerald-400 border-emerald-400/30">
-                                    已啟用
+                                <Badge variant="outline" className={botConfig?.richMenu ? 'text-emerald-400 border-emerald-400/30' : ''}>
+                                    {botConfig?.richMenu ? '已啟用' : '未啟用'}
                                 </Badge>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-muted-foreground">Flex Message</span>
-                                <Badge variant="outline" className="text-emerald-400 border-emerald-400/30">
-                                    已啟用
+                                <Badge variant="outline" className={botConfig?.flexMessage ? 'text-emerald-400 border-emerald-400/30' : ''}>
+                                    {botConfig?.flexMessage ? '已啟用' : '未啟用'}
                                 </Badge>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-muted-foreground">多輪對話</span>
-                                <Badge variant="outline" className="text-emerald-400 border-emerald-400/30">
-                                    已啟用
+                                <Badge variant="outline" className={botConfig?.multiTurn ? 'text-emerald-400 border-emerald-400/30' : ''}>
+                                    {botConfig?.multiTurn ? '已啟用' : '未啟用'}
                                 </Badge>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-muted-foreground">AI 模型</span>
-                                <Badge variant="secondary">Gemini 2.0</Badge>
+                                <Badge variant="secondary">{botConfig?.model ?? '—'}</Badge>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-muted-foreground">Session TTL</span>
-                                <span>30 分鐘</span>
+                                <span>{botConfig?.sessionTTL ?? '—'}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-muted-foreground">History 上限</span>
-                                <span>10 條</span>
+                                <span>{botConfig?.historySize ?? '—'} 條</span>
                             </div>
                         </CardContent>
                     </Card>
