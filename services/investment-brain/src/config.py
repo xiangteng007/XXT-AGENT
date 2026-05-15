@@ -55,6 +55,11 @@ class Settings:
         default_factory=lambda: os.getenv("GOOGLE_AI_API_KEY", "")
     )
 
+    # ── Market Data (Fugle 台股) ──────────────────────────
+    fugle_api_key: str = field(
+        default_factory=lambda: os.getenv("FUGLE_API_KEY", "")
+    )
+
     # ── Risk Management Hard Limits ──────────────────────
     max_single_position_pct: float = field(
         default_factory=lambda: float(os.getenv("MAX_SINGLE_POSITION_PCT", "20"))

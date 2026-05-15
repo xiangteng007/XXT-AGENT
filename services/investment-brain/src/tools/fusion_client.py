@@ -74,26 +74,114 @@ class FusionClient:
             logger.warning(f"Failed to get latest price for {symbol}: {e}")
         return None
 
-    async def get_recent_news(self, symbol: str, lookback_sec: int = 600) -> list[dict]:
-        """Get recent news items for a symbol from Redis."""
+    async def get_recent_news(self, symbol: str, lookback_sec: int = 3600) -> list[dict]:
+        """
+        Get recent news items for a symbol from multiple real sources.
+
+        Sources (in priority order):
+        1. news-collector Redis lists (nc:news:{SYMBOL}, nc:news:latest)
+        2. Fusion Engine Redis sorted sets (news:{symbol})
+        3. Firestore fused_events collection (via internal HTTP)
+
+        Returns normalized news items: {headline, url, source, summary, published_at, sentiment}
+        """
+        items: list[dict] = []
+
         redis = await self._get_redis()
-        if not redis:
-            return []
+        if redis:
+            # Source 1: news-collector Redis lists (nc:news:{SYMBOL})
+            try:
+                sym_key = f"nc:news:{symbol}"
+                raw_items = await redis.lrange(sym_key, 0, 19)  # Last 20
+                if not raw_items:
+                    # Fall back to global latest
+                    raw_items = await redis.lrange("nc:news:latest", 0, 19)
 
-        try:
-            key = f"news:{symbol}"
-            now = time.time()
-            cutoff = now - lookback_sec
+                for raw in raw_items:
+                    try:
+                        item = json.loads(raw)
+                        items.append({
+                            "headline": item.get("title", ""),
+                            "url": item.get("url", ""),
+                            "source": item.get("source", "unknown"),
+                            "summary": item.get("summary", ""),
+                            "published_at": item.get("published_at", ""),
+                            "sentiment": item.get("sentiment", "unknown"),
+                            "data_source": "news-collector",
+                        })
+                    except Exception:
+                        continue
+            except Exception as e:
+                logger.warning(f"Failed to get news from nc:news for {symbol}: {e}")
 
-            # News stored as sorted set with timestamp as score
-            items = await redis.zrangebyscore(key, cutoff, now) or []
-            return [json.loads(item) for item in items]
-        except Exception as e:
-            logger.warning(f"Failed to get news for {symbol}: {e}")
-            return []
+            # Source 2: Fusion Engine sorted sets (news:{symbol})
+            if not items:
+                try:
+                    key = f"news:{symbol}"
+                    now = time.time()
+                    cutoff = now - lookback_sec
+                    raw_items = await redis.zrangebyscore(key, cutoff, now) or []
+                    for raw in raw_items:
+                        try:
+                            item = json.loads(raw)
+                            items.append({
+                                "headline": item.get("headline", item.get("title", "")),
+                                "url": item.get("url", ""),
+                                "source": item.get("source", "unknown"),
+                                "summary": item.get("summary", ""),
+                                "published_at": item.get("published_at", ""),
+                                "sentiment": item.get("sentiment", "unknown"),
+                                "data_source": "fusion-engine",
+                            })
+                        except Exception:
+                            continue
+                except Exception as e:
+                    logger.warning(f"Failed to get news from fusion for {symbol}: {e}")
+
+        # Source 3: Firestore fused_events (via dashboard API if accessible)
+        if not items:
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    resp = await client.get(
+                        f"{settings.openclaw_gateway_url}/api/events",
+                        params={"limit": "10", "minSeverity": "30"},
+                    )
+                    if resp.status_code == 200:
+                        events = resp.json()
+                        for ev in events[:10]:
+                            items.append({
+                                "headline": ev.get("news_title", ev.get("title", "")),
+                                "url": ev.get("url", ""),
+                                "source": ev.get("source", "fused_events"),
+                                "summary": ev.get("summary", ""),
+                                "published_at": ev.get("createdAt", ""),
+                                "sentiment": ev.get("direction", "unknown"),
+                                "data_source": "firestore",
+                            })
+            except Exception as e:
+                logger.info(f"Firestore events fallback unavailable: {e}")
+
+        if items:
+            logger.info(
+                f"[FusionClient] Got {len(items)} news items for {symbol} "
+                f"from {items[0].get('data_source', 'unknown')}"
+            )
+        else:
+            logger.warning(f"[FusionClient] No real news found for {symbol}")
+
+        return items
 
     async def get_recent_social(self, symbol: str, lookback_sec: int = 600) -> list[dict]:
-        """Get recent social signals for a symbol from Redis and Stocktwits."""
+        """
+        Get recent social signals for a symbol.
+
+        Sources:
+        1. social-collector Redis sorted set (social:{symbol})
+        2. Stocktwits API (public, no auth required)
+
+        Returns empty list (not mock data) when no sources available.
+        Downstream nodes handle missing social data via conviction penalties.
+        """
         redis = await self._get_redis()
         items = []
         if redis:
@@ -106,7 +194,7 @@ class FusionClient:
             except Exception as e:
                 logger.warning(f"Failed to get social for {symbol} from Redis: {e}")
         
-        # P4-01: StocktwitsAdapter
+        # Stocktwits adapter (public API, no key required)
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
                 res = await client.get(f"https://api.stocktwits.com/api/2/streams/symbol/{symbol}.json")
@@ -129,30 +217,10 @@ class FusionClient:
         except Exception as e:
             logger.warning(f"Stocktwits fetch failed for {symbol}: {e}")
 
-        # Fallback mock data if still empty
-        if not items:
-            items = [
-                SocialPost(
-                    platform="X (Twitter)",
-                    author="WhaleAlert",
-                    title=f"Large movement detected for {symbol}",
-                    content=f"🚨 🚨 🚨 Significant volume spike observed on {symbol} options chain.",
-                    engagement={"views": 125000, "likes": 4200, "reposts": 850},
-                    sentiment="bullish",
-                    is_mock=True,
-                    source_tier="unverified"
-                ).model_dump(),
-                SocialPost(
-                    platform="Reddit (r/investing)",
-                    author="MarketWatcher_99",
-                    title=f"Thoughts on {symbol} earnings call?",
-                    content=f"The forward guidance looks surprisingly weak despite the headline beat.",
-                    engagement={"upvotes": 342, "comments": 89},
-                    sentiment="bearish",
-                    is_mock=True,
-                    source_tier="community"
-                ).model_dump(),
-            ]
+        if items:
+            logger.info(f"[FusionClient] Got {len(items)} social signals for {symbol}")
+        else:
+            logger.info(f"[FusionClient] No social data for {symbol} — nodes will reduce conviction")
             
         return items
 

@@ -634,23 +634,27 @@ async def get_portfolio():
 
 @app.get("/invest/quote")
 async def get_quote(symbol: str):
-    """Get real-time quote for a symbol."""
+    """Get real-time quote for a symbol (auto-routes: Fugle for TW, Yahoo for US)."""
     symbol = symbol.upper().strip()
     try:
-        data = await fugle_client.get_realtime_quote(symbol)
-        return data
+        data = await market_data.get_quote(symbol)
+        if data:
+            return data
+        raise HTTPException(status_code=404, detail=f"No quote data for {symbol}")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[API] Get quote failed for {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/invest/candles")
-async def get_candles(symbol: str, start: str, end: str):
-    """Get historical candles for a symbol."""
+async def get_candles(symbol: str, start: str = "", end: str = ""):
+    """Get historical candles for a symbol (auto-routes: Fugle for TW, Yahoo for US)."""
     symbol = symbol.upper().strip()
     try:
-        data = await fugle_client.get_historical_candles(symbol, start, end)
-        return {"data": data}
+        data = await market_data.get_candles(symbol, start=start or None, end=end or None)
+        return {"data": data, "source": data[0].get("source", "unknown") if data else "none"}
     except Exception as e:
         logger.error(f"[API] Get candles failed for {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -658,60 +662,52 @@ async def get_candles(symbol: str, start: str, end: str):
 
 @app.get("/invest/news")
 async def get_news(symbol: str = ""):
-    """Get recent news for a symbol.
+    """Get recent news for a symbol from real data sources.
 
-    NOTE: Returns simulated data until real news API is configured.
-    Check `is_mock: true` in the response to detect simulated data.
+    Pulls from news-collector Redis, Fusion Engine, or Firestore fused_events.
+    Response includes `is_mock: false` when real data is available.
     """
     symbol = symbol.upper().strip()
-    # C-03: Simulated news — marked explicitly so the frontend can show a banner
-    import random
-    from datetime import datetime, timedelta
 
-    now = datetime.utcnow()
-    base_titles = (
-        [
-            f"{symbol} 宣布擴大 AI 晶片產能，預期下半年營收成長 20%",
-            f"外資看好 {symbol} 供應鏈地位，調高目標價",
-            f"{symbol} 遭遇供應鏈挑戰，法人擔憂短期毛利率受壓",
-            f"{symbol} 財報亮眼，EPS 創歷史新高",
-            f"市場傳聞 {symbol} 拿下北美大單，預計 Q3 放量",
-        ]
-        if symbol
-        else [
-            "台股大盤指數創新高，半導體類股領漲",
-            "外資期貨淨多單增加，顯示市場信心回穩",
-            "央行維持利率不變，符合市場預期",
-            "國際熱錢湧入，新台幣匯率強勢升值",
-            "AI 概念股輪動，資金流向低基期個股",
-        ]
-    )
+    try:
+        raw_news = await fusion_client.get_recent_news(symbol or "MARKET")
 
-    # Deduplicate by shuffling without replacement
-    shuffled = list(base_titles)
-    random.shuffle(shuffled)
+        news_items = []
+        for n in raw_news[:20]:
+            news_items.append({
+                "id": f"news_{uuid.uuid4().hex[:8]}",
+                "title": n.get("headline", n.get("title", "")),
+                "summary": n.get("summary", ""),
+                "timestamp": n.get("published_at", datetime.utcnow().isoformat() + "Z"),
+                "source": n.get("source", "unknown"),
+                "sentiment": n.get("sentiment", "neutral"),
+                "url": n.get("url", ""),
+                "data_source": n.get("data_source", "unknown"),
+            })
 
-    news_items = []
-    for i, title in enumerate(shuffled[:5]):
-        hours_ago = random.randint(1, 48)
-        mins_ago = random.randint(0, 59)
-        ts = (now - timedelta(hours=hours_ago, minutes=mins_ago)).isoformat() + "Z"
-        news_items.append({
-            "id": f"news_{uuid.uuid4().hex[:8]}",
-            "title": title,
-            "summary": f"這是關於 {symbol or '市場'} 的重要新聞摘要。分析師表示這將對未來走勢產生顯著影響...",
-            "timestamp": ts,
-            "source": random.choice(["財經新聞", "經濟日報", "鉅亨網", "Bloomberg"]),
-            "sentiment": random.choice(["positive", "neutral", "negative"]),
-        })
+        if news_items:
+            return {
+                "data": news_items,
+                "is_mock": False,
+                "total": len(news_items),
+            }
 
-    news_items.sort(key=lambda x: x["timestamp"], reverse=True)
+        # No real data available — return empty (not mock)
+        return {
+            "data": [],
+            "is_mock": False,
+            "total": 0,
+            "note": "No real news data currently available. Ensure news-collector or fusion-engine is running.",
+        }
 
-    return {
-        "data": news_items,
-        "is_mock": True,              # C-03: explicit mock flag
-        "mock_reason": "Real news API not yet configured. Data is simulated for UI demonstration.",
-    }
+    except Exception as e:
+        logger.error(f"[API] Get news failed: {e}")
+        return {
+            "data": [],
+            "is_mock": False,
+            "total": 0,
+            "error": str(e),
+        }
 
 
 @app.get("/invest/backtest")
