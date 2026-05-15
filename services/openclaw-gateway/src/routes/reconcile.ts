@@ -30,6 +30,8 @@ const LOCK_BASE_TTL_SEC    = 60;   // initial grant
 const LOCK_RENEW_INTERVAL_MS = 15_000; // renew every 15s
 
 async function getRedisForLock(): Promise<import('ioredis').default | null> {
+  // Skip Redis in test/CI — no Redis service available
+  if (process.env['NODE_ENV'] === 'test' || process.env['CI'] === 'true') return null;
   if (redisClient) return redisClient;
   try {
     const Redis = (await import('ioredis')).default;

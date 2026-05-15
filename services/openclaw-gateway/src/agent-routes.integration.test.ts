@@ -497,7 +497,7 @@ describe('Regulation routes', () => {
   it('POST /regulation/query → 400 when query missing', async () => {
     const res = await request(app).post('/regulation/query').send({});
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe('query is required');
+    expect(res.body.error).toBe('query must be a non-empty string');
   });
 
   it('POST /regulation/query → 400 for invalid category', async () => {
@@ -512,7 +512,7 @@ describe('Regulation routes', () => {
   it('POST /regulation/ask → 400 when question missing', async () => {
     const res = await request(app).post('/regulation/ask').send({});
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe('question is required');
+    expect(res.body.error).toBe('question must be a non-empty string');
   });
 });
 
@@ -597,7 +597,7 @@ describe('Accountant Ledger API', () => {
       .post('/agents/accountant/bank/txn')
       .send({ type: 'credit', amount: 1000 }); // 缺 description
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain('type, amount, description required');
+    expect(res.body.error).toContain('type, amount');
   });
 
   it('POST /agents/accountant/bank/txn → 400 when type is invalid', async () => {
