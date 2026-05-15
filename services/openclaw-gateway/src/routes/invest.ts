@@ -5,10 +5,21 @@
  * Investment Brain service, and broadcasts results via WebSocket.
  *
  * Endpoints:
- *   POST /invest/analyze      → Full analysis pipeline
- *   GET  /invest/status/:id   → Session status
- *   GET  /invest/portfolio    → Virtual portfolio
- *   GET  /invest/sessions     → List sessions
+ *   POST /invest/analyze           → Full analysis pipeline
+ *   POST /invest/analyze/stream    → SSE streaming analysis
+ *   GET  /invest/status/:id        → Session status
+ *   GET  /invest/portfolio          → Virtual portfolio
+ *   GET  /invest/sessions           → List sessions
+ *   GET  /invest/quote              → Real-time quote
+ *   GET  /invest/candles            → OHLCV candles
+ *   GET  /invest/news               → Symbol news
+ *   GET  /invest/backtest           → Single strategy backtest
+ *   GET  /invest/backtest/compare   → Multi-strategy comparison
+ *   GET  /invest/trades             → Trade history
+ *   POST /invest/portfolio/order    → Manual order
+ *   POST /invest/portfolio/reset    → Reset account
+ *   POST /invest/training/preference → Accept/Reject feedback
+ *   GET  /invest/training/stats     → Training data stats
  */
 
 import { Router, Request, Response } from 'express';
@@ -388,5 +399,155 @@ investRouter.get('/news', async (req: Request, res: Response) => {
         res.json(await response.json());
     } catch (err) {
         res.status(502).json({ error: 'Investment Brain unavailable' });
+    }
+});
+
+// ── GET /invest/backtest ──────────────────────────────────
+investRouter.get('/backtest', async (req: Request, res: Response) => {
+    const { symbol, start, end, strategy } = req.query;
+    if (!symbol) { res.status(400).json({ error: 'symbol is required' }); return; }
+
+    const params = new URLSearchParams({
+        symbol: String(symbol),
+        start: String(start || '2023-01-01'),
+        end: String(end || '2024-01-01'),
+        strategy: String(strategy || 'buy_and_hold'),
+    });
+
+    try {
+        const response = await fetch(`${INVESTMENT_BRAIN_URL}/invest/backtest?${params}`, {
+            signal: AbortSignal.timeout(30000),
+        });
+        if (!response.ok) {
+            res.status(response.status).json({ error: 'Backtest failed' });
+            return;
+        }
+        res.json(await response.json());
+    } catch (err) {
+        res.status(502).json({ error: 'Investment Brain unavailable' });
+    }
+});
+
+// ── GET /invest/backtest/compare ──────────────────────────
+investRouter.get('/backtest/compare', async (req: Request, res: Response) => {
+    const { symbol, start, end } = req.query;
+    if (!symbol) { res.status(400).json({ error: 'symbol is required' }); return; }
+
+    const params = new URLSearchParams({
+        symbol: String(symbol),
+        start: String(start || '2023-01-01'),
+        end: String(end || '2024-01-01'),
+    });
+
+    try {
+        const response = await fetch(`${INVESTMENT_BRAIN_URL}/invest/backtest/compare?${params}`, {
+            signal: AbortSignal.timeout(60000), // Multi-strategy takes longer
+        });
+        if (!response.ok) {
+            res.status(response.status).json({ error: 'Comparison failed' });
+            return;
+        }
+        res.json(await response.json());
+    } catch (err) {
+        res.status(502).json({ error: 'Investment Brain unavailable' });
+    }
+});
+
+// ── GET /invest/trades ────────────────────────────────────
+investRouter.get('/trades', async (req: Request, res: Response) => {
+    const limit = req.query.limit || '50';
+    try {
+        const response = await fetch(`${INVESTMENT_BRAIN_URL}/invest/trades?limit=${limit}`, {
+            signal: AbortSignal.timeout(5000),
+        });
+        res.json(await response.json());
+    } catch {
+        res.json({ trades: [], total: 0 });
+    }
+});
+
+// ── POST /invest/portfolio/order ──────────────────────────
+investRouter.post('/portfolio/order', async (req: Request, res: Response) => {
+    const { action, symbol, shares, price } = req.body;
+
+    if (!action || !symbol || !shares) {
+        res.status(400).json({ error: 'action, symbol, and shares are required' });
+        return;
+    }
+
+    const params = new URLSearchParams({
+        action: String(action),
+        symbol: String(symbol),
+        shares: String(shares),
+        ...(price ? { price: String(price) } : {}),
+    });
+
+    try {
+        const response = await fetch(`${INVESTMENT_BRAIN_URL}/invest/portfolio/order?${params}`, {
+            method: 'POST',
+            headers: { 'X-Internal-Secret': process.env['INTERNAL_SECRET'] ?? '' },
+            signal: AbortSignal.timeout(10000),
+        });
+        if (!response.ok) {
+            const errBody = await response.text();
+            res.status(response.status).json({ error: errBody });
+            return;
+        }
+        res.json(await response.json());
+    } catch (err) {
+        res.status(502).json({ error: 'Order execution failed' });
+    }
+});
+
+// ── POST /invest/portfolio/reset ──────────────────────────
+investRouter.post('/portfolio/reset', async (_req: Request, res: Response) => {
+    try {
+        const response = await fetch(`${INVESTMENT_BRAIN_URL}/invest/portfolio/reset`, {
+            method: 'POST',
+            headers: { 'X-Internal-Secret': process.env['INTERNAL_SECRET'] ?? '' },
+            signal: AbortSignal.timeout(5000),
+        });
+        res.json(await response.json());
+    } catch {
+        res.status(502).json({ error: 'Reset failed' });
+    }
+});
+
+// ── POST /invest/training/preference ──────────────────────
+investRouter.post('/training/preference', async (req: Request, res: Response) => {
+    const { session_id, action, reason } = req.body;
+
+    if (!session_id || !action) {
+        res.status(400).json({ error: 'session_id and action are required' });
+        return;
+    }
+
+    const params = new URLSearchParams({
+        session_id: String(session_id),
+        action: String(action),
+        ...(reason ? { reason: String(reason) } : {}),
+    });
+
+    try {
+        const response = await fetch(`${INVESTMENT_BRAIN_URL}/invest/training/preference?${params}`, {
+            method: 'POST',
+            headers: { 'X-Internal-Secret': process.env['INTERNAL_SECRET'] ?? '' },
+            signal: AbortSignal.timeout(5000),
+        });
+        res.json(await response.json());
+    } catch {
+        res.status(502).json({ error: 'Preference recording failed' });
+    }
+});
+
+// ── GET /invest/training/stats ────────────────────────────
+investRouter.get('/training/stats', async (_req: Request, res: Response) => {
+    try {
+        const response = await fetch(`${INVESTMENT_BRAIN_URL}/invest/training/stats`, {
+            signal: AbortSignal.timeout(5000),
+        });
+        res.json(await response.json());
+    } catch {
+        res.json({ total_examples: 0, error: 'unavailable' });
     }
 });
