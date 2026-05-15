@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/auth';
-import { gatewayFetch } from '../../../_gateway';
+import { gatewayFetch } from '../../_gateway';
 
 /**
  * GET /api/market/backtest/compare
