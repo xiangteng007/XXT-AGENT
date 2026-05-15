@@ -827,6 +827,34 @@ async def manual_order(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ═══════════════════════════════════════════════════════════════
+# TRAINING DATA ENDPOINTS
+# ═══════════════════════════════════════════════════════════════
+
+
+@app.get("/invest/training/stats", tags=["training"], summary="訓練資料統計")
+async def training_stats():
+    """Get training data collection statistics."""
+    try:
+        from .training import training_collector
+        stats = await training_collector.get_stats()
+        return stats
+    except Exception as e:
+        return {"error": str(e), "total_examples": 0}
+
+
+@app.get("/invest/training/export", tags=["training"], summary="匯出 Alpaca 格式訓練資料")
+async def export_training_data(limit: int = 200):
+    """Export training data in Alpaca format for LoRA fine-tuning."""
+    try:
+        from .training import training_collector
+        data = await training_collector.export_alpaca(limit=min(limit, 500))
+        return {"format": "alpaca", "count": len(data), "data": data}
+    except Exception as e:
+        logger.error(f"[API] Export training data failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/invest/sessions")
 async def list_sessions():
     """List recent analysis sessions."""

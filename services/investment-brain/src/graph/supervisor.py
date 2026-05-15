@@ -218,9 +218,28 @@ async def execute_node(state: InvestmentAgentState) -> dict:
         }
 
 async def complete_node(state: InvestmentAgentState) -> dict:
-    """Final node — marks the session as complete."""
+    """Final node — marks the session as complete and records training data."""
     from langchain_core.messages import AIMessage
     from datetime import datetime
+
+    # Record training data for future fine-tuning
+    try:
+        from ..training import training_collector
+        await training_collector.record(
+            symbol=state["symbol"],
+            market_context=state.get("candle_data", {}),
+            fusion_data=state.get("fusion_context", {}),
+            user_query=state.get("user_query", f"分析 {state['symbol']}"),
+            risk_level=state.get("risk_level", "moderate"),
+            market_insight=state.get("market_insight"),
+            verification=state.get("verification"),
+            investment_plan=state.get("investment_plan"),
+            risk_assessment=state.get("risk_assessment"),
+            trade_results=state.get("trade_results"),
+            model_name=state.get("metadata", {}).get("model", "unknown"),
+        )
+    except Exception as e:
+        logger.warning(f"[Director] Training data collection failed (non-fatal): {e}")
 
     return {
         "current_step": "complete",
