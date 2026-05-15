@@ -16,7 +16,7 @@ import uuid
 from langchain_core.messages import AIMessage
 
 from ..state import InvestmentAgentState, InvestmentPlan, InvestmentAction
-from ...tools.ai_gateway import ai_gateway
+from ...llm import get_llm_provider
 from ...tools.trade_planner import trade_planner
 from ...tools.market_data import market_data
 from ...backtest_engine import BacktestEngine
@@ -206,9 +206,10 @@ Backtest Engine 歷史回測表現 (過去 1 年基準):
 請根據以上資訊制定投資計畫。
 """
 
-    # ── Step 3: Call AI Gateway ─────────────────────────────
+    # ── Step 3: Call LLM Provider (Local-First) ─────────────
     try:
-        plan_data = await ai_gateway.generate_structured(
+        llm = get_llm_provider()
+        plan_data = await llm.generate_structured(
             prompt=planning_prompt,
             system_prompt=STRATEGY_PLANNER_SYSTEM_PROMPT,
         )
@@ -217,7 +218,7 @@ Backtest Engine 歷史回測表現 (過去 1 年基準):
             plan_data = _build_fallback_plan(symbol, timeframe, risk_level, market_insight, baseline_plan)
 
     except Exception as e:
-        logger.warning(f"[Strategy Planner] AI Gateway failed: {e}, using fallback")
+        logger.warning(f"[Strategy Planner] LLM failed: {e}, using fallback")
         plan_data = _build_fallback_plan(symbol, timeframe, risk_level, market_insight, baseline_plan)
 
     # ── Step 4: Build InvestmentPlan ───────────────────────

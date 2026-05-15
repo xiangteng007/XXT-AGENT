@@ -39,6 +39,17 @@ class Settings:
         default_factory=lambda: os.getenv("REDIS_URL", "redis://localhost:6379")
     )
 
+    # ── Local LLM (Ollama — Local-First Strategy) ────────
+    ollama_base_url: str = field(
+        default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    )
+    ollama_model: str = field(
+        default_factory=lambda: os.getenv("OLLAMA_MODEL", "qwen3:14b")
+    )
+    ollama_fast_model: str = field(
+        default_factory=lambda: os.getenv("OLLAMA_FAST_MODEL", "qwen3:8b")
+    )
+
     # ── Google AI (direct fallback) ───────────────────────
     google_ai_api_key: str = field(
         default_factory=lambda: os.getenv("GOOGLE_AI_API_KEY", "")

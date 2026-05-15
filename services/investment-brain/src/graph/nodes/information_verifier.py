@@ -13,7 +13,7 @@ import logging
 from langchain_core.messages import AIMessage
 
 from ..state import InvestmentAgentState, VerificationInsight
-from ...tools.ai_gateway import ai_gateway
+from ...llm import get_llm_provider
 
 logger = logging.getLogger("investment-brain.nodes.information_verifier")
 
@@ -137,7 +137,8 @@ async def information_verifier_node(state: InvestmentAgentState) -> dict:
 """
 
     try:
-        verification_data = await ai_gateway.generate_structured(
+        llm = get_llm_provider()
+        verification_data = await llm.generate_structured(
             prompt=verification_prompt,
             system_prompt=VERIFIER_SYSTEM_PROMPT,
         )
@@ -146,7 +147,7 @@ async def information_verifier_node(state: InvestmentAgentState) -> dict:
             verification_data = _build_fallback(symbol).get("verification_insight", {})
 
     except Exception as e:
-        logger.warning(f"[Information Verifier] AI Gateway failed: {e}, using fallback")
+        logger.warning(f"[Information Verifier] LLM failed: {e}, using fallback")
         verification_data = _build_fallback(symbol).get("verification_insight", {})
 
     # Compute programmatic divergence score

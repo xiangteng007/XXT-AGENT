@@ -38,6 +38,7 @@ from .tools.ai_gateway import ai_gateway
 from .tools.fusion_client import fusion_client
 from .tools.trade_planner import trade_planner
 from .tools.market_data import market_data
+from .llm import factory as llm_factory, get_llm_provider, get_fast_llm_provider
 
 from .fugle_client import FugleClient
 from .backtest_engine import BacktestEngine
@@ -94,11 +95,18 @@ RequireInternalAuth = Depends(_check_internal_secret)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Investment Brain starting up...")
-    logger.info(f"  AI Gateway: {settings.ai_gateway_url}")
+    logger.info(f"  Ollama: {settings.ollama_base_url} (model={settings.ollama_model})")
+    logger.info(f"  AI Gateway (fallback): {settings.ai_gateway_url}")
     logger.info(f"  Trade Planner: {settings.trade_planner_url}")
     logger.info(f"  Risk limits: pos={settings.max_single_position_pct}%, "
                 f"daily={settings.max_daily_loss_pct}%, "
                 f"drawdown={settings.max_drawdown_pct}%")
+    # Local-First: Initialize LLM providers (probe Ollama → fallback to Gateway)
+    await llm_factory.initialize()
+    primary = get_llm_provider()
+    fast = get_fast_llm_provider()
+    logger.info(f"  LLM primary: {primary.name}/{primary.model}")
+    logger.info(f"  LLM fast: {fast.name}/{fast.model}")
     # A-1: 初始化 Redis session store
     await session_store.connect()
     logger.info(f"  Session backend: {session_store.backend}")
@@ -107,6 +115,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"  Strategy memory backend: {strategy_memory_store.backend}")
     yield
     # Cleanup
+    await llm_factory.shutdown()
     await session_store.close()
     await strategy_memory_store.close()
     await ai_gateway.close()
@@ -277,6 +286,11 @@ class AnalyzeResponse(BaseModel):
     error:            str  | None = None
 
 
+class LLMProviderInfo(BaseModel):
+    name: str
+    model: str
+    available: bool = True
+
 class HealthResponse(BaseModel):
     status: str
     service: str
@@ -284,6 +298,8 @@ class HealthResponse(BaseModel):
     graph_nodes: list[str]
     risk_limits: dict
     active_sessions: int
+    llm_primary: LLMProviderInfo
+    llm_fast: LLMProviderInfo
     timestamp: str
 
 
@@ -292,13 +308,18 @@ class HealthResponse(BaseModel):
 
 @app.get("/health", response_model=HealthResponse, tags=["health"])
 async def health_check():
-    """Service health check. Returns version, active sessions, and risk limit configuration."""
+    """Service health check. Returns version, active sessions, LLM provider status, and risk limit configuration."""
+    primary = get_llm_provider()
+    fast = get_fast_llm_provider()
+    primary_health = await primary.health()
+    fast_health = await fast.health()
     return HealthResponse(
         status="ok",
         service="investment-brain",
         version=_APP_VERSION,   # Q-02: dynamic from pyproject.toml
         graph_nodes=[
             "market_analyst",
+            "information_verifier",
             "strategy_planner",
             "risk_manager",
             "execute_node",
@@ -310,6 +331,16 @@ async def health_check():
             "max_drawdown_pct": settings.max_drawdown_pct,
         },
         active_sessions=await session_store.count(),
+        llm_primary=LLMProviderInfo(
+            name=primary.name,
+            model=primary.model,
+            available=primary_health.available,
+        ),
+        llm_fast=LLMProviderInfo(
+            name=fast.name,
+            model=fast.model,
+            available=fast_health.available,
+        ),
         timestamp=datetime.utcnow().isoformat(),
     )
 

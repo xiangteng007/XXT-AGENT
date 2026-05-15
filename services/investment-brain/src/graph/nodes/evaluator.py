@@ -15,7 +15,7 @@ from datetime import datetime
 from langchain_core.messages import AIMessage
 
 from ..state import InvestmentAgentState, StrategyMemory
-from ...tools.ai_gateway import ai_gateway
+from ...llm import get_fast_llm_provider
 
 logger = logging.getLogger("investment-brain.nodes.evaluator")
 
@@ -114,9 +114,10 @@ async def evaluator_node(state: InvestmentAgentState) -> dict:
 請從「決策品質」而非「結果好壞」的角度評估。
 """
 
-    # ── Call AI for evaluation ─────────────────────────────
+    # ── Call LLM for evaluation (fast model) ─────────────
     try:
-        eval_data = await ai_gateway.generate_structured(
+        llm = get_fast_llm_provider()
+        eval_data = await llm.generate_structured(
             prompt=eval_prompt,
             system_prompt=EVALUATOR_SYSTEM_PROMPT,
         )
@@ -125,7 +126,7 @@ async def evaluator_node(state: InvestmentAgentState) -> dict:
             eval_data = _build_fallback_evaluation(trade_results)
 
     except Exception as e:
-        logger.warning(f"[Evaluator] AI evaluation failed: {e}")
+        logger.warning(f"[Evaluator] LLM evaluation failed: {e}")
         eval_data = _build_fallback_evaluation(trade_results)
 
     # ── Update strategy memory ─────────────────────────────

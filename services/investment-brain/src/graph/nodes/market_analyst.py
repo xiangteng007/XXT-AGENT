@@ -18,7 +18,7 @@ from datetime import datetime
 from langchain_core.messages import AIMessage
 
 from ..state import InvestmentAgentState, MarketInsight, PriceSnapshot, FusionContext
-from ...tools.ai_gateway import ai_gateway
+from ...llm import get_llm_provider
 from ...tools.fusion_client import fusion_client
 from ...tools.market_data import market_data
 
@@ -167,9 +167,10 @@ async def market_analyst_node(state: InvestmentAgentState) -> dict:
 {'即時報價: ' + str(quote) if quote else '即時報價不可用'}
 """
 
-    # ── Step 4: Call AI Gateway ─────────────────────────────
+    # ── Step 4: Call LLM Provider (Local-First) ─────────────
     try:
-        insight_data = await ai_gateway.generate_structured(
+        llm = get_llm_provider()
+        insight_data = await llm.generate_structured(
             prompt=analysis_prompt,
             system_prompt=MARKET_ANALYST_SYSTEM_PROMPT,
         )
@@ -179,7 +180,7 @@ async def market_analyst_node(state: InvestmentAgentState) -> dict:
             insight_data = _build_fallback_insight(symbol, quote, candles, fusion)
 
     except Exception as e:
-        logger.warning(f"[Market Analyst] AI Gateway failed: {e}, using fallback")
+        logger.warning(f"[Market Analyst] LLM failed: {e}, using fallback")
         insight_data = _build_fallback_insight(symbol, quote, candles, fusion)
 
     # ── Step 5: Build MarketInsight ────────────────────────
