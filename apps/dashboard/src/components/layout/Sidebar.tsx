@@ -253,6 +253,7 @@ const mainNav: NavItem[] = [
         children: [
             { href: '/ai', label: 'AI 總覽' },
             { href: '/ai/analysis', label: '🧠 AI 分析' },
+            { href: '/ai/portfolio', label: '💰 虛擬投組' },
         ],
     },
     { href: '/guardian', label: '保險守衛', icon: <ShieldIcon /> },
