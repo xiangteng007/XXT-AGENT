@@ -27,6 +27,9 @@ import {
     CheckCircle2,
     RefreshCw,
     Send,
+    ThumbsUp,
+    ThumbsDown,
+    Loader2,
 } from 'lucide-react';
 
 interface StockData {
@@ -71,6 +74,10 @@ export default function AIAnalysisPage() {
     const [analysis, setAnalysis] = useState<AIAnalysis | null>(null);
     const [customPrompt, setCustomPrompt] = useState('');
     const [stockData, setStockData] = useState<Record<string, StockData>>({});
+    const [sessionId] = useState(() => crypto.randomUUID());
+    const [feedbackState, setFeedbackState] = useState<'idle' | 'submitting' | 'accepted' | 'rejected'>('idle');
+    const [rejectReason, setRejectReason] = useState('');
+    const [showRejectInput, setShowRejectInput] = useState(false);
 
     // Fetch real market indicators data
     const fetchMarketData = useCallback(async (sym: string) => {
@@ -466,6 +473,87 @@ export default function AIAnalysisPage() {
                                 <div className="text-sm text-muted-foreground">長期目標</div>
                                 <div className="text-lg font-bold">${analysis.priceTargets.long}</div>
                             </div>
+                        </div>
+
+                        {/* DPO Feedback */}
+                        <div className="pt-4 border-t">
+                            {feedbackState === 'idle' && (
+                                <div className="space-y-3">
+                                    <p className="text-sm text-muted-foreground">這份分析對您有幫助嗎？您的回饋將用於改善 AI 模型</p>
+                                    <div className="flex gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="text-green-600 border-green-600/30 hover:bg-green-600/10"
+                                            onClick={async () => {
+                                                setFeedbackState('submitting');
+                                                try {
+                                                    const token = await getIdToken();
+                                                    await fetch('/api/ai/preference', {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                                        body: JSON.stringify({ session_id: sessionId, action: 'accept' }),
+                                                    });
+                                                    setFeedbackState('accepted');
+                                                } catch { setFeedbackState('idle'); }
+                                            }}
+                                        >
+                                            <ThumbsUp className="h-4 w-4 mr-1" /> 有幫助
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="text-red-500 border-red-500/30 hover:bg-red-500/10"
+                                            onClick={() => setShowRejectInput(true)}
+                                        >
+                                            <ThumbsDown className="h-4 w-4 mr-1" /> 不準確
+                                        </Button>
+                                    </div>
+                                    {showRejectInput && (
+                                        <div className="flex gap-2">
+                                            <Input
+                                                placeholder="原因（選填）：分析不夠深入、方向錯誤..."
+                                                value={rejectReason}
+                                                onChange={(e) => setRejectReason(e.target.value)}
+                                                className="text-sm"
+                                            />
+                                            <Button
+                                                size="sm"
+                                                variant="destructive"
+                                                onClick={async () => {
+                                                    setFeedbackState('submitting');
+                                                    try {
+                                                        const token = await getIdToken();
+                                                        await fetch('/api/ai/preference', {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                                            body: JSON.stringify({ session_id: sessionId, action: 'reject', reason: rejectReason }),
+                                                        });
+                                                        setFeedbackState('rejected');
+                                                    } catch { setFeedbackState('idle'); }
+                                                }}
+                                            >
+                                                送出
+                                            </Button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {feedbackState === 'submitting' && (
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <Loader2 className="h-4 w-4 animate-spin" /> 正在記錄...
+                                </div>
+                            )}
+                            {feedbackState === 'accepted' && (
+                                <div className="flex items-center gap-2 text-sm text-green-600">
+                                    <ThumbsUp className="h-4 w-4" /> 感謝您的正面回饋！
+                                </div>
+                            )}
+                            {feedbackState === 'rejected' && (
+                                <div className="flex items-center gap-2 text-sm text-amber-600">
+                                    <ThumbsDown className="h-4 w-4" /> 已記錄，我們會持續改善
+                                </div>
+                            )}
                         </div>
                     </CardContent>
                 </Card>
