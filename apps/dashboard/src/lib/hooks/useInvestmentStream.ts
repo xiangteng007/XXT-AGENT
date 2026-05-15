@@ -40,10 +40,11 @@ export interface InvestmentStreamState {
 /** Known LangGraph analysis nodes for progress estimation */
 const EXPECTED_NODES = [
     'market_analyst',
-    'fundamentals_researcher',
-    'risk_evaluator',
+    'information_verifier',
     'strategy_planner',
-    'portfolio_manager',
+    'risk_manager',
+    'execute_node',
+    'evaluator',
 ];
 
 function estimateProgress(completedCount: number): number {

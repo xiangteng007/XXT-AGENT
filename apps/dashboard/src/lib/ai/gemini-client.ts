@@ -1,12 +1,15 @@
 /**
  * AI Client for Dashboard
  * 
- * Calls the secure ai-gateway backend instead of directly using Gemini API key.
- * This ensures API keys are never exposed to the frontend.
+ * Routes all AI requests through Investment Brain (Local-First LLM).
+ * Falls back to ai-gateway if INVESTMENT_BRAIN_URL is not configured.
+ * API keys are never exposed to the frontend.
  */
 
-// Backend AI Gateway URL
-const AI_GATEWAY_URL = process.env.NEXT_PUBLIC_AI_GATEWAY_URL || 'http://localhost:8080';
+// Investment Brain URL (Local-First) — falls back to ai-gateway
+const AI_GATEWAY_URL = process.env.NEXT_PUBLIC_INVESTMENT_BRAIN_URL
+    || process.env.NEXT_PUBLIC_AI_GATEWAY_URL
+    || 'http://localhost:8090';
 
 /**
  * AI Client configuration
@@ -200,6 +203,11 @@ export async function checkAIHealth(): Promise<boolean> {
     try {
         const response = await fetch(`${config.baseUrl}/health`);
         const data = await response.json();
+        // Investment Brain health check
+        if (data.status === 'ok' && data.llm_primary) {
+            return data.llm_primary.available === true;
+        }
+        // Legacy ai-gateway health check
         return data.status === 'healthy' && data.geminiReady === true;
     } catch {
         return false;

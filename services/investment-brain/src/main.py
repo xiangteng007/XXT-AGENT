@@ -815,6 +815,293 @@ async def clear_strategy_memory(user_id: str = "default"):
     return {"ok": True, "cleared_user_id": user_id}
 
 
+# ══════════════════════════════════════════════════════════════
+# Dashboard Integration — Lightweight Endpoints
+# ══════════════════════════════════════════════════════════════
+# These endpoints provide fast, single-LLM-call responses for
+# the Dashboard AI chatroom and quick analysis features.
+# They do NOT run the full LangGraph pipeline.
+# ══════════════════════════════════════════════════════════════
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(..., description="User message / question")
+    systemPrompt: str | None = Field(default=None, description="Optional system prompt override")
+    context: str | None = Field(default=None, description="Optional context")
+    model: str | None = Field(default=None, description="Model hint (ignored, uses Local-First)")
+
+
+class ChatResponse(BaseModel):
+    reply: str
+    model: str
+    provider: str
+
+
+@app.post(
+    "/invest/chat",
+    response_model=ChatResponse,
+    tags=["dashboard"],
+    summary="AI 投資聊天（輕量端點）",
+)
+async def invest_chat(req: ChatRequest):
+    """
+    Dashboard AI 聊天端點 — 直接呼叫 LLM Provider（不走 LangGraph 管線）。
+
+    替代前端原本的 `ai-gateway /ai/chat` 呼叫，改走本地 Ollama。
+    """
+    llm = get_llm_provider()
+
+    system = req.systemPrompt or (
+        "你是 XXT-AGENT 的 AI 投資助理。你擅長投資分析、技術面解讀、市場趨勢判斷。\n"
+        "回答要專業但易懂，使用繁體中文。如果涉及具體投資建議，請加上風險提示。\n"
+        "不要使用 markdown 格式。"
+    )
+
+    prompt = req.message
+    if req.context:
+        prompt = f"{req.context}\n\n用戶問題: {req.message}"
+
+    try:
+        reply = await llm.chat(prompt, system_prompt=system)
+        return ChatResponse(reply=reply, model=llm.model, provider=llm.name)
+    except Exception as e:
+        logger.error(f"[Chat] LLM failed: {e}")
+        raise HTTPException(status_code=500, detail=f"AI 回覆失敗: {str(e)}")
+
+
+class QuickAnalyzeRequest(BaseModel):
+    symbol: str = Field(..., description="Stock symbol")
+    indicators: dict | None = Field(default=None, description="Technical indicators")
+    news: list[dict] | None = Field(default=None, description="Recent news items")
+    quote: dict | None = Field(default=None, description="Current market quote")
+
+
+@app.post(
+    "/invest/analyze/quick",
+    tags=["dashboard"],
+    summary="快速股票分析（單節點 LLM）",
+)
+async def quick_analyze(req: QuickAnalyzeRequest):
+    """
+    快速股票分析 — 單次 LLM 呼叫，不走完整 LangGraph 管線。
+
+    回傳結構與前端 `StockAnalysis` 介面一致：
+    recommendation, confidence, targetPrice, stopLoss, timeHorizon,
+    summary, bullishFactors, bearishFactors, riskLevel
+    """
+    llm = get_llm_provider()
+    symbol = req.symbol.upper().strip()
+
+    # Build analysis context
+    context_parts = [f"分析標的: {symbol}"]
+
+    if req.quote:
+        context_parts.append(
+            f"現價: {req.quote.get('lastPrice', 'N/A')}, "
+            f"漲跌: {req.quote.get('changePct', 0):.2f}%, "
+            f"成交量: {req.quote.get('volume', 0)}"
+        )
+
+    if req.indicators:
+        ind = req.indicators
+        context_parts.append(
+            f"技術指標 — RSI(14): {ind.get('rsi14', 'N/A')}, "
+            f"MACD: {ind.get('macd', {}).get('value', 'N/A')}, "
+            f"SMA20: {ind.get('sma20', 'N/A')}, SMA60: {ind.get('sma60', 'N/A')}"
+        )
+
+    if req.news:
+        headlines = [n.get("news_title", n.get("title", "")) for n in req.news[:5]]
+        context_parts.append(f"近期新聞: {', '.join(h for h in headlines if h)}")
+
+    prompt = "\n".join(context_parts) + "\n\n請提供完整的股票分析結果。"
+
+    system = """你是專業投資分析師。請以 JSON 格式輸出分析結果：
+{
+  "recommendation": "strong_buy|buy|hold|sell|strong_sell",
+  "confidence": 0-100,
+  "targetPrice": 數字或null,
+  "stopLoss": 數字或null,
+  "timeHorizon": "short|medium|long",
+  "summary": "一句話總結（繁體中文）",
+  "bullishFactors": ["利多因素1", "利多因素2"],
+  "bearishFactors": ["利空因素1"],
+  "riskLevel": "low|medium|high"
+}
+規則：只輸出 JSON，不要其他文字。使用繁體中文。"""
+
+    try:
+        result = await llm.generate_structured(prompt=prompt, system_prompt=system)
+        if result.get("parse_error"):
+            return {"error": "JSON parse failed", "raw": result.get("raw_response", "")}
+        return result
+    except Exception as e:
+        logger.error(f"[QuickAnalyze] LLM failed for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class MarketOutlookRequest(BaseModel):
+    events: list[dict] | None = Field(default=None, description="Recent fused events")
+    quotes: list[dict] | None = Field(default=None, description="Major market quotes")
+
+
+@app.post(
+    "/invest/market/outlook",
+    tags=["dashboard"],
+    summary="市場展望分析",
+)
+async def market_outlook(req: MarketOutlookRequest):
+    """
+    市場展望 — 單次 LLM 呼叫。
+    回傳: sentiment, keyDrivers, sectors, risks, opportunities
+    """
+    llm = get_llm_provider()
+
+    context_parts = []
+    if req.quotes:
+        lines = [f"- {q.get('symbol', '?')}: ${q.get('lastPrice', 0)} ({q.get('changePct', 0):+.2f}%)"
+                 for q in req.quotes[:10]]
+        context_parts.append("主要指數/標的:\n" + "\n".join(lines))
+
+    if req.events:
+        lines = [f"- [{e.get('severity', 0)}分] {e.get('news_title', e.get('title', ''))}"
+                 for e in req.events[:10] if e.get('news_title') or e.get('title')]
+        context_parts.append(f"近期重要事件 ({len(req.events)} 則):\n" + "\n".join(lines))
+
+    prompt = "\n\n".join(context_parts) or "請分析當前全球市場環境。"
+
+    system = """你是市場分析師。請以 JSON 格式輸出市場展望：
+{
+  "sentiment": "bullish|bearish|neutral",
+  "keyDrivers": ["驅動因素1", "驅動因素2"],
+  "sectors": [{"name": "半導體", "outlook": "positive|negative|neutral", "reason": "原因"}],
+  "risks": ["風險1", "風險2"],
+  "opportunities": ["機會1", "機會2"]
+}
+規則：只輸出 JSON。使用繁體中文。"""
+
+    try:
+        result = await llm.generate_structured(prompt=prompt, system_prompt=system)
+        if result.get("parse_error"):
+            return {"error": "JSON parse failed", "raw": result.get("raw_response", "")}
+        return result
+    except Exception as e:
+        logger.error(f"[MarketOutlook] LLM failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── AI Gateway compatibility endpoints ─────────────────────
+# These mirror the ai-gateway API surface so the frontend
+# gemini-client.ts can be pointed at Investment Brain directly.
+
+@app.post("/ai/chat", tags=["ai-compat"])
+async def ai_chat_compat(req: ChatRequest):
+    """AI Gateway compatible /ai/chat endpoint — proxies to local LLM."""
+    return await invest_chat(req)
+
+
+class SummarizeRequest(BaseModel):
+    text: str
+    maxLength: int = 200
+    language: str = "zh-TW"
+    model: str | None = None
+
+
+@app.post("/ai/summarize", tags=["ai-compat"])
+async def ai_summarize_compat(req: SummarizeRequest):
+    """AI Gateway compatible /ai/summarize endpoint."""
+    llm = get_fast_llm_provider()
+    system = f"你是文字摘要器。用{req.language}摘要以下文字，控制在{req.maxLength}字以內。只輸出摘要，不要其他文字。"
+    try:
+        summary = await llm.chat(req.text, system_prompt=system, temperature=0.1)
+        return {"summary": summary}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class SentimentRequest(BaseModel):
+    text: str
+    context: str | None = None
+    model: str | None = None
+
+
+@app.post("/ai/sentiment", tags=["ai-compat"])
+async def ai_sentiment_compat(req: SentimentRequest):
+    """AI Gateway compatible /ai/sentiment endpoint."""
+    llm = get_fast_llm_provider()
+    system = """分析文字情感。輸出 JSON：
+{"label": "positive|negative|neutral|mixed", "score": -1.0到1.0, "confidence": 0-100, "keywords": ["關鍵詞"]}
+只輸出 JSON。"""
+    ctx = f"背景: {req.context}\n\n" if req.context else ""
+    try:
+        result = await llm.generate_structured(
+            prompt=f"{ctx}分析以下文字的情感:\n{req.text}",
+            system_prompt=system,
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ImpactRequest(BaseModel):
+    title: str
+    content: str | None = None
+    symbols: list[str] = []
+    newsType: str | None = None
+    model: str | None = None
+
+
+@app.post("/ai/impact", tags=["ai-compat"])
+async def ai_impact_compat(req: ImpactRequest):
+    """AI Gateway compatible /ai/impact endpoint."""
+    llm = get_llm_provider()
+    system = """評估新聞對市場的影響。輸出 JSON：
+{
+  "severity": 0-100, "confidence": 0-100,
+  "direction": "bullish|bearish|neutral|mixed",
+  "timeframe": "immediate|short_term|long_term",
+  "affectedSectors": ["產業"], "affectedSymbols": ["股票代號"],
+  "explanation": "影響說明（繁體中文）",
+  "scores": {"market": 0-100, "news": 0-100, "social": 0-100}
+}
+只輸出 JSON。"""
+    prompt = f"新聞標題: {req.title}"
+    if req.content:
+        prompt += f"\n內容: {req.content}"
+    if req.symbols:
+        prompt += f"\n相關標的: {', '.join(req.symbols)}"
+    try:
+        result = await llm.generate_structured(prompt=prompt, system_prompt=system)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/ai/models", tags=["ai-compat"])
+async def ai_models_compat():
+    """AI Gateway compatible /ai/models endpoint — returns local model info."""
+    primary = get_llm_provider()
+    fast = get_fast_llm_provider()
+    return {
+        "models": [
+            {
+                "id": primary.model,
+                "name": f"Local {primary.model}",
+                "description": f"本地 Ollama 推理 ({primary.model})，零成本、低延遲",
+                "tier": "premium",
+                "isDefault": True,
+            },
+            {
+                "id": fast.model,
+                "name": f"Local {fast.model}",
+                "description": f"本地快速模型 ({fast.model})，適合輕量任務",
+                "tier": "economy",
+                "isDefault": False,
+            },
+        ]
+    }
+
+
 # ── Run with uvicorn ───────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn

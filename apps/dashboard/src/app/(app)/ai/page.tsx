@@ -182,7 +182,7 @@ export default function AIAssistantPage() {
                         <Bot className="h-6 w-6" />
                         AI 投資助理
                     </h1>
-                    <p className="text-muted-foreground">Powered by Gemini</p>
+                    <p className="text-muted-foreground">Powered by Local LLM (Ollama)</p>
                 </div>
                 <div className="flex items-center gap-3">
                     {/* Model Selector */}
