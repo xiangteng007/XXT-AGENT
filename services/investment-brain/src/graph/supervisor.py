@@ -72,20 +72,21 @@ def route_after_execute(state: InvestmentAgentState) -> str:
     return "complete_node"
 
 
-# ── Execution placeholder ─────────────────────────────────
-# In Phase 1, execution returns immediately.
-# Phase 2 will integrate the Simulation Engine.
+# ── Execution with Simulation Engine ──────────────────────────
 
 
 async def execute_node(state: InvestmentAgentState) -> dict:
     """
-    Execution node — placeholder for Phase 2 Simulation Engine.
+    Execution node — routes to appropriate execution mode.
 
-    In Phase 1: Logs the approved plan and marks complete.
-    In Phase 2: Sends to Simulation Engine for paper trading.
-    In Phase 3: Sends to Trade Planner for live execution.
+    - advisory: Log plan, return immediately (no trades)
+    - paper_trade: Execute via SimulationEngine (virtual portfolio)
+    - live: Not yet implemented (Phase 4)
     """
     from langchain_core.messages import AIMessage
+    from ..simulation import SimulationEngine
+    from ..tools.market_data import market_data
+    from ..config import settings
 
     plan = state.get("investment_plan")
     risk = state.get("risk_assessment")
@@ -116,24 +117,83 @@ async def execute_node(state: InvestmentAgentState) -> dict:
         }
     
     elif mode == "paper_trade":
-        # P5-01: Phase 2 simulation request structure (ready for future wiring)
-        _simulation_request = {
-            "symbol": symbol,
-            "actions": actions,
-            "risk_params": {
-                "risk_score": risk.get("risk_score", 0) if isinstance(risk, dict) else 0,
-                "violations": risk.get("violations", []) if isinstance(risk, dict) else [],
-            },
-            "backtest_baseline": {},  # Will be populated from BacktestEngine in Phase 2
-        }
-        # TODO Phase 2: result = await simulation_engine.execute(_simulation_request)
+        # Execute via SimulationEngine
+        sim = SimulationEngine(redis_url=settings.redis_url)
+        trade_results = []
+
+        for action_item in actions:
+            act = action_item.get("action", "WATCH").upper()
+            act_symbol = action_item.get("symbol", symbol)
+            entry_price = action_item.get("entry_price", 0)
+            alloc_pct = action_item.get("allocation_pct", 5)
+
+            # Skip non-tradeable actions
+            if act in ("WATCH", "HOLD", "AVOID"):
+                trade_results.append({
+                    "action": act,
+                    "symbol": act_symbol,
+                    "status": "skipped",
+                    "reason": f"{act} 不執行交易",
+                })
+                continue
+
+            # If no entry price, try to get current quote
+            if not entry_price or entry_price <= 0:
+                quote = await market_data.get_quote(act_symbol)
+                if quote:
+                    entry_price = quote.get("price", 0)
+
+            if entry_price <= 0:
+                trade_results.append({
+                    "action": act,
+                    "symbol": act_symbol,
+                    "status": "failed",
+                    "reason": "無法取得報價",
+                })
+                continue
+
+            # Calculate shares from allocation percentage
+            portfolio = await sim.get_portfolio()
+            alloc_amount = portfolio.total_value * (alloc_pct / 100)
+            shares = int(alloc_amount / entry_price)
+
+            if shares <= 0:
+                trade_results.append({
+                    "action": act,
+                    "symbol": act_symbol,
+                    "status": "failed",
+                    "reason": "資金不足",
+                })
+                continue
+
+            # Execute virtual trade
+            sim_action = "BUY" if act in ("BUY", "HEDGE") else "SELL"
+            trade = await sim.execute_order(sim_action, act_symbol, shares, entry_price)
+            trade_results.append({
+                **trade.to_dict(),
+                "status": "executed",
+                "allocation_pct": alloc_pct,
+            })
+
+        # Get updated portfolio
+        portfolio = await sim.get_portfolio()
+        await sim.close()
+
+        result_summary = "; ".join(
+            f"{r.get('action')} {r.get('symbol')} → {r.get('status')}"
+            for r in trade_results
+        )
+
         return {
             "current_step": "complete",
-            "trade_results": [],  # Will be filled by Simulation Engine in Phase 2
+            "trade_results": trade_results,
             "messages": [AIMessage(
                 content=f"[Executor] 模式: 模擬交易 (Paper Trade)\n"
-                        f"{symbol} 計畫已送出至模擬交易引擎 (待 Phase 2 實裝)。\n"
-                        f"計畫: {action_summary}",
+                        f"{symbol} 計畫已在模擬引擎中執行。\n"
+                        f"結果: {result_summary}\n"
+                        f"💰 虛擬帳戶: NT${portfolio.total_value:,.0f} "
+                        f"(現金 NT${portfolio.cash:,.0f}, "
+                        f"持倉 {len(portfolio.positions)} 檔)",
                 name="executor",
             )],
         }
@@ -144,7 +204,7 @@ async def execute_node(state: InvestmentAgentState) -> dict:
             "trade_results": [],
             "messages": [AIMessage(
                 content=f"[Executor] 模式: 實盤交易 (Live)\n"
-                        f"⚠️ {symbol} 實盤交易請求已記錄。目前即時交易模組尚未啟用 (Phase 3)。\n"
+                        f"⚠️ {symbol} 實盤交易請求已記錄。目前即時交易模組尚未啟用 (Phase 4)。\n"
                         f"計畫: {action_summary}",
                 name="executor",
             )],

@@ -713,26 +713,118 @@ async def get_news(symbol: str = ""):
 @app.get("/invest/backtest")
 async def run_backtest(symbol: str, start: str = "2023-01-01", end: str = "2024-01-01"):
     """
-    Run backtesting strategy on historical data sourced from Fugle (C-2).
+    Run backtesting strategy on historical data (C-2).
+    Uses multi-source market data (Fugle for TW, Yahoo for US).
     """
     symbol = symbol.upper().strip()
     try:
-        # 1. Fetch data from Fugle
-        historical_data = await fugle_client.get_historical_candles(symbol, start, end)
+        historical_data = await market_data.get_candles(symbol, start=start, end=end)
         if not historical_data:
             return {"error": f"No data found for {symbol} between {start} and {end}."}
         
-        # 2. Run Backtest
+        # Normalize: backtest_engine expects 'date' and 'close' columns
+        for d in historical_data:
+            if "date" not in d and "datetime" in d:
+                d["date"] = d["datetime"]
+
         metrics = backtest_engine.calculate_metrics(historical_data)
         
         return {
             "symbol": symbol,
             "status": "success",
-            "metrics": metrics
+            "source": historical_data[0].get("source", "unknown") if historical_data else "none",
+            "metrics": metrics,
         }
     except Exception as e:
         logger.error(f"[API] Backtest failed for {symbol}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Backtest failed: {str(e)}")
+
+
+# ═══════════════════════════════════════════════════════════════
+# SIMULATION / VIRTUAL PORTFOLIO ENDPOINTS
+# ═══════════════════════════════════════════════════════════════
+
+
+@app.get("/invest/portfolio", tags=["simulation"], summary="虛擬投資組合")
+async def get_portfolio():
+    """Get current virtual portfolio state."""
+    try:
+        from .simulation import SimulationEngine
+        sim = SimulationEngine(redis_url=settings.redis_url)
+        portfolio = await sim.get_portfolio()
+        await sim.close()
+        return portfolio
+    except Exception as e:
+        logger.error(f"[API] Get portfolio failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/invest/trades", tags=["simulation"], summary="交易紀錄")
+async def get_trades(limit: int = 50):
+    """Get recent virtual trade history."""
+    try:
+        from .simulation import SimulationEngine
+        sim = SimulationEngine(redis_url=settings.redis_url)
+        trades = await sim.get_trade_history(limit=min(limit, 200))
+        await sim.close()
+        return {"trades": trades, "total": len(trades)}
+    except Exception as e:
+        logger.error(f"[API] Get trades failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/invest/portfolio/reset", tags=["simulation"], summary="重置虛擬帳戶")
+async def reset_portfolio():
+    """Reset virtual portfolio to initial state (NT$1,000,000)."""
+    try:
+        from .simulation import SimulationEngine
+        sim = SimulationEngine(redis_url=settings.redis_url)
+        await sim.reset()
+        await sim.close()
+        return {"status": "ok", "message": "虛擬帳戶已重置為 NT$1,000,000"}
+    except Exception as e:
+        logger.error(f"[API] Reset portfolio failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/invest/portfolio/order", tags=["simulation"], summary="手動模擬下單")
+async def manual_order(
+    action: str,
+    symbol: str,
+    shares: float,
+    price: float = 0,
+):
+    """Execute a manual virtual trade order."""
+    symbol = symbol.upper().strip()
+    action = action.upper().strip()
+    if action not in ("BUY", "SELL"):
+        raise HTTPException(status_code=400, detail="action must be BUY or SELL")
+    if shares <= 0:
+        raise HTTPException(status_code=400, detail="shares must be > 0")
+
+    try:
+        # Get current price if not provided
+        if price <= 0:
+            quote = await market_data.get_quote(symbol)
+            if not quote:
+                raise HTTPException(status_code=404, detail=f"無法取得 {symbol} 報價")
+            price = quote.get("price", 0)
+
+        from .simulation import SimulationEngine
+        sim = SimulationEngine(redis_url=settings.redis_url)
+        trade = await sim.execute_order(action, symbol, shares, price)
+        portfolio = await sim.get_portfolio()
+        await sim.close()
+        return {
+            "trade": trade.to_dict(),
+            "portfolio_value": portfolio.total_value,
+            "cash_remaining": portfolio.cash,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[API] Manual order failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/invest/sessions")
