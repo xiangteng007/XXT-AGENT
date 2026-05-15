@@ -360,6 +360,77 @@ async def health_metrics():
     }
 
 
+@app.get("/health/diagnostics", tags=["health"], summary="系統完整診斷")
+async def health_diagnostics():
+    """
+    Full system diagnostic report: data sources, LLM, Redis, simulation, training.
+    Use for ops monitoring and troubleshooting.
+    """
+    diag: dict = {
+        "version": _APP_VERSION,
+        "timestamp": datetime.utcnow().isoformat(),
+        "data_sources": {},
+        "llm": {},
+        "backends": {},
+        "capabilities": {},
+    }
+
+    # LLM providers
+    primary = get_llm_provider()
+    fast = get_fast_llm_provider()
+    try:
+        p_health = await primary.health()
+        diag["llm"]["primary"] = {"name": primary.name, "model": primary.model, "available": p_health.available}
+    except Exception as e:
+        diag["llm"]["primary"] = {"error": str(e)}
+    try:
+        f_health = await fast.health()
+        diag["llm"]["fast"] = {"name": fast.name, "model": fast.model, "available": f_health.available}
+    except Exception as e:
+        diag["llm"]["fast"] = {"error": str(e)}
+
+    # Redis
+    try:
+        import redis.asyncio as aioredis
+        r = aioredis.from_url(settings.redis_url)
+        await r.ping()
+        diag["backends"]["redis"] = {"status": "ok", "url": settings.redis_url.split("@")[-1] if "@" in settings.redis_url else settings.redis_url}
+        await r.close()
+    except Exception as e:
+        diag["backends"]["redis"] = {"status": "error", "error": str(e)}
+
+    # Session store
+    diag["backends"]["session_store"] = {
+        "backend": session_store.backend,
+        "active_sessions": await session_store.count(),
+    }
+
+    # Market data sources
+    diag["data_sources"]["fugle"] = {
+        "configured": bool(settings.fugle_api_key),
+        "for": "Taiwan stocks (.TW)",
+    }
+    diag["data_sources"]["yahoo"] = {
+        "configured": True,
+        "for": "US/International stocks",
+    }
+
+    # Capabilities
+    diag["capabilities"]["backtest_strategies"] = list(backtest_engine._strategies.keys())
+    diag["capabilities"]["simulation"] = True
+    diag["capabilities"]["training_collection"] = True
+
+    # Training stats
+    try:
+        from .training import training_collector
+        stats = await training_collector.get_stats()
+        diag["capabilities"]["training_examples"] = stats.get("total_examples", 0)
+    except Exception:
+        diag["capabilities"]["training_examples"] = "unavailable"
+
+    return diag
+
+
 @app.post(
     "/invest/analyze",
     response_model=AnalyzeResponse,
@@ -612,25 +683,6 @@ async def get_session_status(session_id: str):
     }
 
 
-@app.get("/invest/portfolio")
-async def get_portfolio():
-    """Get the current virtual portfolio state (Phase 2)."""
-    return {
-        "status": "pending",
-        "message": "虛擬投組功能將於 Phase 2 實裝",
-        "portfolio": {
-            "total_value": 100000.0,
-            "cash": 100000.0,
-            "positions": [],
-            "daily_pnl": 0,
-            "daily_pnl_pct": 0,
-            "max_drawdown": 0,
-            "sharpe_ratio": None,
-            "win_rate": None,
-            "total_trades": 0,
-        },
-    }
-
 
 @app.get("/invest/quote")
 async def get_quote(symbol: str):
@@ -711,10 +763,16 @@ async def get_news(symbol: str = ""):
 
 
 @app.get("/invest/backtest")
-async def run_backtest(symbol: str, start: str = "2023-01-01", end: str = "2024-01-01"):
+async def run_backtest(
+    symbol: str,
+    start: str = "2023-01-01",
+    end: str = "2024-01-01",
+    strategy: str = "buy_and_hold",
+):
     """
-    Run backtesting strategy on historical data (C-2).
-    Uses multi-source market data (Fugle for TW, Yahoo for US).
+    Run backtesting with specified strategy on historical data.
+
+    Strategies: buy_and_hold, sma_crossover, rsi_reversal, breakout_volume
     """
     symbol = symbol.upper().strip()
     try:
@@ -722,12 +780,12 @@ async def run_backtest(symbol: str, start: str = "2023-01-01", end: str = "2024-
         if not historical_data:
             return {"error": f"No data found for {symbol} between {start} and {end}."}
         
-        # Normalize: backtest_engine expects 'date' and 'close' columns
+        # Normalize columns
         for d in historical_data:
             if "date" not in d and "datetime" in d:
                 d["date"] = d["datetime"]
 
-        metrics = backtest_engine.calculate_metrics(historical_data)
+        metrics = backtest_engine.calculate_metrics(historical_data, strategy=strategy)
         
         return {
             "symbol": symbol,
@@ -738,6 +796,35 @@ async def run_backtest(symbol: str, start: str = "2023-01-01", end: str = "2024-
     except Exception as e:
         logger.error(f"[API] Backtest failed for {symbol}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Backtest failed: {str(e)}")
+
+
+@app.get("/invest/backtest/compare")
+async def compare_strategies(
+    symbol: str,
+    start: str = "2023-01-01",
+    end: str = "2024-01-01",
+):
+    """Run all backtest strategies and compare performance."""
+    symbol = symbol.upper().strip()
+    try:
+        historical_data = await market_data.get_candles(symbol, start=start, end=end)
+        if not historical_data:
+            return {"error": f"No data found for {symbol} between {start} and {end}."}
+        
+        for d in historical_data:
+            if "date" not in d and "datetime" in d:
+                d["date"] = d["datetime"]
+
+        comparison = backtest_engine.run_all_strategies(historical_data)
+        return {
+            "symbol": symbol,
+            "status": "success",
+            "source": historical_data[0].get("source", "unknown") if historical_data else "none",
+            **comparison,
+        }
+    except Exception as e:
+        logger.error(f"[API] Strategy comparison failed for {symbol}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
 
 
 # ═══════════════════════════════════════════════════════════════
