@@ -10,6 +10,7 @@ export interface Evidence {
 export interface FusedEvent {
     id: string;
     ts: string;
+    createdAt?: string;  // Firestore document timestamp (used for ordering)
     tenantId?: string;
     domain: 'market' | 'news' | 'social' | 'fusion';
     eventType?: string;

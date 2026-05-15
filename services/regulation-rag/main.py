@@ -266,21 +266,23 @@ async def upsert_regulation_version(req: VersionRequest):
 @app.get("/regulation/version/{regulation_id}/history")
 async def get_regulation_history(regulation_id: str):
     """取得法條的變更歷史"""
-    # 待實作：查詢 Qdrant 內相同 regulation_id 卻不同 version 的 Metadata
+    # TODO: 查詢 Qdrant 內相同 regulation_id 卻不同 version 的 Metadata
+    # 目前尚未實作 — 回傳空 history 而非假資料
     return {
         "regulation_id": regulation_id,
-        "history": [
-            {"version": 1, "effective_date": "2023-01-01"},
-            {"version": 2, "effective_date": "2024-07-01"}
-        ]
+        "history": [],
+        "message": "Version history not yet implemented. Requires Qdrant metadata query.",
     }
 
 @app.get("/regulation/changelog")
 async def get_changelog(since: str = "2026-01-01"):
     """取得特定日期之後的變更日誌"""
+    # TODO: 掃描 Qdrant 內 effective_date >= since 的 chunks，
+    #       按 regulation_id 分組回傳 version diff
     return {
         "since": since,
-        "changes": []
+        "changes": [],
+        "message": "Changelog not yet implemented. Requires Qdrant effective_date index.",
     }
 
 

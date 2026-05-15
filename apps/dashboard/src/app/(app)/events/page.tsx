@@ -25,7 +25,7 @@ export default function EventsPage() {
     const [searchKeyword, setSearchKeyword] = useState('');
     const [domainFilter, setDomainFilter] = useState('all');
     const [minSeverity, setMinSeverity] = useState('0');
-    const [sortKey, setSortKey] = useState('ts');
+    const [sortKey, setSortKey] = useState('createdAt');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
     const loadEvents = useCallback(async () => {
@@ -78,8 +78,10 @@ export default function EventsPage() {
             let comparison = 0;
             if (sortKey === 'severity') {
                 comparison = a.severity - b.severity;
-            } else if (sortKey === 'ts') {
-                comparison = new Date(a.ts).getTime() - new Date(b.ts).getTime();
+            } else if (sortKey === 'createdAt') {
+                const aTime = a.createdAt || a.ts;
+                const bTime = b.createdAt || b.ts;
+                comparison = new Date(aTime).getTime() - new Date(bTime).getTime();
             }
             return sortOrder === 'asc' ? comparison : -comparison;
         });
@@ -121,13 +123,14 @@ export default function EventsPage() {
 
     const columns: Column<FusedEvent>[] = [
         {
-            key: 'ts',
+            key: 'createdAt',
             header: '時間',
             sortable: true,
             className: 'w-[120px]',
-            render: (event) => (
-                <span className="text-sm text-muted-foreground">{formatTime(event.ts)}</span>
-            ),
+            render: (event) => {
+                const time = event.createdAt || event.ts;
+                return <span className="text-sm text-muted-foreground">{formatTime(time)}</span>;
+            },
         },
         {
             key: 'news_title',
