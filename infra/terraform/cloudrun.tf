@@ -493,8 +493,8 @@ resource "google_cloud_run_v2_service" "regulation_rag" {
   location            = var.region
   deletion_protection = false
 
-  # 僅允許 VPC 內部及 runtime SA 存取
-  ingress = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  # IAM auth protects the service; allow external health checks from Vercel dashboard
+  ingress = "INGRESS_TRAFFIC_ALL"
 
   template {
     service_account = google_service_account.runtime_sa.email
