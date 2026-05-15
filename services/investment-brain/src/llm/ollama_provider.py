@@ -132,30 +132,31 @@ class OllamaProvider(LLMProvider):
         data = resp.json()
 
         content = data.get("message", {}).get("content", "")
-        # qwen3 may include <think> block before JSON
-        if "</think>" in content:
-            content = content.split("</think>")[-1].strip()
 
-        cleaned = _clean_json(content)
+        # Use centralized parser with 5-strategy extraction
+        from .parser import extract_json
 
+        result = extract_json(content)
+        if result is not None:
+            return result
+
+        logger.warning(
+            f"[Ollama] JSON parse failed for model={self._model}, "
+            f"response preview: {content[:200]}"
+        )
+        # Retry once with explicit instruction
         try:
-            return orjson.loads(cleaned.encode())
-        except Exception:
-            logger.warning(
-                f"[Ollama] JSON parse failed for model={self._model}, "
-                f"response preview: {cleaned[:200]}"
+            retry_resp = await self.chat(
+                f"以下文字請轉換為合法 JSON 格式，只輸出 JSON：\n\n{content}",
+                system_prompt="你是 JSON 格式轉換器。只輸出合法 JSON。",
+                temperature=0.0,
             )
-            # Retry once with explicit instruction
-            try:
-                retry_resp = await self.chat(
-                    f"以下文字請轉換為合法 JSON 格式，只輸出 JSON：\n\n{cleaned}",
-                    system_prompt="你是 JSON 格式轉換器。只輸出合法 JSON。",
-                    temperature=0.0,
-                )
-                retry_cleaned = _clean_json(retry_resp)
-                return orjson.loads(retry_cleaned.encode())
-            except Exception:
-                return {"raw_response": content, "parse_error": True}
+            retry_result = extract_json(retry_resp)
+            if retry_result is not None:
+                return retry_result
+        except Exception:
+            pass
+        return {"raw_response": content, "parse_error": True}
 
     async def health(self) -> ProviderHealth:
         try:

@@ -17,6 +17,7 @@ from langchain_core.messages import AIMessage
 
 from ..state import InvestmentAgentState, InvestmentPlan, InvestmentAction
 from ...llm import get_llm_provider
+from ...llm.metrics import timed_node
 from ...tools.trade_planner import trade_planner
 from ...tools.market_data import market_data
 from ...backtest_engine import BacktestEngine
@@ -92,6 +93,7 @@ RISK_ALLOCATION = {
 }
 
 
+@timed_node("strategy_planner")
 async def strategy_planner_node(state: InvestmentAgentState) -> dict:
     """
     Strategy Planner Agent — LangGraph node function.

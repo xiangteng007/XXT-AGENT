@@ -96,12 +96,13 @@ class GatewayProvider(LLMProvider):
             system_prompt=system_prompt + "\n\n只回應 JSON，不要其他文字。",
             temperature=temperature,
         )
-        cleaned = _clean_json(reply)
-        try:
-            return orjson.loads(cleaned.encode())
-        except Exception:
-            logger.warning(f"[Gateway] JSON parse failed: {cleaned[:200]}")
-            return {"raw_response": reply, "parse_error": True}
+        from .parser import extract_json
+
+        result = extract_json(reply)
+        if result is not None:
+            return result
+        logger.warning(f"[Gateway] JSON parse failed: {reply[:200]}")
+        return {"raw_response": reply, "parse_error": True}
 
     async def health(self) -> ProviderHealth:
         try:

@@ -19,6 +19,7 @@ from langchain_core.messages import AIMessage
 
 from ..state import InvestmentAgentState, MarketInsight, PriceSnapshot, FusionContext
 from ...llm import get_llm_provider
+from ...llm.metrics import timed_node
 from ...tools.fusion_client import fusion_client
 from ...tools.market_data import market_data
 
@@ -67,6 +68,7 @@ MARKET_ANALYST_SYSTEM_PROMPT = """你是 XXT-AGENT 投資分析系統的「市�
   5. signals 至少保留技術面分析（K 線可獨立分析）"""
 
 
+@timed_node("market_analyst")
 async def market_analyst_node(state: InvestmentAgentState) -> dict:
     """
     Market Analyst Agent — LangGraph node function.

@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage
 
 from ..state import InvestmentAgentState, VerificationInsight
 from ...llm import get_llm_provider
+from ...llm.metrics import timed_node
 
 logger = logging.getLogger("investment-brain.nodes.information_verifier")
 
@@ -87,6 +88,7 @@ def compute_divergence_score(news_direction: str, social_direction: str, news_co
     # One neutral, one directional
     return 0.4
 
+@timed_node("information_verifier")
 async def information_verifier_node(state: InvestmentAgentState) -> dict:
     """
     Information Verifier Agent — LangGraph node function.

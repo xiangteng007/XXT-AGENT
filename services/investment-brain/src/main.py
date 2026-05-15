@@ -345,6 +345,21 @@ async def health_check():
     )
 
 
+@app.get("/health/metrics", tags=["health"], summary="節點效能指標")
+async def health_metrics():
+    """
+    Per-node execution timing metrics.
+
+    Returns avg/min/max latency, success rate, and execution count
+    for each LangGraph node (market_analyst, strategy_planner, etc.)
+    """
+    from .llm.metrics import metrics
+    return {
+        "nodes": metrics.summary(),
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
 @app.post(
     "/invest/analyze",
     response_model=AnalyzeResponse,

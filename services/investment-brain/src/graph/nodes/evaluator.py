@@ -16,6 +16,7 @@ from langchain_core.messages import AIMessage
 
 from ..state import InvestmentAgentState, StrategyMemory
 from ...llm import get_fast_llm_provider
+from ...llm.metrics import timed_node
 
 logger = logging.getLogger("investment-brain.nodes.evaluator")
 
@@ -49,6 +50,7 @@ EVALUATOR_SYSTEM_PROMPT = """你是 XXT-AGENT 投資分析系統的「策略評�
 - 使用繁體中文"""
 
 
+@timed_node("evaluator")
 async def evaluator_node(state: InvestmentAgentState) -> dict:
     """
     Evaluator Agent — LangGraph node function.

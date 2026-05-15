@@ -18,6 +18,7 @@ from langchain_core.messages import AIMessage
 
 from ..state import InvestmentAgentState, RiskAssessment, InvestmentPlan
 from ...config import settings
+from ...llm.metrics import timed_node
 
 logger = logging.getLogger("investment-brain.nodes.risk_manager")
 
@@ -121,6 +122,7 @@ def check_concentration_risk(plan: InvestmentPlan, max_concentration_pct: float 
 # ══════════════════════════════════════════════════════════════
 
 
+@timed_node("risk_manager")
 async def risk_manager_node(state: InvestmentAgentState) -> dict:
     """
     Risk Manager Agent — LangGraph node function.
