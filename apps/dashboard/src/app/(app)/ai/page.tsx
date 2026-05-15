@@ -242,7 +242,7 @@ export default function AIAssistantPage() {
             </div>
 
             {/* Quick Navigation */}
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Link href="/ai/analysis">
                     <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
                         <CardContent className="pt-4 flex items-center gap-4">
@@ -250,9 +250,39 @@ export default function AIAssistantPage() {
                                 <Brain className="h-6 w-6 text-primary" />
                             </div>
                             <div>
-                                <h3 className="font-medium">歷史資料分析</h3>
+                                <h3 className="font-medium">AI 智能分析</h3>
                                 <p className="text-sm text-muted-foreground">
-                                    K線圖、技術指標、AI 投資建議
+                                    技術指標 · AI 投資建議
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </Link>
+                <Link href="/ai/portfolio">
+                    <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
+                        <CardContent className="pt-4 flex items-center gap-4">
+                            <div className="p-3 bg-amber-500/10 rounded-lg">
+                                <PieChart className="h-6 w-6 text-amber-600" />
+                            </div>
+                            <div>
+                                <h3 className="font-medium">虛擬投組</h3>
+                                <p className="text-sm text-muted-foreground">
+                                    模擬交易 · 績效追蹤
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </Link>
+                <Link href="/ai/backtest">
+                    <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
+                        <CardContent className="pt-4 flex items-center gap-4">
+                            <div className="p-3 bg-blue-500/10 rounded-lg">
+                                <BarChart3 className="h-6 w-6 text-blue-600" />
+                            </div>
+                            <div>
+                                <h3 className="font-medium">策略回測</h3>
+                                <p className="text-sm text-muted-foreground">
+                                    4 種策略比較 · 交易成本
                                 </p>
                             </div>
                         </CardContent>
@@ -262,12 +292,12 @@ export default function AIAssistantPage() {
                     <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
                         <CardContent className="pt-4 flex items-center gap-4">
                             <div className="p-3 bg-green-500/10 rounded-lg">
-                                <BarChart3 className="h-6 w-6 text-green-600" />
+                                <Activity className="h-6 w-6 text-green-600" />
                             </div>
                             <div>
                                 <h3 className="font-medium">市場熱力圖</h3>
                                 <p className="text-sm text-muted-foreground">
-                                    自訂版塊、產業分析、即時報價
+                                    產業分析 · 即時報價
                                 </p>
                             </div>
                         </CardContent>

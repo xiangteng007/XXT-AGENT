@@ -942,6 +942,68 @@ async def export_training_data(limit: int = 200):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/invest/training/preference", tags=["training"], summary="記錄分析偏好")
+async def record_preference(
+    session_id: str,
+    action: str,
+    reason: str = "",
+):
+    """
+    Record user preference (accept/reject) for DPO training.
+
+    Args:
+        session_id: Analysis session ID
+        action: 'accept' or 'reject'
+        reason: Optional rejection reason
+    """
+    action = action.lower().strip()
+    if action not in ("accept", "reject"):
+        raise HTTPException(status_code=400, detail="action must be 'accept' or 'reject'")
+
+    # Get session data
+    session = await session_store.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        from .training import preference_collector
+        result = session.get("result", {})
+        plan = result.get("investment_plan", {})
+        symbol = session.get("symbol", "")
+
+        if action == "accept":
+            await preference_collector.accept(session_id, symbol, plan)
+        else:
+            await preference_collector.reject(session_id, symbol, plan, reason=reason)
+
+        return {"status": "ok", "action": action, "session_id": session_id}
+    except Exception as e:
+        logger.error(f"[API] Preference recording failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/invest/training/preferences/stats", tags=["training"], summary="偏好收集統計")
+async def preference_stats():
+    """Get DPO preference collection statistics."""
+    try:
+        from .training import preference_collector
+        stats = await preference_collector.get_stats()
+        return stats
+    except Exception as e:
+        return {"error": str(e), "accepted": 0, "rejected": 0}
+
+
+@app.get("/invest/training/preferences/export", tags=["training"], summary="匯出 DPO 訓練對")
+async def export_dpo_pairs(limit: int = 100):
+    """Export matched DPO training pairs (chosen vs rejected)."""
+    try:
+        from .training import preference_collector
+        pairs = await preference_collector.export_dpo_pairs(limit=min(limit, 500))
+        return {"format": "dpo", "count": len(pairs), "data": pairs}
+    except Exception as e:
+        logger.error(f"[API] Export DPO pairs failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/invest/sessions")
 async def list_sessions():
     """List recent analysis sessions."""
