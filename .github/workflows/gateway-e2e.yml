@@ -37,6 +37,10 @@ jobs:
       - name: Install gateway dependencies (monorepo root)
         run: pnpm install --frozen-lockfile
 
+      - name: Build shared types
+        working-directory: packages/types
+        run: npx tsc
+
       - name: TypeScript Check
         working-directory: services/openclaw-gateway
         run: npx tsc --noEmit

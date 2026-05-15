@@ -243,8 +243,8 @@ reconcileRouter.get('/summary', async (req: Request, res: Response) => {
     );
 
     // 精簡版（Dashboard Badge 用）
-    const matched = report.items.filter(i => i.status === 'MATCHED').length;
-    const issues = report.items.filter(i => i.status !== 'MATCHED').length;
+    const matched = report.items.filter((i: { status: string }) => i.status === 'MATCHED').length;
+    const issues = report.items.filter((i: { status: string }) => i.status !== 'MATCHED').length;
 
     res.json({
       ok: true,
