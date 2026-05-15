@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 
         const db = getFirestore();
         let query = db.collection('fused_events')
-            .orderBy('ts', 'desc')
+            .orderBy('createdAt', 'desc')
             .limit(limit);
 
         if (domain && domain !== 'all') {

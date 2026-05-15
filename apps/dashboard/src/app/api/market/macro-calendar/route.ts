@@ -15,14 +15,16 @@ export async function GET(req: NextRequest) {
 
         const db = getFirestore();
 
-        // Fetch upcoming macro events (next 14 days)
+        // Fetch macro events: 7 days back + 30 days forward
         const now = new Date();
-        const twoWeeksLater = new Date(now);
-        twoWeeksLater.setDate(twoWeeksLater.getDate() + 14);
+        const weekAgo = new Date(now);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        const monthLater = new Date(now);
+        monthLater.setDate(monthLater.getDate() + 30);
 
         const snapshot = await db.collection('macro_events')
-            .where('date', '>=', now.toISOString().split('T')[0])
-            .where('date', '<=', twoWeeksLater.toISOString().split('T')[0])
+            .where('date', '>=', weekAgo.toISOString().split('T')[0])
+            .where('date', '<=', monthLater.toISOString().split('T')[0])
             .orderBy('date', 'asc')
             .limit(50)
             .get();
