@@ -103,7 +103,7 @@ describe('E2E: Guardian — Chat', () => {
     const res = await api.post('/agents/guardian/chat', { context: 'test' });
     expect(res.status).toBe(400);
     const body = await api.json(res);
-    expect(body['error']).toBe('message required');
+    expect(body['error']).toBe('message must be a non-empty string');
   });
 });
 
