@@ -41,7 +41,7 @@ def load_training_data(path: str) -> list[dict]:
 def finetune(
     data_path: str,
     output_dir: str,
-    base_model: str = "Qwen/Qwen2.5-14B-Instruct",
+    base_model: str = "Qwen/Qwen2.5-7B-Instruct",
     lora_rank: int = 16,
     lora_alpha: int = 32,
     epochs: int = 3,
@@ -138,7 +138,7 @@ def finetune(
         logging_steps=5,
         save_steps=50,
         save_total_limit=3,
-        fp16=True,
+        bf16=True,
         optim="adamw_8bit",
         seed=42,
         report_to="none",
@@ -200,7 +200,7 @@ def main():
     parser = argparse.ArgumentParser(description="Investment Brain LoRA Fine-tuning")
     parser.add_argument("--data", required=True, help="Path to training data (Alpaca JSON)")
     parser.add_argument("--output", default="models/investment-brain-v1", help="Output directory")
-    parser.add_argument("--base-model", default="Qwen/Qwen2.5-14B-Instruct", help="Base model")
+    parser.add_argument("--base-model", default="Qwen/Qwen2.5-7B-Instruct", help="Base model")
     parser.add_argument("--rank", type=int, default=16, help="LoRA rank")
     parser.add_argument("--alpha", type=int, default=32, help="LoRA alpha")
     parser.add_argument("--epochs", type=int, default=3, help="Training epochs")
