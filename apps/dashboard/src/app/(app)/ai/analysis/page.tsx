@@ -84,7 +84,7 @@ export default function AIAnalysisPage() {
         setDataLoading(true);
         try {
             const token = await getIdToken();
-            const res = await fetch(`/api/market/indicators?symbol=${sym}`, {
+            const res = await fetch(`/api/market/indicators/${encodeURIComponent(sym)}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.ok) {
