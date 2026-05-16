@@ -236,8 +236,9 @@ class VerificationInsightModel(BaseModel):
     judgment_basis:       str  = ""
 
 class MarketInsightModel(BaseModel):
-    symbol:               str
+    symbol:               str  = ""
     trend:                str  = "neutral"
+    regime:               str  = "unknown"
     rsi:                  float | None = None
     macd_signal:          str  | None = None
     support_levels:       list[float] = []
@@ -248,8 +249,8 @@ class MarketInsightModel(BaseModel):
     analysis_timestamp:   str  = ""
 
 class RiskBand(BaseModel):
-    level:                str   # low|medium|high|critical
-    score:                int
+    level:                str   = "unknown"  # low|medium|high|critical
+    score:                int   = 0
     violations:           list[str] = []
     warnings:             list[str] = []
     approved:             bool = False
@@ -258,13 +259,13 @@ class RiskBand(BaseModel):
     max_loss_amount:      float | None = None
 
 class InvestmentPlanModel(BaseModel):
-    action:               str   # BUY|SELL|HOLD
-    rationale:            str
+    action:               str   = "HOLD"  # BUY|SELL|HOLD
+    rationale:            str   = ""
     target_price:         float | None = None
     stop_loss:            float | None = None
     position_size_pct:    float = 0.0
     time_horizon:         str   = ""
-    confidence:           str   = "low"
+    confidence:           str | int = "low"
     advisory_disclaimer:  str   = "本分析僅供參考，不構成投資建議。"
     backtest_evidence:    dict  | None = None
 
@@ -488,14 +489,26 @@ async def analyze_investment(req: AnalyzeRequest):
     }
     await session_store.set(session_id, session_data)
 
-    # Build response
+    # Build response — safe conversion from LLM output dicts
+    def _safe_model(model_class, data):
+        """Safely convert dict to Pydantic model, returning None on failure."""
+        if data is None:
+            return None
+        try:
+            if isinstance(data, model_class):
+                return data
+            return model_class(**(data if isinstance(data, dict) else {}))
+        except Exception as e:
+            logger.warning(f"[API] Failed to parse {model_class.__name__}: {e}")
+            return model_class()  # Return default instance
+
     response = AnalyzeResponse(
         session_id=session_id,
         symbol=symbol,
         status=result.get("current_step", "complete"),
-        market_insight=result.get("market_insight"),
-        investment_plan=result.get("investment_plan"),
-        risk_assessment=result.get("risk_assessment"),
+        market_insight=_safe_model(MarketInsightModel, result.get("market_insight")),
+        investment_plan=_safe_model(InvestmentPlanModel, result.get("investment_plan")),
+        risk_assessment=_safe_model(RiskBand, result.get("risk_assessment")),
         trade_results=result.get("trade_results", []),
         portfolio=result.get("portfolio"),
         strategy_memory=result.get("strategy_memory"),
