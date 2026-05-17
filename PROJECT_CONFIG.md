@@ -184,6 +184,7 @@
 | `ST_MIGRATION_SOP.md` | ST 專案全局物理遷移與部署修復 SOP | ✅ |
 | `st_cloud_integration_specification.md` | ST 雲端架構一體化統合部署規格書 | ✅ |
 | `SUPREME_CLOUD_INTEGRATION_PLAN.md` | ST 超級企業雲端服務大統合終極計畫書 | ✅ |
+| `SUPREME_BRAIN_EVOLUTION_PLAN.md` | ST 智能多領域自主學習與多學科進化計畫書 | ✅ |
 
 ### 運維 SOP
 
