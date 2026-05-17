@@ -181,6 +181,7 @@
 | `architecture_evolution_spec.md` | 本地模型自我學習進化規格與 DPO 閉環管線 | ✅ |
 | `strategic_evolution_nas_stability.md` | 本地全方位助理進化與 NAS 記憶庫穩定方案 | ✅ |
 | `xxt_senteng_integration_blueprint.md` | 超級單人企業智能中樞統合藍圖 | ✅ |
+| `ST_MIGRATION_SOP.md` | ST 專案全局物理遷移與部署修復 SOP | ✅ |
 
 ### 運維 SOP
 
