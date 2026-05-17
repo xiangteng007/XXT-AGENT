@@ -82,6 +82,32 @@ class AutoTrainDaemon:
             logger.error(f"[AutoTrain] Error running DPO fine-tuning: {e}")
             return False
 
+    async def run_regression_gate(self) -> bool:
+        """執行自動化回測與回歸評估門限"""
+        logger.info("[AutoTrain] Running Auto-Regression Gate verification...")
+        gate_cmd = [
+            "python", "scripts/auto_regression_gate.py",
+            "--adapter", "models/investment-brain-v1/dpo_adapter"
+        ]
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *gate_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode == 0:
+                logger.info("[AutoTrain] Auto-Regression Gate verification PASSED!")
+                return True
+            else:
+                logger.error("[AutoTrain] Auto-Regression Gate verification REJECTED!")
+                logger.error(stderr.decode())
+                return False
+        except Exception as e:
+            logger.error(f"[AutoTrain] Error running regression gate: {e}")
+            return False
+
     async def rebuild_and_reload_ollama(self):
         """微調成功後重新合併適配器並冷啟動/刷新 Ollama 模型"""
         logger.info("[AutoTrain] Merging LoRA adapter with Base Model...")
@@ -121,18 +147,23 @@ class AutoTrainDaemon:
                     success = await self.run_dpo_finetuning()
                     
                     if success:
-                        # 3. 合併權重並重啟大腦
-                        await self.rebuild_and_reload_ollama()
-                        
-                        # 4. 清理已消耗的訓練隊列
-                        try:
-                            conn = aioredis.from_url(self.redis_url)
-                            await conn.delete("training:preferences:accepted")
-                            await conn.delete("training:preferences:rejected")
-                            await conn.close()
-                            logger.info("🎉 [SUCCESS] Model has successfully self-improved & hot-reloaded!")
-                        except Exception as ce:
-                            logger.error(f"Failed to clear Redis training queues: {ce}")
+                        # 2.5 執行自動化回測與回歸評估門限
+                        gate_passed = await self.run_regression_gate()
+                        if gate_passed:
+                            # 3. 合併權重並重啟大腦
+                            await self.rebuild_and_reload_ollama()
+                            
+                            # 4. 清理已消耗的訓練隊列
+                            try:
+                                conn = aioredis.from_url(self.redis_url)
+                                await conn.delete("training:preferences:accepted")
+                                await conn.delete("training:preferences:rejected")
+                                await conn.close()
+                                logger.info("🎉 [SUCCESS] Model has successfully self-improved & hot-reloaded!")
+                            except Exception as ce:
+                                logger.error(f"Failed to clear Redis training queues: {ce}")
+                        else:
+                            logger.error("❌ [ABORT] Model promotion aborted due to regression gate failure.")
                     
                     self.active_training = False
                     
