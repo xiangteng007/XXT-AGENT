@@ -63,7 +63,7 @@
 | **Social Worker** | Cloud Run | `services/social-worker` | ✅ Active (IAM) |
 | **Social Collector** | Cloud Run | `services/social-worker` | ✅ Active (IAM) |
 | **Social Dispatcher** | Cloud Run | `services/social-dispatcher` | ✅ Active (IAM) |
-| **Investment Brain** | Cloud Run (Planned) | `services/investment-brain` | 🔧 本地就緒 |
+| **Investment Brain** | Cloud Run / Local | `services/investment-brain` | 🟩 本地自學習上線 (v2.6) |
 | **Secret Manager** | GCP | — | ✅ Active |
 
 ### Standalone Apps
@@ -178,6 +178,7 @@
 | `XXT-AGENT_COMPLETE_DOCUMENTATION.md` | 完整文件彙整 | ✅ |
 | `event-schema.md` | Pub/Sub 事件 Schema (v9.0) | ✅ |
 | `model_execution_manifest.md` | 模型執行清單 | ✅ |
+| `architecture_evolution_spec.md` | 本地模型自我學習進化規格與 DPO 閉環管線 | ✅ |
 
 ### 運維 SOP
 
@@ -222,3 +223,24 @@
 | `GET /api/system/bots/audit` | Bot 指令使用率 audit | OpenClaw Gateway |
 | `GET /api/system/nas` | ChromaDB 健康檢查 | NAS ChromaDB |
 | `GET /api/system/bots` | Bot 平台連線偵測 | OpenClaw Gateway |
+
+---
+
+## 本地大腦自我自學習系統任務進度 (Investment Brain Self-Learning Backlog)
+
+> **當前狀態**: 🟩 60% 已實裝 (P0 級別回測安全柵欄已上線)
+
+### 🟩 已完成架構與實裝 (Completed)
+- [x] **本地 Qwen2.5-7B 模型微調與部署** (支援本地即時多 Agent 整合)
+- [x] **市場監督偏好數據收集器** (`market_feedback_loop.py` 行情自動比對與 Chosen/Rejected 打標)
+- [x] **顯卡顯存資源鎖與守護進程** (`auto_train_daemon.py` 自動 keep_alive=0 卸載 Ollama 避免 CUDA OOM)
+- [x] **P0 級別：自動化回測回歸評估門限** (`auto_regression_gate.py` 安全審查，阻斷劣退模型發佈)
+- [x] **進化企劃與規格書制定** (`docs/architecture_evolution_spec.md` 新增核心文檔)
+
+### 🟨 後續開發任務 (Uncompleted Backlog)
+- [ ] **P1 級別：GGUF 自動量化發佈管線**
+  - 使用 `convert_to_gguf.py` 自動轉製為 `Q4_K_M` 精度，回應縮短至 3s 內，顯存 < 5GB。
+- [ ] **P2 級別：Alpha 超額回報打標算法升級**
+  - 打標算法升級為基準指數超額收益（相較於 `0050.TW` / `^TWII` 指標增幅 $\ge +1.5\%$）。
+- [ ] **P3 級別：法人籌碼與散戶輿情特徵融合**
+  - 將外資買賣超、融資融券以及 PTT/Dcard 多空情緒比率注入 `market_context` 特徵向量。
