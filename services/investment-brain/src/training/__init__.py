@@ -7,10 +7,12 @@ Modules:
 """
 from .data_collector import TrainingDataCollector, training_collector
 from .preference_collector import PreferenceCollector, preference_collector
+from .market_feedback_loop import MarketFeedbackLoop
 
 __all__ = [
     "TrainingDataCollector",
     "training_collector",
     "PreferenceCollector",
     "preference_collector",
+    "MarketFeedbackLoop",
 ]
