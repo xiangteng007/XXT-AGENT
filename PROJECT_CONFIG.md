@@ -179,6 +179,7 @@
 | `event-schema.md` | Pub/Sub 事件 Schema (v9.0) | ✅ |
 | `model_execution_manifest.md` | 模型執行清單 | ✅ |
 | `architecture_evolution_spec.md` | 本地模型自我學習進化規格與 DPO 閉環管線 | ✅ |
+| `strategic_evolution_nas_stability.md` | 本地全方位助理進化與 NAS 記憶庫穩定方案 | ✅ |
 
 ### 運維 SOP
 
