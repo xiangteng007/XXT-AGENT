@@ -183,6 +183,7 @@
 | `xxt_senteng_integration_blueprint.md` | 超級單人企業智能中樞統合藍圖 | ✅ |
 | `ST_MIGRATION_SOP.md` | ST 專案全局物理遷移與部署修復 SOP | ✅ |
 | `st_cloud_integration_specification.md` | ST 雲端架構一體化統合部署規格書 | ✅ |
+| `SUPREME_CLOUD_INTEGRATION_PLAN.md` | ST 超級企業雲端服務大統合終極計畫書 | ✅ |
 
 ### 運維 SOP
 
